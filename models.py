@@ -12,6 +12,8 @@ class User:
     # Required fields
     public_key: str  # Nano public key as user ID
     username: str
+    first_name: str = ""
+    last_name: str = ""
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
     # Optional fields
@@ -23,6 +25,8 @@ class User:
         return {
             'public_key': self.public_key,
             'username': self.username,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
             'created_at': self.created_at,
             'inventory': self.inventory,
             'metadata': self.metadata
@@ -34,6 +38,8 @@ class User:
         return cls(
             public_key=data['public_key'],
             username=data['username'],
+            first_name=data.get('first_name', ''),
+            last_name=data.get('last_name', ''),
             created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
             inventory=data.get('inventory', []),
             metadata=data.get('metadata', {})

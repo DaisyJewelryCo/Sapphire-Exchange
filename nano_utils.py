@@ -92,9 +92,21 @@ class NanoWallet:
         self.public_key = self.private_key.get_verifying_key()
         self.address = self._public_key_to_address(self.public_key)
         
-        # Register with mock network if in mock mode
-        if self.mock_mode and MOCK_NETWORK:
-            MOCK_NETWORK.create_account(self.public_key, self.address)
+        # Register with mock network and database if in mock mode
+        if self.mock_mode:
+            from mock_servers import nano_db
+            
+            # Register with mock network
+            if MOCK_NETWORK:
+                MOCK_NETWORK.create_account(self.public_key, self.address)
+                
+            # Ensure account exists in the mock database with initial balance
+            if self.address not in nano_db.accounts:
+                nano_db.accounts[self.address] = 100.0  # Initial balance for new accounts
+                nano_db.accounts_pending[self.address] = []
+                print(f"[MOCK] Registered Nano account in mock DB: {self.address}")
+            else:
+                print(f"[MOCK] Using existing Nano account in mock DB: {self.address}")
     
     @staticmethod
     def _public_key_to_address(public_key):
@@ -156,6 +168,19 @@ class NanoWallet:
             wallet.address = wallet._public_key_to_address(wallet.public_key)
             
         return wallet
+        
+    @classmethod
+    def from_seed(cls, seed_phrase):
+        """
+        Create a wallet from a seed phrase.
+        
+        Args:
+            seed_phrase: The seed phrase as a string
+            
+        Returns:
+            NanoWallet: A new wallet instance
+        """
+        return cls(seed=seed_phrase.encode('utf-8'))
 
 class NanoRPC:
     """Client for interacting with the Nano network."""

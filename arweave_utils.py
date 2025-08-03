@@ -3,6 +3,11 @@ import json
 import time
 import uuid
 import random
+import sys
+from pathlib import Path
+
+# Add the parent directory to the path to allow importing from mock_servers
+sys.path.append(str(Path(__file__).parent.absolute()))
 from datetime import datetime
 from typing import Dict, Any, Optional
 from base64 import b64encode, b64decode
@@ -67,8 +72,11 @@ class MockWallet:
     def to_dict(self) -> Dict:
         return {'kty': 'RSA', 'e': 'AQAB', 'n': 'mock_key'}
 
-# Mock Transaction class for simulation
-class MockArweaveTransaction:
+# Import the ArweaveTransaction class from mock_servers when in mock mode
+from mock_servers import ArweaveTransaction
+
+# Mock Transaction class for simulation - keeping for backward compatibility
+class MockArweaveTransaction(ArweaveTransaction):
     def __init__(self, wallet, data: bytes, **kwargs):
         self.wallet = wallet
         self.data = data
@@ -298,7 +306,7 @@ class ArweaveClient:
                 if tags:
                     print(f"[MOCK] Tags: {tags}")
                 return mock_id
-                
+            
             # In a real implementation, create and send a transaction
             # transaction = Transaction(self.wallet, data=json.dumps(data).encode())
             # transaction.add_tag('Content-Type', 'application/json')
@@ -307,110 +315,96 @@ class ArweaveClient:
             # if tags:
             #     for key, value in tags.items():
             #         transaction.add_tag(key, str(value))
-            # 
-            # await transaction.sign()
-            # response = await transaction.send()
-            # return response.id
                 
-                # Convert data to bytes if it's a dictionary or string
-                if isinstance(data, dict):
-                    data_str = json.dumps(data, indent=2)
-                    data_bytes = data_str.encode('utf-8')
-                elif isinstance(data, str):
-                    data_str = data
-                    data_bytes = data.encode('utf-8')
-                else:
-                    data_bytes = data
-                    data_str = data_bytes.decode('utf-8', errors='replace')
-                
-                # Create a mock transaction
-                tx = MockArweaveTransaction(self.wallet, data_bytes)
-                
-                # Add all tags
-                for tag in tags:
-                    tx.add_tag(tag['name'], tag['value'])
-                
-                # Simulate transaction submission
-                try:
-                    print("\n=== SIMULATING ARWEAVE TRANSACTION ===")
-                    print(f"From: {self.wallet.address}")
-                    print(f"Data size: {len(data_bytes)} bytes")
-                    print("Tags:", json.dumps(tags, indent=2))
-                    print("\nData preview:")
-                    print("-" * 40)
-                    print(data_str[:500] + ('...' if len(data_str) > 500 else ''))
-                    print("-" * 40)
-                    
-                    tx_id = tx.send()
-                    print(f"\n✅ Transaction simulated successfully!")
-                    print(f"Transaction ID: {tx_id}")
-                    print("=" * 50 + "\n")
-                    return tx_id
-                except Exception as e:
-                    print(f"\n❌ Simulated transaction failed: {e}")
-                    print("=" * 50 + "\n")
-                    raise Exception(f"Simulated transaction failed: {e}")
-            
+            # Convert data to bytes if it's a dictionary or string
+            if isinstance(data, dict):
+                data_str = json.dumps(data, indent=2)
+                data_bytes = data_str.encode('utf-8')
+            elif isinstance(data, str):
+                data_str = data
+                data_bytes = data.encode('utf-8')
             else:
-                # Real Arweave transaction
-                if isinstance(data, dict):
-                    data = json.dumps(data).encode('utf-8')
-                elif isinstance(data, str):
-                    data = data.encode('utf-8')
-                
-                # Convert tags to the format expected by arweave-python-client
-                if tags is None:
-                    tags = [
-                        {'name': 'Content-Type', 'value': 'application/json'},
-                        {'name': 'App-Name', 'value': 'SapphireExchange'}
-                    ]
-                
-                # Create transaction
-                transaction = self.Transaction(
-                    wallet=self.wallet,
-                    data=data,
-                    quantity=0,
-                    target=''
-                )
-                
-                # Add all tags
-                for tag in tags:
-                    transaction.add_tag(tag['name'], tag['value'])
-                
-                # Sign and submit
-                print("\n=== SUBMITTING TO ARWEAVE NETWORK ===")
-                print(f"From: {self.wallet.address}")
-                print(f"Data size: {len(data)} bytes")
+                data_bytes = data
+                data_str = data_bytes.decode('utf-8', errors='replace')
+            
+            # Create a mock transaction
+            tx = MockArweaveTransaction(self.wallet, data_bytes)
+            
+            # Convert tags to the format expected by arweave-python-client
+            if tags is None:
+                tags = [
+                    {'name': 'Content-Type', 'value': 'application/json'},
+                    {'name': 'App-Name', 'value': 'SapphireExchange'}
+                ]
+            
+            # Add all tags to the transaction
+            for tag in tags:
+                tx.add_tag(tag['name'], tag['value'])
+            
+            # Simulate transaction submission
+            print("\n=== SIMULATING ARWEAVE TRANSACTION ===")
+            print(f"From: {self.wallet.address}")
+            print(f"Data size: {len(data_bytes)} bytes")
+            if tags:
                 print("Tags:", json.dumps(tags, indent=2))
-                print("\nSigning and submitting transaction...")
-                
-                transaction.sign()
-                tx_id = transaction.send()
-                
-                print(f"\n✅ Transaction submitted successfully!")
-                print(f"Transaction ID: {tx_id}")
-                print(f"View on Arweave: https://viewblock.io/arweave/tx/{tx_id}")
-                print("=" * 50 + "\n")
-                
-                return tx_id
-                
+            print("\nData preview:")
+            print("-" * 40)
+            print(data_str[:500] + ('...' if len(data_str) > 500 else ''))
+            print("-" * 40)
+            
+            # Simulate sending the transaction
+            tx_id = tx.send()
+            
+            # Store the transaction in our mock storage
+            if not hasattr(self, '_mock_transactions'):
+                self._mock_transactions = {}
+            self._mock_transactions[tx_id] = tx
+            
+            print(f"\n✅ Transaction simulated successfully!")
+            print(f"Transaction ID: {tx_id}")
+            print("=" * 50 + "\n")
+            
+            return tx_id
+            
         except Exception as e:
             print(f"Error storing data on Arweave: {e}")
+            import traceback
+            traceback.print_exc()
             raise
-    
-    def get_data(self, transaction_id):
+
+    async def get_data(self, transaction_id):
         """Retrieve data from Arweave using a transaction ID."""
         try:
-            transaction = ArweaveTransaction.get_transaction(transaction_id)
-            data = transaction.data
+            if self.use_mock:
+                # In mock mode, return the data directly from our mock storage
+                if hasattr(self, '_mock_transactions') and transaction_id in self._mock_transactions:
+                    return self._mock_transactions[transaction_id].data
+                else:
+                    # If not in our direct mock storage, try to get it from the mock database
+                    from mock_servers import arweave_db
+                    
+                    # Check pending transactions first
+                    if hasattr(arweave_db, 'pending_transactions') and transaction_id in arweave_db.pending_transactions:
+                        return arweave_db.pending_transactions[transaction_id]['data']
+                        
+                    # Then check confirmed items
+                    if hasattr(arweave_db, 'items') and transaction_id in arweave_db.items:
+                        return arweave_db.items[transaction_id]
+                    
+                    print(f"[MOCK] Transaction {transaction_id} not found in mock storage")
+                    return None
             
-            # Try to parse as JSON, return raw data if not JSON
-            try:
-                return json.loads(data)
-            except json.JSONDecodeError:
-                return data.decode('utf-8')
+            # In a real implementation, fetch the transaction data from Arweave
+            # transaction = await self.Transaction(transaction_id, self.session)
+            # return json.loads(transaction.data.decode('utf-8'))
+            
+            # For now, return None in non-mock mode
+            return None
+            
         except Exception as e:
-            print(f"Error retrieving data: {e}")
+            print(f"Error retrieving data for transaction {transaction_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 # Example usage

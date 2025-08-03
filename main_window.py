@@ -83,15 +83,22 @@ class MainWindow(QMainWindow):
     show_seed_message_box = pyqtSignal()
     
     def __init__(self):
+        print("Initializing MainWindow...")
         super().__init__()
+        print("  Setting up attributes...")
         self.client = None
         self.current_user = None
         self.items = []
         self._pending_seed = None
+        self.mock_mode = True  # Ensure mock_mode is set
+        
+        print("  Initializing UI...")
         self.init_ui()
         
         # Connect the signal to the slot
+        print("  Connecting signals...")
         self.show_seed_message_box.connect(self._show_seed_message_box)
+        print("  MainWindow initialization complete")
         
     def _show_seed_message_box(self):
         """Show the seed message box on the main thread."""
@@ -107,41 +114,51 @@ class MainWindow(QMainWindow):
             self._pending_seed = None
         
     def init_ui(self):
+        print("  Initializing UI components...")
         self.setWindowTitle("Sapphire Exchange")
         self.setGeometry(100, 100, 1000, 700)
         
         # Main widget and layout
+        print("  Creating main widget and layout...")
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QHBoxLayout(main_widget)
         
         # Sidebar
+        print("  Creating sidebar...")
         sidebar = self.create_sidebar()
         layout.addWidget(sidebar, stretch=1)
         
         # Main content area
+        print("  Creating content stack...")
         self.content_stack = QStackedWidget()
         
         # Login/Signup Page
+        print("  Creating login page...")
         self.login_page = self.create_login_page()
         self.content_stack.addWidget(self.login_page)
         
         # Marketplace Page
+        print("  Creating marketplace page...")
         self.marketplace_page = self.create_marketplace_page()
         self.content_stack.addWidget(self.marketplace_page)
         
         # Create Item Page
+        print("  Creating item creation page...")
         self.create_item_page = self.create_item_creation_page()
         self.content_stack.addWidget(self.create_item_page)
         
         # My Items Page
+        print("  Creating my items page...")
         self.my_items_page = self.create_my_items_page()
         self.content_stack.addWidget(self.my_items_page)
         
         layout.addWidget(self.content_stack, stretch=4)
         
         # Show login page by default
+        print("  Setting initial page to login...")
         self.content_stack.setCurrentIndex(0)
+        print("  UI initialization complete")
         
     def create_sidebar(self):
         sidebar = QWidget()
@@ -198,35 +215,119 @@ class MainWindow(QMainWindow):
         
         # Seed phrase input
         self.seed_input = QTextEdit()
-        self.seed_input.setPlaceholderText("Enter your seed phrase (or leave empty to generate new)")
+        self.seed_input.setPlaceholderText("Enter your seed phrase (or leave empty to create new account)")
         self.seed_input.setMaximumHeight(100)
         
+        # New user fields (initially hidden)
+        self.new_user_widget = QWidget()
+        new_user_layout = QVBoxLayout(self.new_user_widget)
+        new_user_layout.setSpacing(10)
+        
+        # Username input
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Choose a username")
+        
+        # First name input
+        self.first_name_input = QLineEdit()
+        self.first_name_input.setPlaceholderText("First name")
+        
+        # Last name input
+        self.last_name_input = QLineEdit()
+        self.last_name_input.setPlaceholderText("Last name")
+        
+        # Add new user fields to layout
+        new_user_layout.addWidget(QLabel("New Account Details:"))
+        new_user_layout.addWidget(QLabel("Username:"))
+        new_user_layout.addWidget(self.username_input)
+        new_user_layout.addWidget(QLabel("First Name:"))
+        new_user_layout.addWidget(self.first_name_input)
+        new_user_layout.addWidget(QLabel("Last Name:"))
+        new_user_layout.addWidget(self.last_name_input)
+        
+        # Initially hide new user fields
+        self.new_user_widget.setVisible(False)
+        
+        # Toggle button for new/existing user
+        self.toggle_login_btn = QPushButton("Create New Account")
+        self.toggle_login_btn.setCheckable(True)
+        self.toggle_login_btn.clicked.connect(self.toggle_login_mode)
+        
         # Login button
-        self.login_btn = QPushButton("Login / Create Account")
+        self.login_btn = QPushButton("Login")
         self.login_btn.clicked.connect(self.handle_login)
         
         # Add widgets to layout
         form_layout.addWidget(QLabel("Seed Phrase:"))
         form_layout.addWidget(self.seed_input)
+        form_layout.addWidget(self.toggle_login_btn)
+        form_layout.addWidget(self.new_user_widget)
         form_layout.addWidget(self.login_btn)
         
         # Add form to main layout
         layout.addWidget(title)
         layout.addLayout(form_layout)
         
+        # Store the current login mode (False = login, True = create account)
+        self.is_new_user = False
+        
         return page
+    
+    def toggle_login_mode(self):
+        """Toggle between login and create account modes."""
+        self.is_new_user = not self.is_new_user
+        
+        if self.is_new_user:
+            self.toggle_login_btn.setText("Use Existing Account")
+            self.login_btn.setText("Create Account")
+            self.new_user_widget.setVisible(True)
+            self.seed_input.setPlaceholderText("Leave empty to generate a new wallet")
+        else:
+            self.toggle_login_btn.setText("Create New Account")
+            self.login_btn.setText("Login")
+            self.new_user_widget.setVisible(False)
+            self.seed_input.setPlaceholderText("Enter your seed phrase")
+    
+    def validate_new_user_inputs(self):
+        """Validate new user inputs."""
+        if not self.is_new_user:
+            return True
+            
+        username = self.username_input.text().strip()
+        first_name = self.first_name_input.text().strip()
+        last_name = self.last_name_input.text().strip()
+        
+        if not username:
+            QMessageBox.warning(self, "Validation Error", "Username is required.")
+            return False
+            
+        # Add more validation as needed
+        return True
     
     def handle_login(self):
         seed_phrase = self.seed_input.toPlainText().strip()
+        
+        # Validate inputs for new users
+        if self.is_new_user and not self.validate_new_user_inputs():
+            return
         
         # Disable login button to prevent multiple clicks
         self.login_btn.setEnabled(False)
         
         # Show status message
-        self.statusBar().showMessage("Logging in...")
+        status_msg = "Creating new account..." if self.is_new_user and not seed_phrase else "Logging in..."
+        self.statusBar().showMessage(status_msg)
         
         # Force UI update before starting the login process
         QApplication.processEvents()
+        
+        # Prepare user data if this is a new user
+        user_data = None
+        if self.is_new_user and (not seed_phrase or self.username_input.text().strip()):
+            user_data = {
+                'username': self.username_input.text().strip(),
+                'first_name': self.first_name_input.text().strip(),
+                'last_name': self.last_name_input.text().strip()
+            }
         
         # Run login in a separate thread
         def on_login_complete(user_data):
@@ -235,16 +336,30 @@ class MainWindow(QMainWindow):
             
             if user_data:
                 self.current_user = user_data
-                self.user_info.setText(f"Logged in as:\n{user_data.public_key[:12]}...")
+                display_name = f"{user_data.first_name} {user_data.last_name}".strip() or user_data.username
+                self.user_info.setText(f"Logged in as:\n{display_name}")
                 self.user_info.setVisible(True)
                 self.create_item_btn.setVisible(True)
                 self.my_items_btn.setVisible(True)
                 self.logout_btn.setVisible(True)
                 self.seed_input.setVisible(False)
                 self.login_btn.setVisible(False)
-                self.seed_label = QLabel("Your Seed Phrase (keep it safe!)")
-                self.seed_label.setVisible(True)
-                self.content_stack.parentWidget().layout().itemAt(0).widget().layout().insertWidget(1, self.seed_label)
+                self.toggle_login_btn.setVisible(False)
+                self.new_user_widget.setVisible(False)
+                
+                # Show seed phrase warning for new accounts
+                if not seed_phrase:
+                    seed = self.client.get_seed_phrase()
+                    if seed:
+                        QMessageBox.information(
+                            self,
+                            "New Account Created",
+                            f"Your new account has been created!\n\n"
+                            f"IMPORTANT: Please save your seed phrase in a secure location.\n"
+                            f"You will need this to recover your account.\n\n"
+                            f"Seed Phrase:\n{seed}"
+                        )
+                
                 self.show_page(1)  # Show marketplace after login
             else:
                 QMessageBox.warning(self, "Login Failed", "Invalid seed phrase or wallet data.")
@@ -255,12 +370,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Login failed: {error_msg}")
         
         # Start login process in a worker thread
-        self.worker = AsyncWorker(self.login_async(seed_phrase))
+        self.worker = AsyncWorker(self.login_async(seed_phrase, user_data))
         self.worker.finished.connect(on_login_complete)
         self.worker.error.connect(on_error)
         self.worker.start()
     
     def create_marketplace_page(self):
+        print("  Creating marketplace page...")
         page = QWidget()
         layout = QVBoxLayout(page)
         
@@ -285,9 +401,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(search_layout)
         layout.addWidget(self.items_grid)
         
-        # Load initial items
-        self.load_marketplace_items()
-        
+        # Don't load items here - they'll be loaded when the page is shown
+        # via the show_page method
+        print("  Marketplace page created")
         return page
     
     def create_item_creation_page(self):
@@ -354,6 +470,7 @@ class MainWindow(QMainWindow):
         return page
     
     def create_my_items_page(self):
+        print("Creating My Items page...")
         page = QWidget()
         layout = QVBoxLayout(page)
         
@@ -361,6 +478,7 @@ class MainWindow(QMainWindow):
         title.setFont(QFont('Arial', 16, QFont.Bold))
         
         # Items list
+        print("  Creating my_items_list...")
         self.my_items_list = QListWidget()
         self.my_items_list.setViewMode(QListWidget.IconMode)
         self.my_items_list.setIconSize(QSize(150, 150))
@@ -370,6 +488,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addWidget(self.my_items_list)
         
+        print("  My Items page created")
         return page
     
     def browse_image(self):
@@ -378,14 +497,68 @@ class MainWindow(QMainWindow):
         if file_name:
             self.image_path.setText(file_name)
     
-    def show_page(self, index):
-        self.content_stack.setCurrentIndex(index)
-        if index == 1:  # Marketplace
-            self.load_marketplace_items()
-        elif index == 3:  # My Items
-            self.load_my_items()
+    def load_my_items(self):
+        """Load the current user's items."""
+        if not hasattr(self, 'my_items_list'):
+            return
+            
+        self.my_items_list.clear()
+        
+        if not self.current_user:
+            self.my_items_list.addItem("Please log in to view your items")
+            return
+            
+        # Show loading indicator
+        self.my_items_list.addItem("Loading your items...")
+        
+        # Load items in background
+        def on_items_loaded(items):
+            self.my_items_list.clear()
+            
+            if not items:
+                self.my_items_list.addItem("You don't have any items yet")
+                return
+                
+            for item_data in items:
+                item = QListWidgetItem(item_data.get('name', 'Unnamed Item'))
+                self.my_items_list.addItem(item)
+        
+        def on_error(error_msg):
+            self.my_items_list.clear()
+            self.my_items_list.addItem(f"Error loading items: {error_msg}")
+        
+        # Start loading items in a worker thread
+        self.worker = AsyncWorker(self.load_user_items_async())
+        self.worker.finished.connect(on_items_loaded)
+        self.worker.error.connect(on_error)
+        self.worker.start()
     
-    async def login_async(self, seed_phrase):
+    def show_page(self, index):
+        print(f"\n=== show_page({index}) called ===")
+        print(f"  content_stack has {self.content_stack.count()} pages")
+        print(f"  Current attributes: {[attr for attr in dir(self) if not attr.startswith('__')]}")
+        
+        # Make sure the page exists in the stack
+        if index >= 0 and index < self.content_stack.count():
+            print(f"  Setting current index to {index}")
+            self.content_stack.setCurrentIndex(index)
+            
+            # Load content for the specific page
+            if index == 1:  # Marketplace
+                print("  Loading marketplace items...")
+                self.load_marketplace_items()
+            elif index == 3:  # My Items
+                print("  Attempting to load My Items page...")
+                if hasattr(self, 'my_items_list'):
+                    print("  my_items_list found, calling load_my_items()")
+                    self.load_my_items()
+                else:
+                    print("  WARNING: my_items_list attribute not found!")
+                    print("  Current attributes:", [attr for attr in dir(self) if not attr.startswith('__')])
+        else:
+            print(f"  WARNING: Page index {index} out of range (0-{self.content_stack.count()-1})")
+    
+    async def login_async(self, seed_phrase, user_data=None):
         try:
             print(f"Starting login with seed_phrase: {'[EMPTY]' if not seed_phrase else '[PROVIDED]'}")
             
@@ -395,8 +568,19 @@ class MainWindow(QMainWindow):
             # If seed_phrase is empty or None, generate a new wallet
             if not seed_phrase or seed_phrase.strip() == "":
                 print("No seed phrase provided, generating new wallet...")
-                # Pass None to generate a new wallet
-                user_data = await self.client.initialize_user(None)
+                
+                # Extract user data if provided
+                username = user_data.get('username') if user_data else None
+                first_name = user_data.get('first_name', '') if user_data else ''
+                last_name = user_data.get('last_name', '') if user_data else ''
+                
+                # Initialize user with provided data or generate defaults
+                user_data = await self.client.initialize_user(
+                    seed_phrase=None,  # Will generate a new wallet
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name
+                )
                 
                 # Get the generated seed from the wallet
                 seed = self.client.user_wallet.private_key.to_ascii(encoding='hex').decode('utf-8')
@@ -414,8 +598,15 @@ class MainWindow(QMainWindow):
             else:
                 # Use the provided seed phrase
                 print(f"Using provided seed phrase to initialize wallet...")
-                user_data = await self.client.initialize_user(seed_phrase.strip())
+                user_data = await self.client.initialize_user(
+                    seed_phrase=seed_phrase.strip(),
+                    username="temporary_username"  # This will be replaced by the actual user data from _load_user_data
+                )
                 print(f"Logged in with existing wallet: {self.client.user_wallet.address}")
+                print(f"User data loaded: {user_data}")
+                
+                # Store the current user in the MainWindow instance
+                self.current_user = user_data
             
             print("Login successful, returning user data")
             return user_data
@@ -460,38 +651,6 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(on_items_loaded)
         self.worker.error.connect(on_error)
         self.worker.start()
-    
-    async def load_items_async(self):
-        # In a real implementation, this would query Arweave for items
-        # For now, return mock data
-        return [
-            {
-                'id': 'mock1',
-                'name': 'Rare Digital Art',
-                'description': 'A unique digital artwork',
-                'starting_price': 1.0,
-                'current_bid': 1.5,
-                'owner': 'nano_owner123...',
-                'auction_end_time': '2023-12-31T23:59:59Z'
-            },
-            {
-                'id': 'mock2',
-                'name': 'Crypto Collectible',
-                'description': 'Limited edition collectible',
-                'starting_price': 0.5,
-                'current_bid': 0.0,
-                'owner': 'nano_owner456...',
-                'auction_end_time': '2023-12-25T12:00:00Z'
-            }
-        ]
-    
-    def load_my_items(self):
-        # Clear existing items
-        self.my_items_list.clear()
-        
-        if not self.current_user:
-            self.my_items_list.addItem("Not logged in")
-            return
             
         # Show loading indicator
         self.my_items_list.addItem("Loading your items...")
@@ -518,10 +677,97 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(on_error)
         self.worker.start()
     
+    async def load_items_async(self):
+        """Load all items from the mock database."""
+        from mock_servers import arweave_db
+        from datetime import datetime, timezone
+        
+        items = []
+        
+        # Get all items from the mock Arweave database
+        for tx_id, item_data in arweave_db.items.items():
+            # Skip items that don't have the expected structure
+            if not isinstance(item_data, dict):
+                continue
+                
+            # Calculate time left
+            time_left = "N/A"
+            if 'auction_end_time' in item_data:
+                try:
+                    end_time = datetime.fromisoformat(item_data['auction_end_time'].replace('Z', '+00:00'))
+                    now = datetime.now(timezone.utc)
+                    
+                    if end_time <= now:
+                        time_left = "Ended"
+                    else:
+                        delta = end_time - now
+                        if delta.days > 0:
+                            time_left = f"{delta.days}d {delta.seconds // 3600}h"
+                        else:
+                            hours = delta.seconds // 3600
+                            minutes = (delta.seconds % 3600) // 60
+                            time_left = f"{hours}h {minutes}m"
+                except (ValueError, TypeError):
+                    pass
+            
+            # Create item dictionary for the UI
+            item = {
+                'id': tx_id,
+                'name': item_data.get('name', 'Unnamed Item'),
+                'description': item_data.get('description', 'No description'),
+                'starting_price': float(item_data.get('starting_price', 0.0)),
+                'current_bid': float(item_data.get('starting_price', 0.0)),  # In a real app, this would track the highest bid
+                'owner': item_data.get('original_owner', 'Unknown'),
+                'auction_end_time': item_data.get('auction_end_time', ''),
+                'nano_address': item_data.get('nano_address', '')
+            }
+            items.append(item)
+        
+        # If no items found in mock database, add some sample items
+        if not items and hasattr(self, 'mock_mode') and self.mock_mode:
+            sample_items = [
+                {
+                    'name': 'Sample Digital Art',
+                    'description': 'A beautiful piece of digital artwork',
+                    'starting_price': 10.5,
+                    'auction_end_time': (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                    'original_owner': 'sample_owner_1',
+                    'nano_address': 'nano_sample1234567890'
+                },
+                {
+                    'name': 'Rare Collectible',
+                    'description': 'A limited edition collectible item',
+                    'starting_price': 25.0,
+                    'auction_end_time': (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
+                    'original_owner': 'sample_owner_2',
+                    'nano_address': 'nano_sample0987654321'
+                }
+            ]
+            
+            for item_data in sample_items:
+                tx_id = arweave_db.store_data(item_data)
+                item = {
+                    'id': tx_id,
+                    'name': item_data['name'],
+                    'description': item_data['description'],
+                    'starting_price': float(item_data['starting_price']),
+                    'current_bid': float(item_data['starting_price']),
+                    'owner': item_data['original_owner'],
+                    'auction_end_time': item_data['auction_end_time'],
+                    'nano_address': item_data['nano_address']
+                }
+                items.append(item)
+        
+        return items
+    
     async def load_user_items_async(self):
-        # In a real implementation, this would query Arweave for the user's items
-        # For now, return empty list
-        return []
+        """Load items owned by the current user."""
+        if not self.current_user:
+            return []
+            
+        # Get all items and filter by owner
+        all_items = await self.load_items_async()
+        return [item for item in all_items if item.get('owner') == self.current_user.public_key]
     
     def create_item(self):
         # Get form data
@@ -551,15 +797,25 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Invalid duration")
             return
         
-        # Show loading indicator
-        loading_msg = QMessageBox(self)
-        loading_msg.setWindowTitle("Creating Item")
-        loading_msg.setText("Creating your item...")
-        loading_msg.setStandardButtons(QMessageBox.NoButton)
-        loading_msg.show()
+        # Create a simple loading overlay
+        loading_widget = QWidget(self)
+        loading_widget.setGeometry(self.rect())
+        loading_widget.setStyleSheet("background-color: rgba(0, 0, 0, 128);")
+        
+        loading_layout = QVBoxLayout(loading_widget)
+        loading_label = QLabel("Creating your item...")
+        loading_label.setStyleSheet("color: white; font-size: 16px;")
+        loading_label.setAlignment(Qt.AlignCenter)
+        
+        loading_layout.addWidget(loading_label, 0, Qt.AlignCenter)
+        loading_widget.show()
+        
+        # Make sure the loading widget is on top
+        loading_widget.raise_()
         
         def on_item_created(result):
-            loading_msg.close()
+            loading_widget.deleteLater()  # Clean up the loading widget
+            
             if result:
                 item, tx_id = result
                 QMessageBox.information(
@@ -582,7 +838,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", "Failed to create item")
         
         def on_error(error_msg):
-            loading_msg.close()
+            loading_widget.deleteLater()  # Clean up the loading widget
             QMessageBox.critical(self, "Error", f"Failed to create item: {error_msg}")
         
         # Start item creation in a worker thread
@@ -605,22 +861,21 @@ class MainWindow(QMainWindow):
                 raise ValueError("Not logged in or client not initialized")
                 
             # Create the item using the decentralized client
-            item = await self.client.create_item(
+            # client.create_item returns a tuple of (item_data, tx_id)
+            item_data, tx_id = await self.client.create_item(
                 name=name,
                 description=description,
                 starting_price=starting_price,
                 duration_hours=duration_hours,
-                image_url=image_path or ""
+                image_data=image_path.encode() if image_path else None
             )
             
-            # Convert item to dict for UI updates
-            item_dict = item.to_dict()
-            
             # Add to local items list for UI updates
-            self.items.append(item_dict)
+            if item_data:
+                self.items.append(item_data)
             
-            # Return both the item and its transaction ID
-            return item, item_dict.get('transaction_id', 'mock_tx_' + ''.join(random.choices('0123456789abcdef', k=16)))
+            # Return both the item data and transaction ID
+            return item_data, tx_id
             
         except Exception as e:
             print(f"Error creating item: {e}")
