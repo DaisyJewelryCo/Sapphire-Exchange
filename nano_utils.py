@@ -3,46 +3,38 @@ import base58
 import hashlib
 import ed25519_blake2b
 import requests
-import random
-import string
-from typing import Dict, Optional, Tuple, Union
-from dataclasses import dataclass, field
-from dotenv import load_dotenv
+import json
+import time
+from typing import Dict, Optional, Any, Union, List, Tuple
+from datetime import datetime, timedelta
 
-# Load environment variables
-load_dotenv()
+# Configuration
+MOCK_MODE = True  # Set to False to use real Nano network
+NANO_NODE_URL = "http://[::1]:7076"  # Default local node URL
+NANO_REPRESENTATIVE = "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3"  # Official representative
 
-# Global flag to enable/disable mock mode
-MOCK_MODE = os.getenv('MOCK_NANO', 'true').lower() == 'true'
-
-@dataclass
 class MockAccount:
     """Mock Nano account for testing purposes."""
-    address: str
-    public_key: bytes
-    balance: int = 0
-    pending: int = 0
-    frontier: Optional[str] = None
-    representative: Optional[str] = None
+    def __init__(self, address: str, public_key: bytes):
+        self.address = address
+        self.public_key = public_key
+        self.balance: int = 0
+        self.pending: int = 0
+        self.frontier: Optional[str] = None
+        self.representative: Optional[str] = None
 
 class MockNanoNetwork:
     """Mock Nano network for testing without making real network calls."""
     def __init__(self):
         self.accounts: Dict[str, MockAccount] = {}
         self.blocks = {}
-        
-    def create_account(self, public_key: bytes, address: str) -> MockAccount:
+    
+    def create_account(self, public_key: bytes, address: str):
         """Create a new mock account."""
-        account = MockAccount(
-            address=address,
-            public_key=public_key,
-            balance=0,
-            pending=0,
-            frontier=None,
-            representative=None
-        )
-        self.accounts[address] = account
-        return account
+        if address not in self.accounts:
+            self.accounts[address] = MockAccount(address, public_key)
+            self.accounts[address].balance = 100 * 10**30  # 100 NANO in raw
+            self.accounts[address].representative = NANO_REPRESENTATIVE
     
     def get_account(self, address: str) -> Optional[MockAccount]:
         """Get a mock account by address."""
@@ -64,6 +56,8 @@ class MockNanoNetwork:
 MOCK_NETWORK = MockNanoNetwork() if MOCK_MODE else None
 
 class NanoWallet:
+    """A wallet for Nano cryptocurrency."""
+    
     def __init__(self, seed=None, mock_mode: bool = MOCK_MODE):
         """
         Initialize a Nano wallet with an optional seed.
@@ -93,12 +87,11 @@ class NanoWallet:
         self.address = self._public_key_to_address(self.public_key)
         
         # Register with mock network and database if in mock mode
-        if self.mock_mode:
+        if self.mock_mode and MOCK_NETWORK is not None:
             from mock_servers import nano_db
             
             # Register with mock network
-            if MOCK_NETWORK:
-                MOCK_NETWORK.create_account(self.public_key, self.address)
+            MOCK_NETWORK.create_account(self.public_key, self.address)
                 
             # Ensure account exists in the mock database with initial balance
             if self.address not in nano_db.accounts:
@@ -109,181 +102,205 @@ class NanoWallet:
                 print(f"[MOCK] Using existing Nano account in mock DB: {self.address}")
     
     @staticmethod
-    def _public_key_to_address(public_key):
+    def _public_key_to_address(public_key) -> str:
         """Convert a public key to a Nano address."""
-        # Get the raw bytes of the public key
-        public_key_bytes = public_key.to_bytes()
-        
-        # Create a checksum of the public key
-        blake2b_hash = hashlib.blake2b(public_key_bytes, digest_size=5).digest()
-        
-        # Combine public key and checksum
-        account_bytes = public_key_bytes + blake2b_hash
-        
-        # Encode as base58
-        return 'nano_' + base58.b58encode(account_bytes).decode('utf-8')
+        # Nano address format: xrb_ + account + checksum
+        account = public_key.to_bytes()
+        account_hash = hashlib.blake2b(account, digest_size=32).digest()
+        account_encoded = base58.b58encode_check(account_hash).decode('ascii')
+        return f"nano_{account_encoded}"
     
-    def sign(self, message):
+    def sign(self, message: bytes) -> bytes:
         """Sign a message with the wallet's private key."""
-        if isinstance(message, str):
-            message = message.encode('utf-8')
         return self.private_key.sign(message)
     
-    def verify(self, message, signature):
+    def verify(self, message: bytes, signature: bytes) -> bool:
         """Verify a signature with the wallet's public key."""
-        if isinstance(message, str):
-            message = message.encode('utf-8')
         try:
             self.public_key.verify(signature, message)
             return True
-        except ed25519_blake2b.BadSignatureError:
+        except Exception:
             return False
     
     @property
-    def seed(self):
+    def seed_hex(self) -> str:
         """Get the seed/private key as a hex string."""
-        return self.private_key.to_ascii(encoding='hex').decode('utf-8')
+        return self.private_key.to_seed().hex()
     
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """Convert the wallet to a dictionary for serialization."""
         return {
-            'private_key': self.seed,
-            'public_key': self.public_key.to_ascii(encoding='hex').decode('utf-8'),
+            'private_key': self.private_key.to_seed().hex(),
+            'public_key': self.public_key.to_bytes().hex(),
             'address': self.address
         }
     
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data: dict, mock_mode: bool = MOCK_MODE) -> 'NanoWallet':
         """Create a wallet from a dictionary."""
         if not isinstance(data, dict):
             raise ValueError("Data must be a dictionary")
         
-        wallet = cls()
-        wallet.private_key = ed25519_blake2b.SigningKey(data['private_key'], encoding='hex')
-        wallet.public_key = ed25519_blake2b.VerifyingKey(data['public_key'], encoding='hex')
-        wallet.address = data.get('address')
-        
-        # If address is not provided, generate it from the public key
-        if not wallet.address:
-            wallet.address = wallet._public_key_to_address(wallet.public_key)
-            
+        wallet = cls(mock_mode=mock_mode)
+        wallet.private_key = ed25519_blake2b.SigningKey(bytes.fromhex(data['private_key']))
+        wallet.public_key = ed25519_blake2b.VerifyingKey(bytes.fromhex(data['public_key']))
+        wallet.address = data.get('address', wallet._public_key_to_address(wallet.public_key))
         return wallet
-        
+    
     @classmethod
-    def from_seed(cls, seed_phrase):
+    def from_seed(cls, seed_phrase: str, mock_mode: bool = MOCK_MODE) -> 'NanoWallet':
         """
         Create a wallet from a seed phrase.
         
         Args:
             seed_phrase: The seed phrase as a string
+            mock_mode: If True, use mock network for testing
             
         Returns:
             NanoWallet: A new wallet instance
+            
+        Raises:
+            ValueError: If seed_phrase is not a non-empty string or if wallet initialization fails
         """
-        return cls(seed=seed_phrase.encode('utf-8'))
+        if not seed_phrase or not isinstance(seed_phrase, str):
+            raise ValueError("Seed phrase must be a non-empty string")
+            
+        try:
+            # Convert seed phrase to bytes and ensure it's 32 bytes
+            seed = hashlib.sha256(seed_phrase.encode('utf-8')).digest()
+            if len(seed) < 32:
+                seed = hashlib.sha256(seed).digest()
+            seed = seed[:32]
+            
+            # Create a new wallet with the seed and mock mode
+            wallet = cls(seed=seed, mock_mode=mock_mode)
+            
+            # Verify the wallet was properly initialized
+            if not hasattr(wallet, 'public_key') or wallet.public_key is None:
+                raise ValueError("Failed to initialize wallet with the provided seed phrase")
+                
+            return wallet
+            
+        except Exception as e:
+            # Clean up any partially created wallet
+            if 'wallet' in locals():
+                del wallet
+            raise ValueError(f"Failed to create wallet from seed: {str(e)}")
 
 class NanoRPC:
     """Client for interacting with the Nano network."""
-    def __init__(self, node_url: str = None, mock_mode: bool = MOCK_MODE):
+    
+    def __init__(self, node_url: str = NANO_NODE_URL, mock_mode: bool = MOCK_MODE):
         """
         Initialize the Nano RPC client.
         
         Args:
             node_url: URL of the Nano node RPC endpoint
-            mock_mode: If True, use mock network for testing
+            mock_mode: If True, use mock data instead of making real RPC calls
         """
+        self.node_url = node_url
         self.mock_mode = mock_mode
-        self.node_url = node_url or os.getenv('NANO_NODE_URL', 'https://mynano.ninja/api')
+        self.session = requests.Session()
     
-    def send_rpc(self, action: str, **params) -> dict:
+    def _rpc_request(self, action: str, **params) -> dict:
         """
-        Send a JSON-RPC request to the Nano node or mock network.
+        Make an RPC request to the Nano node.
         
         Args:
             action: The RPC action to perform
-            **params: Additional parameters for the action
+            **params: Additional parameters for the RPC call
             
         Returns:
             dict: The JSON response from the node or mock data
         """
-        if self.mock_mode and MOCK_NETWORK:
-            return self._mock_rpc(action, **params)
-            
-        # Real network call (disabled by default in mock mode)
         if self.mock_mode:
-            print("WARNING: Making real Nano network call in mock mode. Set MOCK_NANO=true to enable mock network.")
+            return self._mock_rpc(action, **params)
             
         payload = {
             "action": action,
             **params
         }
+        
         try:
-            response = requests.post(self.node_url, json=payload, timeout=10)
+            response = self.session.post(self.node_url, json=payload)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            print(f"Error calling Nano RPC: {e}")
+            print(f"RPC request failed: {e}")
             return {"error": str(e)}
     
     def _mock_rpc(self, action: str, **params) -> dict:
         """Handle RPC calls in mock mode."""
-        if action == "account_balance":
-            return self._mock_account_balance(**params)
-        elif action == "account_info":
-            return self._mock_account_info(**params)
-        elif action == "account_create":
-            return self._mock_account_create(**params)
-        elif action == "send":
-            return self._mock_send(**params)
-        else:
-            return {"error": f"Unsupported mock action: {action}"}
+        handler_name = f"_mock_{action}"
+        if hasattr(self, handler_name):
+            return getattr(self, handler_name)(**params)
+        return {"error": f"Unsupported action in mock mode: {action}"}
     
-    def _mock_account_balance(self, account: str, **kwargs) -> dict:
+    def _mock_account_balance(self, account: str) -> dict:
         """Mock implementation of account_balance RPC."""
-        mock_account = MOCK_NETWORK.get_account(account)
-        if not mock_account:
-            return {"error": "Account not found"}
+        from mock_servers import nano_db
+        
+        balance = nano_db.accounts.get(account, 0.0)
+        pending = sum(tx['amount'] for tx in nano_db.accounts_pending.get(account, []))
+        
         return {
-            "balance": str(mock_account.balance),
-            "pending": str(mock_account.pending)
+            "balance": str(int(balance * 10**30)),  # Convert to raw
+            "pending": str(int(pending * 10**30)),
+            "receivable": str(int(pending * 10**30))
         }
     
-    def _mock_account_info(self, account: str, **kwargs) -> dict:
+    def _mock_account_info(self, account: str, representative: bool = True) -> dict:
         """Mock implementation of account_info RPC."""
-        mock_account = MOCK_NETWORK.get_account(account)
-        if not mock_account:
+        from mock_servers import nano_db
+        
+        if account not in nano_db.accounts:
             return {"error": "Account not found"}
-        return {
-            "frontier": mock_account.frontier or "0" * 64,
-            "open_block": mock_account.frontier or "0" * 64,
-            "representative_block": "0" * 64,
-            "balance": str(mock_account.balance),
+            
+        balance = nano_db.accounts[account]
+        pending = sum(tx['amount'] for tx in nano_db.accounts_pending.get(account, []))
+        
+        result = {
+            "frontier": "mock_frontier_hash",
+            "open_block": "mock_open_block_hash",
+            "representative_block": "mock_rep_block_hash",
+            "balance": str(int(balance * 10**30)),  # Convert to raw
             "modified_timestamp": str(int(time.time())),
             "block_count": "1",
             "account_version": "1",
             "confirmation_height": "1",
-            "confirmation_height_frontier": "0" * 64
+            "confirmation_height_frontier": "mock_confirmation_hash"
         }
-    
-    def _mock_account_create(self, wallet: str, **kwargs) -> dict:
-        """Mock implementation of account_create RPC."""
-        # In a real implementation, this would create a new account in the wallet
-        return {
-            "account": f"nano_{''.join(random.choices('13456789abcdefghijkmnopqrstuwxyz', k=60))}"
-        }
-    
-    def _mock_send(self, wallet: str, source: str, destination: str, amount: str, **kwargs) -> dict:
-        """Mock implementation of send RPC."""
-        try:
-            amount_raw = int(amount)
-        except (ValueError, TypeError):
-            return {"error": "Invalid amount"}
+        
+        if representative:
+            result["representative"] = NANO_REPRESENTATIVE
             
-        if MOCK_NETWORK.process_payment(source, destination, amount_raw):
-            return {"block": "0" * 64}
-        return {"error": "Payment failed"}
+        return result
     
-    def get_account_balance(self, account: str) -> int:
+    def _mock_account_create(self, wallet: str, count: int = 1) -> dict:
+        """Mock implementation of account_create RPC."""
+        # In a real implementation, this would create new accounts in the wallet
+        # For mock purposes, we'll just return some fake account addresses
+        from mock_servers import nano_db
+        
+        accounts = []
+        for _ in range(count):
+            # Generate a fake address
+            address = f"nano_{'a' * 60}"
+            accounts.append(address)
+            
+            # Add to mock database with initial balance
+            if address not in nano_db.accounts:
+                nano_db.accounts[address] = 100.0  # Initial balance
+                nano_db.accounts_pending[address] = []
+        
+        return {"accounts": accounts}
+    
+    def _mock_block_confirm(self, hash: str) -> dict:
+        """Mock implementation of block_confirm RPC."""
+        # In a real implementation, this would confirm a block
+        return {"started": "1"}
+    
+    def get_account_balance(self, account: str) -> dict:
         """
         Get the balance of a Nano account.
         
@@ -291,37 +308,66 @@ class NanoRPC:
             account: The Nano account address
             
         Returns:
-            int: The account balance in raw units
+            dict: The account balance information
         """
-        response = self.send_rpc("account_balance", account=account)
-        return int(response.get("balance", 0)) if response and "error" not in response else 0
+        return self._rpc_request("account_balance", account=account)
     
-    def send_payment(self, wallet: 'NanoWallet', destination: str, amount: int) -> dict:
+    def get_account_info(self, account: str, representative: bool = True) -> dict:
+        """
+        Get information about a Nano account.
+        
+        Args:
+            account: The Nano account address
+            representative: Whether to include representative information
+            
+        Returns:
+            dict: The account information
+        """
+        return self._rpc_request("account_info", account=account, representative=representative)
+    
+    def create_account(self, wallet: str, count: int = 1) -> dict:
+        """
+        Create new Nano accounts.
+        
+        Args:
+            wallet: The wallet ID to create accounts in
+            count: Number of accounts to create
+            
+        Returns:
+            dict: The created account information
+        """
+        return self._rpc_request("account_create", wallet=wallet, count=count)
+    
+    def send_payment(self, wallet_id: str, source: str, destination: str, amount: int) -> dict:
         """
         Send a payment from one account to another.
         
         Args:
-            wallet: The source wallet
+            wallet_id: The wallet ID containing the source account
+            source: The source account address
             destination: The destination account address
-            amount: The amount to send in raw units
+            amount: The amount to send in raw
             
         Returns:
             dict: The transaction result
         """
-        if self.mock_mode and MOCK_NETWORK:
-            if MOCK_NETWORK.process_payment(wallet.address, destination, amount):
-                return {"block": "0" * 64}
-            return {"error": "Payment failed"}
-            
-        # In a real implementation, this would create and sign a block
-        # and broadcast it to the network
-        return {"block": "mock_block_hash"}
+        # In a real implementation, this would:
+        # 1. Get the account info to get the current block
+        # 2. Create a new block with the transaction
         # 3. Sign the block
         # 4. Publish the block
-        raise NotImplementedError("This is a placeholder. Implement proper block creation and signing.")
+        # For now, return a mock block hash
+        return {"block": "mock_block_hash"}
 
 def encode_item_data(item_id):
-    """Encode an item ID into 32 bits for Nano coin representation."""
+    """Encode an item ID into 32 bits for Nano coin representation.
+    
+    Args:
+        item_id: The item ID as an integer or string
+        
+    Returns:
+        int: A 32-bit encoded version of the item ID
+    """
     if isinstance(item_id, str):
         item_id = int(item_id)
     return item_id & 0xFFFFFFFF  # Ensure it's 32 bits

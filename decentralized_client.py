@@ -62,8 +62,13 @@ class DecentralizedClient:
         """
         try:
             # Derive wallet from seed phrase
-            self.user_wallet = NanoWallet.from_seed(seed_phrase)
-            
+            self.user_wallet = NanoWallet.from_seed(seed_phrase, mock_mode=self.mock_mode)
+            if not self.user_wallet or not hasattr(self.user_wallet, 'public_key') or not self.user_wallet.public_key:
+                raise ValueError("Failed to initialize wallet from seed phrase - missing public key")
+                
+            # Convert public key to hex string for storage
+            public_key_hex = self.user_wallet.public_key.to_ascii(encoding='hex').decode('utf-8')
+                
             # Load or create user data
             self.user_data = await self._load_user_data()
             
@@ -73,7 +78,7 @@ class DecentralizedClient:
                     raise ValueError("Username is required for new users")
                     
                 self.user_data = User(
-                    public_key=self.user_wallet.public_key,
+                    public_key=public_key_hex,  # Store public key as hex string
                     username=username,
                     first_name=first_name or "",
                     last_name=last_name or "",
@@ -440,9 +445,16 @@ class DecentralizedClient:
         
         Returns:
             str: Transaction ID of the saved data
+            
+        Raises:
+            ValueError: If user_wallet or user_data is not initialized
         """
         if not self.user_wallet or not self.user_data:
-            return None
+            raise ValueError("User wallet or user data not initialized")
+            
+        # Ensure public key is set in user_data
+        if not self.user_data.public_key and hasattr(self.user_wallet, 'public_key'):
+            self.user_data.public_key = self.user_wallet.public_key.to_ascii(encoding='hex').decode('utf-8')
             
         user_dict = self.user_data.to_dict()
         

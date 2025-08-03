@@ -372,40 +372,68 @@ class ArweaveClient:
             traceback.print_exc()
             raise
 
-    async def get_data(self, transaction_id):
-        """Retrieve data from Arweave using a transaction ID."""
-        try:
-            if self.use_mock:
-                # In mock mode, return the data directly from our mock storage
-                if hasattr(self, '_mock_transactions') and transaction_id in self._mock_transactions:
-                    return self._mock_transactions[transaction_id].data
-                else:
-                    # If not in our direct mock storage, try to get it from the mock database
-                    from mock_servers import arweave_db
-                    
-                    # Check pending transactions first
-                    if hasattr(arweave_db, 'pending_transactions') and transaction_id in arweave_db.pending_transactions:
-                        return arweave_db.pending_transactions[transaction_id]['data']
-                        
-                    # Then check confirmed items
-                    if hasattr(arweave_db, 'items') and transaction_id in arweave_db.items:
-                        return arweave_db.items[transaction_id]
-                    
-                    print(f"[MOCK] Transaction {transaction_id} not found in mock storage")
-                    return None
+    async def get_data(self, transaction_id: str) -> Optional[dict]:
+        """
+        Retrieve data from Arweave using a transaction ID.
+        
+        Args:
+            transaction_id: The Arweave transaction ID
             
-            # In a real implementation, fetch the transaction data from Arweave
-            # transaction = await self.Transaction(transaction_id, self.session)
-            # return json.loads(transaction.data.decode('utf-8'))
+        Returns:
+            Optional[dict]: The retrieved data as a dictionary, or None if not found
             
-            # For now, return None in non-mock mode
+        Raises:
+            ValueError: If the transaction ID is invalid
+            ConnectionError: If unable to connect to the gateway
+            RuntimeError: If the data cannot be retrieved after retries
+        """
+        self._last_error = None
+        
+        if not transaction_id or not isinstance(transaction_id, str):
+            raise ValueError("Invalid transaction ID")
+            
+        if self.use_mock:
+            if transaction_id in self._mock_transactions:
+                tx = self._mock_transactions[transaction_id]
+                if hasattr(tx, 'data'):
+                    try:
+                        return json.loads(tx.data.decode('utf-8'))
+                    except json.JSONDecodeError as e:
+                        self._last_error = f"Failed to decode JSON data: {e}"
+                        raise ValueError(self._last_error) from e
             return None
-            
-        except Exception as e:
-            print(f"Error retrieving data for transaction {transaction_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+        
+        last_exception = None
+        
+        for attempt in range(self.max_retries + 1):
+            try:
+                # In real mode, fetch the transaction data with retries
+                transaction = self.Transaction(self.wallet, id=transaction_id)
+                data = transaction.data
+                
+                if data:
+                    try:
+                        return json.loads(data.decode('utf-8'))
+                    except json.JSONDecodeError as e:
+                        error_msg = f"Failed to decode JSON data: {e}"
+                        self._last_error = error_msg
+                        raise ValueError(error_msg) from e
+                
+                return None
+                
+            except Exception as e:
+                last_exception = e
+                if attempt < self.max_retries:
+                    # Exponential backoff
+                    delay = self.retry_delay * (2 ** attempt)
+                    print(f"Retry {attempt + 1}/{self.max_retries} after error: {e}. Waiting {delay:.1f}s...")
+                    time.sleep(delay)
+                continue
+        
+        # If we get here, all retries failed
+        error_msg = f"Failed to retrieve data after {self.max_retries} attempts: {last_exception}"
+        self._last_error = error_msg
+        raise RuntimeError(error_msg) from last_exception
 
 # Example usage
 if __name__ == "__main__":
