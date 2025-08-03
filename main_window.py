@@ -6,6 +6,7 @@ This module contains the main PyQt5-based UI for the Sapphire Exchange desktop a
 import sys
 import asyncio
 import qrcode
+from datetime import datetime, timedelta, timezone
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QPushButton, QLineEdit, QTextEdit, QTabWidget, QListWidget,
                             QListWidgetItem, QMessageBox, QFileDialog, QStackedWidget)
@@ -36,6 +37,9 @@ class AsyncWorker(QThread):
 
 class ItemWidget(QWidget):
     """Widget for displaying an item in the marketplace."""
+    # Signal emitted when the bid button is clicked
+    bid_clicked = pyqtSignal(dict)  # Signal to emit the item data
+    
     def __init__(self, item_data, parent=None):
         super().__init__(parent)
         self.item_data = item_data
@@ -70,17 +74,37 @@ class ItemWidget(QWidget):
         self.setLayout(layout)
     
     def on_bid_clicked(self):
-        # This will be connected to the main window's bid handler
-        self.parent().parent().on_bid_clicked(self.item_data)
+        # Emit the signal with the item data
+        self.bid_clicked.emit(self.item_data)
 
 class MainWindow(QMainWindow):
     """Main application window."""
+    # Signal to show the seed message box on the main thread
+    show_seed_message_box = pyqtSignal()
+    
     def __init__(self):
         super().__init__()
         self.client = None
         self.current_user = None
         self.items = []
+        self._pending_seed = None
         self.init_ui()
+        
+        # Connect the signal to the slot
+        self.show_seed_message_box.connect(self._show_seed_message_box)
+        
+    def _show_seed_message_box(self):
+        """Show the seed message box on the main thread."""
+        if hasattr(self, '_pending_seed') and self._pending_seed:
+            QMessageBox.information(
+                self, 
+                "New Wallet Generated", 
+                f"A new wallet has been generated for you.\n\n"
+                f"IMPORTANT: Please save this seed phrase in a secure location:\n\n{self._pending_seed}\n\n"
+                "You will need this seed phrase to recover your wallet."
+            )
+            # Clear the pending seed after showing the message
+            self._pending_seed = None
         
     def init_ui(self):
         self.setWindowTitle("Sapphire Exchange")
@@ -178,19 +202,63 @@ class MainWindow(QMainWindow):
         self.seed_input.setMaximumHeight(100)
         
         # Login button
-        login_btn = QPushButton("Login / Create Account")
-        login_btn.clicked.connect(self.handle_login)
+        self.login_btn = QPushButton("Login / Create Account")
+        self.login_btn.clicked.connect(self.handle_login)
         
         # Add widgets to layout
         form_layout.addWidget(QLabel("Seed Phrase:"))
         form_layout.addWidget(self.seed_input)
-        form_layout.addWidget(login_btn)
+        form_layout.addWidget(self.login_btn)
         
         # Add form to main layout
         layout.addWidget(title)
         layout.addLayout(form_layout)
         
         return page
+    
+    def handle_login(self):
+        seed_phrase = self.seed_input.toPlainText().strip()
+        
+        # Disable login button to prevent multiple clicks
+        self.login_btn.setEnabled(False)
+        
+        # Show status message
+        self.statusBar().showMessage("Logging in...")
+        
+        # Force UI update before starting the login process
+        QApplication.processEvents()
+        
+        # Run login in a separate thread
+        def on_login_complete(user_data):
+            self.statusBar().clearMessage()
+            self.login_btn.setEnabled(True)
+            
+            if user_data:
+                self.current_user = user_data
+                self.user_info.setText(f"Logged in as:\n{user_data.public_key[:12]}...")
+                self.user_info.setVisible(True)
+                self.create_item_btn.setVisible(True)
+                self.my_items_btn.setVisible(True)
+                self.logout_btn.setVisible(True)
+                self.seed_input.setVisible(False)
+                self.login_btn.setVisible(False)
+                self.seed_label = QLabel("Your Seed Phrase (keep it safe!)")
+                self.seed_label.setVisible(True)
+                self.content_stack.parentWidget().layout().itemAt(0).widget().layout().insertWidget(1, self.seed_label)
+                self.show_page(1)  # Show marketplace after login
+            else:
+                QMessageBox.warning(self, "Login Failed", "Invalid seed phrase or wallet data.")
+        
+        def on_error(error_msg):
+            self.statusBar().clearMessage()
+            self.login_btn.setEnabled(True)
+            QMessageBox.critical(self, "Error", f"Login failed: {error_msg}")
+        
+        # Start login process in a worker thread
+        self.worker = AsyncWorker(self.login_async(seed_phrase))
+        self.worker.finished.connect(on_login_complete)
+        self.worker.error.connect(on_error)
+        self.worker.start()
     
     def create_marketplace_page(self):
         page = QWidget()
@@ -317,48 +385,46 @@ class MainWindow(QMainWindow):
         elif index == 3:  # My Items
             self.load_my_items()
     
-    def handle_login(self):
-        seed_phrase = self.seed_input.toPlainText().strip()
-        
-        # Show loading indicator
-        loading_msg = QMessageBox(self)
-        loading_msg.setWindowTitle("Authenticating")
-        loading_msg.setText("Logging in...")
-        loading_msg.setStandardButtons(QMessageBox.NoButton)
-        loading_msg.show()
-        
-        # Run login in a separate thread
-        def on_login_complete(user_data):
-            loading_msg.close()
-            if user_data:
-                self.current_user = user_data
-                self.user_info.setText(f"Logged in as:\n{user_data.public_key[:12]}...")
-                self.user_info.setVisible(True)
-                self.create_item_btn.setVisible(True)
-                self.my_items_btn.setVisible(True)
-                self.logout_btn.setVisible(True)
-                self.content_stack.setCurrentIndex(1)  # Show marketplace
-                
-                # Load user's items
-                self.load_my_items()
-            else:
-                QMessageBox.critical(self, "Error", "Failed to login")
-        
-        def on_error(error_msg):
-            loading_msg.close()
-            QMessageBox.critical(self, "Error", f"Login failed: {error_msg}")
-        
-        # Start login process in a worker thread
-        self.worker = AsyncWorker(self.login_async(seed_phrase))
-        self.worker.finished.connect(on_login_complete)
-        self.worker.error.connect(on_error)
-        self.worker.start()
-    
     async def login_async(self, seed_phrase):
-        # Initialize client and user
-        self.client = DecentralizedClient()
-        user_data = await self.client.initialize_user(seed_phrase or None)
-        return user_data
+        try:
+            print(f"Starting login with seed_phrase: {'[EMPTY]' if not seed_phrase else '[PROVIDED]'}")
+            
+            # Initialize client
+            self.client = DecentralizedClient()
+            
+            # If seed_phrase is empty or None, generate a new wallet
+            if not seed_phrase or seed_phrase.strip() == "":
+                print("No seed phrase provided, generating new wallet...")
+                # Pass None to generate a new wallet
+                user_data = await self.client.initialize_user(None)
+                
+                # Get the generated seed from the wallet
+                seed = self.client.user_wallet.private_key.to_ascii(encoding='hex').decode('utf-8')
+                print(f"Generated new wallet with address: {self.client.user_wallet.address}")
+                
+                # Store the seed to show in the UI thread
+                self._pending_seed = seed
+                
+                # Schedule showing the message box on the main thread
+                self.show_seed_message_box.emit()
+                
+                # Wait a moment to ensure the message box is shown
+                await asyncio.sleep(0.1)
+                
+            else:
+                # Use the provided seed phrase
+                print(f"Using provided seed phrase to initialize wallet...")
+                user_data = await self.client.initialize_user(seed_phrase.strip())
+                print(f"Logged in with existing wallet: {self.client.user_wallet.address}")
+            
+            print("Login successful, returning user data")
+            return user_data
+            
+        except Exception as e:
+            print(f"Error during login: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def load_marketplace_items(self):
         # Clear existing items
@@ -378,6 +444,8 @@ class MainWindow(QMainWindow):
                 
             for item_data in items:
                 item_widget = ItemWidget(item_data)
+                # Connect the bid_clicked signal to the main window's on_bid_clicked method
+                item_widget.bid_clicked.connect(self.on_bid_clicked)
                 list_item = QListWidgetItem()
                 list_item.setSizeHint(QSize(220, 320))
                 self.items_grid.addItem(list_item)
@@ -532,36 +600,31 @@ class MainWindow(QMainWindow):
         self.worker.start()
     
     async def create_item_async(self, name, description, starting_price, duration_hours, image_path=None):
-        # In a real implementation, this would use the DecentralizedClient
-        # For now, return mock data
-        item = Item(
-            item_id=f"mock_item_{len(self.items) + 1}",
-            name=name,
-            description=description,
-            owner_public_key=self.current_user.public_key,
-            starting_price=starting_price,
-            is_auction=True,
-            auction_end_time=(datetime.now() + timedelta(hours=duration_hours)).isoformat(),
-            metadata={
-                'nano_address': f"nano_mock_{len(self.items) + 1}",
-                'arweave_tx': f"mock_tx_{len(self.items) + 1}",
-                'image_path': image_path
-            }
-        )
-        
-        # Add to mock items list
-        self.items.append({
-            'id': item.item_id,
-            'name': item.name,
-            'description': item.description,
-            'starting_price': item.starting_price,
-            'current_bid': 0.0,
-            'owner': item.owner_public_key,
-            'auction_end_time': item.auction_end_time,
-            'nano_address': item.metadata['nano_address']
-        })
-        
-        return item, item.metadata['arweave_tx']
+        try:
+            if not self.client or not self.current_user:
+                raise ValueError("Not logged in or client not initialized")
+                
+            # Create the item using the decentralized client
+            item = await self.client.create_item(
+                name=name,
+                description=description,
+                starting_price=starting_price,
+                duration_hours=duration_hours,
+                image_url=image_path or ""
+            )
+            
+            # Convert item to dict for UI updates
+            item_dict = item.to_dict()
+            
+            # Add to local items list for UI updates
+            self.items.append(item_dict)
+            
+            # Return both the item and its transaction ID
+            return item, item_dict.get('transaction_id', 'mock_tx_' + ''.join(random.choices('0123456789abcdef', k=16)))
+            
+        except Exception as e:
+            print(f"Error creating item: {e}")
+            raise
     
     def on_bid_clicked(self, item_data):
         # Show bid dialog

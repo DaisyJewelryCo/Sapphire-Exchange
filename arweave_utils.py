@@ -92,24 +92,35 @@ class MockArweaveTransaction:
             raise Exception("Simulated transaction failure")
 
 class ArweaveClient:
-    def __init__(self, wallet_file=None, gateway_url=None, use_mock=True):
+    def __init__(self, wallet_file=None, gateway_url=None, mock_mode=None):
         """
         Initialize the Arweave client with wallet and gateway URL.
         
         Args:
             wallet_file: Path to wallet file (optional)
             gateway_url: Arweave gateway URL (optional)
-            use_mock: Whether to use the mock client (default: True)
+            mock_mode: Whether to use the mock client (default: None, will use MOCK_ARWEAVE env var)
         """
         self.gateway_url = gateway_url or os.getenv('ARWEAVE_GATEWAY_URL', 'https://arweave.net')
         self.wallet_file = wallet_file or os.getenv('ARWEAVE_WALLET_FILE', 'wallet.json')
-        self.use_mock = use_mock
+        
+        # Determine if we should use mock mode
+        if mock_mode is None:
+            self.use_mock = os.getenv('MOCK_ARWEAVE', 'true').lower() == 'true'
+        else:
+            self.use_mock = bool(mock_mode)
         
         if self.use_mock:
             print("Using MOCK Arweave client - no real blockchain transactions will occur")
             self.wallet = MockWallet()
             self.session = None
             self._mock_transactions = {}
+            
+            # Print mock wallet info for testing
+            print("\n=== MOCK ARWEAVE WALLET ===")
+            print(f"Address: {self.wallet.address}")
+            print(f"Balance: {self.wallet.balance} AR (simulated)")
+            print("==========================\n")
         else:
             try:
                 from arweave import Wallet, Transaction, arql
@@ -118,6 +129,7 @@ class ArweaveClient:
                 self.wallet = self._load_or_create_wallet()
                 import requests
                 self.session = requests.Session()
+                print(f"Connected to Arweave gateway: {self.gateway_url}")
             except ImportError:
                 print("Warning: arweave-python-client not found. Falling back to mock client.")
                 self.use_mock = True

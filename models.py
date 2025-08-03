@@ -95,11 +95,13 @@ class Item:
 @dataclass
 class Auction:
     """Represents an auction in the system."""
-    # Required fields
-    auction_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    # Required fields (no default values)
     item_id: str
     seller_public_key: str
     starting_price: float
+    
+    # Fields with default values
+    auction_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
     # Auction timing

@@ -4,9 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="0.0">
-      <change beforePath="$PROJECT_DIR$/.idea/Sapphire_Exchange.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Sapphire_Exchange.iml" afterDir="false" />
+    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="0.1">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arweave_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/arweave_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/decentralized_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/decentralized_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/nano_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/nano_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,6 +52,10 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.app.executor": "Run",
+    "Python.decentralized_client.executor": "Run",
+    "Python.main_window.executor": "Run",
+    "Python.nano_utils.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -80,7 +90,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1754171412402</updated>
-      <workItem from="1754171413573" duration="4939000" />
+      <workItem from="1754171413573" duration="8872000" />
     </task>
     <task id="LOCAL-00001" summary="0.0">
       <option name="closed" value="true" />
@@ -90,7 +100,23 @@
       <option name="project" value="LOCAL" />
       <updated>1754171824676</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="0.1">
+      <option name="closed" value="true" />
+      <created>1754177341029</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1754177341029</updated>
+    </task>
+    <task id="LOCAL-00003" summary="0.1">
+      <option name="closed" value="true" />
+      <created>1754177516249</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1754177516249</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -109,7 +135,8 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="0.0" />
-    <option name="LAST_COMMIT_MESSAGE" value="0.0" />
+    <MESSAGE value="0.1" />
+    <option name="LAST_COMMIT_MESSAGE" value="0.1" />
   </component>
   <component name="ai.zencoder.plugin.mcp">
     <option name="internalToolsState" value="{&quot;file_search&quot;:true,&quot;list_resources&quot;:true,&quot;fulltext_search&quot;:true,&quot;read_resource&quot;:true}" />
@@ -117,5 +144,11 @@
   <component name="ai.zencoder.plugin.rag.RepoInfoWarningState">
     <option name="currentWarningState" value="true" />
     <option name="lastCheckTime" value="1754176737703" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$decentralized_client.coverage" NAME="decentralized_client Coverage Results" MODIFIED="1754181250851" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$nano_utils.coverage" NAME="nano_utils Coverage Results" MODIFIED="1754181404692" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$app.coverage" NAME="app Coverage Results" MODIFIED="1754181411143" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$main_window.coverage" NAME="main_window Coverage Results" MODIFIED="1754180984333" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>
