@@ -4,11 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="0.4">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arweave_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/arweave_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/decentralized_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/decentralized_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/nano_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/nano_utils.py" afterDir="false" />
+    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="0.5">
+      <change afterPath="$PROJECT_DIR$/arweave_utils_real.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/debug_output.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/nano_utils_fixed.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/nano_utils_real.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -92,7 +92,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1754171412402</updated>
-      <workItem from="1754171413573" duration="25869000" />
+      <workItem from="1754171413573" duration="26339000" />
     </task>
     <task id="LOCAL-00001" summary="0.0">
       <option name="closed" value="true" />
@@ -134,7 +134,23 @@
       <option name="project" value="LOCAL" />
       <updated>1754193723830</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="0.4">
+      <option name="closed" value="true" />
+      <created>1754257838862</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1754257838862</updated>
+    </task>
+    <task id="LOCAL-00007" summary="0.5">
+      <option name="closed" value="true" />
+      <created>1754257852563</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1754257852563</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -156,7 +172,8 @@
     <MESSAGE value="0.1" />
     <MESSAGE value="0.3" />
     <MESSAGE value="0.4" />
-    <option name="LAST_COMMIT_MESSAGE" value="0.4" />
+    <MESSAGE value="0.5" />
+    <option name="LAST_COMMIT_MESSAGE" value="0.5" />
   </component>
   <component name="ai.zencoder.plugin.mcp">
     <option name="internalToolsState" value="{&quot;file_search&quot;:true,&quot;list_resources&quot;:true,&quot;fulltext_search&quot;:true,&quot;read_resource&quot;:true}" />

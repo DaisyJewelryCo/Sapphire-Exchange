@@ -1,13 +1,37 @@
-PyArweave==0.6.0
+# Core Dependencies
 python-dotenv>=0.19.2
 requests>=2.28.0
+aiohttp>=3.8.0  # Async HTTP client
+
+# Arweave
+PyArweave==0.6.0
+
+# Nano
 base58>=2.1.1
-cryptography>=3.4.7
-ed25519-blake2b==1.4.1  # Pinned to a specific version for compatibility
+ed25519-blake2b==1.4.1  # Pinned for compatibility
 pynacl>=1.4.0
+
+# Dogecoin
+ecdsa>=0.18.0  # For Dogecoin wallet operations
+python-bitcoinlib>=0.12.0  # For Bitcoin/Dogecoin address handling
+
+# Cryptography
+cryptography>=3.4.7
 pycryptodome>=3.20.0
+
+# UI
 PyQt5>=5.15.9
 PyQt5-Qt5>=5.15.2
 PyQt5-sip>=12.12.1
 qrcode>=7.4.2
 Pillow>=9.5.0
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.20.0
+
+# Development
+black>=22.0.0
+isort>=5.10.0
+mypy>=0.910
+pylint>=2.12.0
