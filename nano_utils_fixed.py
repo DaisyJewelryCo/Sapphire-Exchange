@@ -88,7 +88,7 @@ class NanoWallet:
         
         # Register with mock network and database if in mock mode
         if self.mock_mode and MOCK_NETWORK is not None:
-            from mock_servers import nano_db
+            from mock_server import nano_db
             
             # Register with mock network
             MOCK_NETWORK.create_account(self.public_key, self.address)
@@ -238,7 +238,7 @@ class NanoRPC:
     
     def _mock_account_balance(self, account: str) -> dict:
         """Mock implementation of account_balance RPC."""
-        from mock_servers import nano_db
+        from mock_server import nano_db
         
         balance = nano_db.accounts.get(account, 0.0)
         pending = sum(tx['amount'] for tx in nano_db.accounts_pending.get(account, []))
@@ -251,7 +251,7 @@ class NanoRPC:
     
     def _mock_account_info(self, account: str, representative: bool = True) -> dict:
         """Mock implementation of account_info RPC."""
-        from mock_servers import nano_db
+        from mock_server import nano_db
         
         if account not in nano_db.accounts:
             return {"error": "Account not found"}
@@ -280,7 +280,7 @@ class NanoRPC:
         """Mock implementation of account_create RPC."""
         # In a real implementation, this would create new accounts in the wallet
         # For mock purposes, we'll just return some fake account addresses
-        from mock_servers import nano_db
+        from mock_server import nano_db
         
         accounts = []
         for _ in range(count):

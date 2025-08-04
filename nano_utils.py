@@ -63,43 +63,109 @@ class NanoWallet:
         Initialize a Nano wallet with an optional seed.
         
         Args:
-            seed: Seed for the wallet (None generates a new one)
+            seed: Seed for the wallet (None generates a new one). Can be:
+                  - None: Generates a new random seed
+                  - str: A seed phrase that will be hashed
+                  - bytes: Raw 32-byte seed
             mock_mode: If True, use mock network for testing
+            
+        Raises:
+            ValueError: If wallet initialization fails
         """
+        print("\n=== Initializing NanoWallet ===")
         self.mock_mode = mock_mode
         
-        if seed is None:
-            # Generate a random seed
-            seed = os.urandom(32)  # 32 bytes for ed25519
-        elif isinstance(seed, str):
-            # If seed is a string, encode it to bytes
-            seed = hashlib.sha256(seed.encode('utf-8')).digest()
-        elif not isinstance(seed, bytes):
-            raise ValueError("Seed must be either None, a string, or bytes")
+        try:
+            # 1. Process the seed
+            if seed is None:
+                print("Generating new random seed...")
+                seed_bytes = os.urandom(32)  # 32 bytes for ed25519
+                print(f"Generated random seed: {seed_bytes.hex()}")
+            elif isinstance(seed, str):
+                print(f"Using provided seed phrase (length: {len(seed)} chars)")
+                seed_bytes = hashlib.sha256(seed.encode('utf-8')).digest()
+                print(f"Hashed seed to bytes: {seed_bytes.hex()}")
+            elif isinstance(seed, bytes):
+                print(f"Using provided seed bytes (length: {len(seed)})")
+                seed_bytes = seed
+            else:
+                raise ValueError("Seed must be None, a string, or bytes")
             
-        # Ensure the seed is 32 bytes
-        if len(seed) != 32:
-            seed = hashlib.sha256(seed).digest()[:32]
-        
-        # Create the signing key from the seed
-        self.private_key = ed25519_blake2b.SigningKey(seed)
-        self.public_key = self.private_key.get_verifying_key()
-        self.address = self._public_key_to_address(self.public_key)
-        
-        # Register with mock network and database if in mock mode
-        if self.mock_mode and MOCK_NETWORK is not None:
-            from mock_servers import nano_db
+            # Ensure the seed is exactly 32 bytes
+            if len(seed_bytes) != 32:
+                print(f"Adjusting seed length to 32 bytes (was {len(seed_bytes)})")
+                seed_bytes = hashlib.sha256(seed_bytes).digest()[:32]
+            
+            # 2. Create private key
+            print("Creating private key from seed...")
+            try:
+                self.private_key = ed25519_blake2b.SigningKey(seed_bytes)
+                print("Private key created successfully")
+            except Exception as e:
+                raise ValueError(f"Failed to create private key: {str(e)}")
+            
+            # 3. Derive public key
+            print("Deriving public key...")
+            try:
+                self.public_key = self.private_key.get_verifying_key()
+                if not self.public_key:
+                    raise ValueError("get_verifying_key() returned None")
+                print(f"Public key derived: {self.public_key.to_ascii(encoding='hex').decode()}")
+            except Exception as e:
+                raise ValueError(f"Failed to derive public key: {str(e)}")
+            
+            # 4. Generate address
+            print("Generating address...")
+            self.address = self._public_key_to_address(self.public_key)
+            if not self.address or not isinstance(self.address, str) or not self.address.startswith('nano_'):
+                raise ValueError(f"Invalid address generated: {self.address}")
+            print(f"Address generated: {self.address}")
+            
+            # 5. Initialize mock network if needed
+            if self.mock_mode:
+                self._initialize_mock_network()
+                
+            print("=== Wallet initialization successful ===\n")
+            
+        except Exception as e:
+            error_msg = f"Wallet initialization failed: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            raise ValueError(error_msg) from e
+    
+    def _initialize_mock_network(self):
+        """Initialize the wallet with the mock network and database."""
+        if not self.mock_mode or MOCK_NETWORK is None:
+            return
+            
+        print("Initializing mock network...")
+        try:
+            from mock_server import nano_db
             
             # Register with mock network
+            print("Registering with mock network...")
             MOCK_NETWORK.create_account(self.public_key, self.address)
-                
+            
+            # Initialize mock database if needed
+            if not hasattr(nano_db, 'accounts'):
+                nano_db.accounts = {}
+            if not hasattr(nano_db, 'accounts_pending'):
+                nano_db.accounts_pending = {}
+            
             # Ensure account exists in the mock database with initial balance
             if self.address not in nano_db.accounts:
+                print(f"Creating new mock account with balance")
                 nano_db.accounts[self.address] = 100.0  # Initial balance for new accounts
                 nano_db.accounts_pending[self.address] = []
                 print(f"[MOCK] Registered Nano account in mock DB: {self.address}")
             else:
                 print(f"[MOCK] Using existing Nano account in mock DB: {self.address}")
+                
+        except ImportError as e:
+            print(f"[WARNING] Failed to import mock_server: {e}")
+        except Exception as e:
+            print(f"[WARNING] Error initializing mock network: {e}")
     
     @staticmethod
     def _public_key_to_address(public_key) -> str:
@@ -119,8 +185,91 @@ class NanoWallet:
         try:
             self.public_key.verify(signature, message)
             return True
-        except Exception:
+        except Exception as e:
+            print(f"Signature verification failed: {e}")
             return False
+            
+    @classmethod
+    def from_seed(cls, seed_phrase: str, mock_mode: bool = MOCK_MODE) -> 'NanoWallet':
+        """
+        Create a wallet from a seed phrase.
+        
+        Args:
+            seed_phrase: The seed phrase as a string (will be hashed to create the seed)
+            mock_mode: If True, use mock network for testing
+            
+        Returns:
+            NanoWallet: A new wallet instance
+            
+        Raises:
+            ValueError: If seed_phrase is invalid or wallet initialization fails
+            
+        Example:
+            >>> wallet = NanoWallet.from_seed("my secret seed phrase")
+        """
+        print("\n=== Creating wallet from seed phrase ===")
+        
+        # Validate input
+        if not seed_phrase or not isinstance(seed_phrase, str):
+            error_msg = "Seed phrase must be a non-empty string"
+            print(f"[ERROR] {error_msg}")
+            raise ValueError(error_msg)
+            
+        print(f"Seed phrase length: {len(seed_phrase)} characters")
+        print(f"Mock mode: {mock_mode}")
+        
+        try:
+            # 1. Convert seed phrase to bytes using UTF-8 encoding
+            try:
+                seed_bytes = seed_phrase.encode('utf-8')
+                print(f"Seed phrase encoded to {len(seed_bytes)} bytes")
+            except Exception as e:
+                error_msg = f"Failed to encode seed phrase: {str(e)}"
+                print(f"[ERROR] {error_msg}")
+                raise ValueError(error_msg) from e
+            
+            # 2. Hash the seed bytes to get a consistent 32-byte value
+            try:
+                seed_hash = hashlib.sha256(seed_bytes).digest()
+                print(f"SHA-256 hash of seed: {seed_hash.hex()}")
+            except Exception as e:
+                error_msg = f"Failed to hash seed: {str(e)}"
+                print(f"[ERROR] {error_msg}")
+                raise ValueError(error_msg) from e
+            
+            # 3. Create a new wallet with the hashed seed
+            print("Creating wallet instance...")
+            try:
+                wallet = cls(seed=seed_hash, mock_mode=mock_mode)
+            except Exception as e:
+                error_msg = f"Failed to create wallet: {str(e)}"
+                print(f"[ERROR] {error_msg}")
+                raise ValueError(error_msg) from e
+            
+            # 4. Verify the wallet was properly initialized with all required attributes
+            required_attrs = ['public_key', 'private_key', 'address']
+            missing_attrs = [attr for attr in required_attrs 
+                           if not hasattr(wallet, attr) or not getattr(wallet, attr, None)]
+            
+            if missing_attrs:
+                error_msg = f"Wallet missing required attributes: {', '.join(missing_attrs)}"
+                print(f"[ERROR] {error_msg}")
+                print(f"Wallet attributes: {', '.join(dir(wallet))}")
+                raise ValueError(error_msg)
+            
+            print(f"Successfully created wallet from seed phrase")
+            print(f"Address: {wallet.address}")
+            print(f"Public key: {wallet.public_key.to_ascii(encoding='hex').decode()}")
+            print("=== Wallet creation complete ===\n")
+            
+            return wallet
+            
+        except Exception as e:
+            error_msg = f"Failed to create wallet from seed phrase: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            raise ValueError(error_msg) from e
     
     @property
     def seed_hex(self) -> str:
@@ -238,7 +387,7 @@ class NanoRPC:
     
     def _mock_account_balance(self, account: str) -> dict:
         """Mock implementation of account_balance RPC."""
-        from mock_servers import nano_db
+        from mock_server import nano_db
         
         balance = nano_db.accounts.get(account, 0.0)
         pending = sum(tx['amount'] for tx in nano_db.accounts_pending.get(account, []))
@@ -251,7 +400,7 @@ class NanoRPC:
     
     def _mock_account_info(self, account: str, representative: bool = True) -> dict:
         """Mock implementation of account_info RPC."""
-        from mock_servers import nano_db
+        from mock_server import nano_db
         
         if account not in nano_db.accounts:
             return {"error": "Account not found"}
@@ -280,7 +429,7 @@ class NanoRPC:
         """Mock implementation of account_create RPC."""
         # In a real implementation, this would create new accounts in the wallet
         # For mock purposes, we'll just return some fake account addresses
-        from mock_servers import nano_db
+        from mock_server import nano_db
         
         accounts = []
         for _ in range(count):

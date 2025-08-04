@@ -72,8 +72,8 @@ class MockWallet:
     def to_dict(self) -> Dict:
         return {'kty': 'RSA', 'e': 'AQAB', 'n': 'mock_key'}
 
-# Import the ArweaveTransaction class from mock_servers when in mock mode
-from mock_servers import ArweaveTransaction
+# Import the ArweaveTransaction class from mock_server when in mock mode
+from mock_server import ArweaveTransaction
 
 # Mock Transaction class for simulation - keeping for backward compatibility
 class MockArweaveTransaction(ArweaveTransaction):

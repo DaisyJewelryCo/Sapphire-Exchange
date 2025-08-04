@@ -80,7 +80,7 @@ class ArweaveTransaction:
             ArweaveTransaction: The transaction object if found, None otherwise
         """
         # Import here to avoid circular imports
-        from mock_servers import arweave_db
+        from mock_server import arweave_db
         
         # Check pending transactions first
         if transaction_id in arweave_db.pending_transactions:
@@ -114,12 +114,25 @@ class MockArweaveDB:
     items: Dict[str, dict] = field(default_factory=dict)  # tx_id -> item_data
     user_data: Dict[str, dict] = field(default_factory=dict)  # public_key -> user_data
     pending_transactions: Dict[str, dict] = field(default_factory=dict)  # tx_id -> tx_data
+    _background_tasks: set = field(default_factory=set, init=False)
+    
+    def __post_init__(self):
+        # Initialize with some test data
+        # The actual test data is initialized by the global initialize_test_data() function
+        pass
+        
+    def __del__(self):
+        # Cancel all background tasks when the instance is destroyed
+        for task in self._background_tasks:
+            if not task.done():
+                task.cancel()
+        self._background_tasks.clear()
     
     def _simulate_network(self):
         """Simulate network operations."""
         simulate_latency()
     
-    async def store_data(self, data: dict) -> str:
+    def store_data(self, data: dict) -> str:
         """Store data and return a mock transaction ID with simulated confirmation."""
         self._simulate_network()
         
@@ -135,7 +148,9 @@ class MockArweaveDB:
         }
         
         # Simulate confirmation after delay
-        asyncio.create_task(self._confirm_transaction(tx_id))
+        task = asyncio.create_task(self._confirm_transaction(tx_id))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         
         return tx_id
     
@@ -173,7 +188,7 @@ class MockArweaveDB:
         print(f"[MOCK] Item {tx_id} not found in pending or confirmed items")
         return None
     
-    async def store_user_data(self, public_key: str, user_data: dict) -> str:
+    def store_user_data(self, public_key: str, user_data: dict) -> str:
         """Store user data with simulated confirmation."""
         self._simulate_network()
         
@@ -517,14 +532,14 @@ async def initialize_test_data_async():
         }
     ]
     
-    # Store test items asynchronously
+    # Store test items
     for item in test_items:
-        await arweave_db.store_data(item)
+        arweave_db.store_data(item)
         
     # Add test users and items
     for i, user in enumerate(test_users):
         public_key = f"user_pubkey_{i}"
-        await arweave_db.store_user_data(public_key, user)
+        arweave_db.store_user_data(public_key, user)
         
         # Give each user some Nano
         address = nano_db.create_account()
@@ -534,7 +549,7 @@ async def initialize_test_data_async():
             item = test_items[(i * 2 + j) % len(test_items)].copy()
             item['owner'] = public_key
             item['owner_username'] = user['username']
-            await arweave_db.store_data(item)
+            arweave_db.store_data(item)
             
     print("[MOCK] Initialized test data")
 

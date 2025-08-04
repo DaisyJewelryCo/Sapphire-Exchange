@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from decentralized_client import DecentralizedClient
-from mock_servers import arweave_db, nano_db
+from mock_server import arweave_db, nano_db
 
 async def test_marketplace():
     print("=== Testing Marketplace Functionality ===")

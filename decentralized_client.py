@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from arweave_utils import ArweaveClient
 from nano_utils import NanoWallet, NanoRPC, MOCK_MODE
 from models import User, Item, Auction
-from mock_servers import arweave_db, nano_db
+from mock_server import arweave_db, nano_db
 
 class DecentralizedClient:
     """Client for interacting with the decentralized Sapphire Exchange."""
@@ -29,6 +29,29 @@ class DecentralizedClient:
         self.nano_rpc = NanoRPC()
         self.user_data = None
         self.current_user = None  # Track the current user
+        self._is_connected = False  # Track connection status
+        
+    @property
+    def is_connected(self):
+        """Get the current connection status."""
+        return self._is_connected
+        
+    def connect(self):
+        """Establish connections to required services."""
+        try:
+            # In a real implementation, this would connect to the blockchain nodes
+            # For now, we'll just set the status to connected
+            self._is_connected = True
+            return True
+        except Exception as e:
+            print(f"Error connecting to services: {e}")
+            self._is_connected = False
+            return False
+            
+    def disconnect(self):
+        """Disconnect from all services."""
+        self._is_connected = False
+        return True
         
     def get_seed_phrase(self) -> Optional[str]:
         """Get the seed phrase for the current wallet.
@@ -114,56 +137,104 @@ class DecentralizedClient:
             ValueError: If neither seed_phrase nor wallet_data is provided and mock mode is off,
                        or if username is not provided for new user
         """
-        if seed_phrase is not None:
-            # Create a new wallet from the seed phrase
-            print(f"Initializing wallet from seed phrase (mock_mode={self.mock_mode}")
-            self.user_wallet = NanoWallet.from_seed(seed_phrase)
-            
-            # Register the wallet in the mock Nano DB if in mock mode
-            if self.mock_mode:
-                from mock_servers import nano_db
-                if self.user_wallet.address not in nano_db.accounts:
-                    nano_db.accounts[self.user_wallet.address] = 100.0  # Give new users 100 NANO for testing
-                    nano_db.accounts_pending[self.user_wallet.address] = []
-                    print(f"[MOCK] Registered Nano account in mock DB: {self.user_wallet.address}")
-                    
-        elif wallet_data is not None:
-            # Initialize wallet from wallet data
-            self.user_wallet = NanoWallet.from_dict(wallet_data)
-            
-            # Ensure the wallet is registered in the mock DB if in mock mode
-            if self.mock_mode and hasattr(self.user_wallet, 'address'):
-                from mock_servers import nano_db
-                if self.user_wallet.address not in nano_db.accounts:
-                    nano_db.accounts[self.user_wallet.address] = 0.0
-                    nano_db.accounts_pending[self.user_wallet.address] = []
-                    print(f"[MOCK] Registered existing Nano account in mock DB: {self.user_wallet.address}")
-                    
-        elif not self.mock_mode:
-            raise ValueError("Either seed_phrase or wallet_data must be provided when not in mock mode")
-            
-        # Load or create user data
-        self.user_data = await self._load_user_data()
-        
-        if self.user_data is None:
-            # New user - create user data
-            if not username:
-                raise ValueError("Username is required for new users")
+        print("\n=== Starting user initialization ===")
+        try:
+            # Handle wallet initialization
+            if seed_phrase is not None:
+                print(f"Initializing wallet from seed phrase (mock_mode={self.mock_mode})")
+                try:
+                    self.user_wallet = NanoWallet.from_seed(seed_phrase, mock_mode=self.mock_mode)
+                    print(f"Wallet initialized successfully with address: {getattr(self.user_wallet, 'address', 'UNKNOWN')}")
+                except Exception as e:
+                    print(f"Failed to initialize wallet from seed: {str(e)}")
+                    raise ValueError(f"Failed to initialize wallet: {str(e)}")
                 
-            self.user_data = User(
-                public_key=self.user_wallet.public_key,
-                username=username,
-                first_name=first_name or "",
-                last_name=last_name or "",
-                created_at=datetime.now(timezone.utc).isoformat()
-            )
+            elif wallet_data is not None:
+                print("Initializing wallet from provided wallet data")
+                try:
+                    self.user_wallet = NanoWallet.from_dict(wallet_data)
+                    print(f"Wallet initialized from data with address: {getattr(self.user_wallet, 'address', 'UNKNOWN')}")
+                except Exception as e:
+                    print(f"Failed to initialize wallet from data: {str(e)}")
+                    raise ValueError(f"Invalid wallet data: {str(e)}")
+                    
+            elif not self.mock_mode:
+                error_msg = "Either seed_phrase or wallet_data must be provided when not in mock mode"
+                print(f"[ERROR] {error_msg}")
+                raise ValueError(error_msg)
+                
+            # Verify wallet was properly initialized
+            if not hasattr(self, 'user_wallet') or not self.user_wallet:
+                error_msg = "Wallet initialization failed: No wallet instance created"
+                print(f"[ERROR] {error_msg}")
+                raise ValueError(error_msg)
+                
+            if not hasattr(self.user_wallet, 'public_key') or not self.user_wallet.public_key:
+                error_msg = "Wallet initialization failed: No public key available"
+                print(f"[ERROR] {error_msg}")
+                print(f"Wallet attributes: {dir(self.user_wallet)}")
+                raise ValueError(error_msg)
             
-            # Save new user data
-            await self._save_user_data()
+            # Convert public key to hex string for storage
+            try:
+                public_key_hex = self.user_wallet.public_key.to_ascii(encoding='hex').decode('utf-8')
+                print(f"Public key (hex): {public_key_hex}")
+            except Exception as e:
+                error_msg = f"Failed to convert public key to hex: {str(e)}"
+                print(f"[ERROR] {error_msg}")
+                raise ValueError(error_msg)
             
-        # Set current user
-        self.current_user = self.user_data
-        return self.current_user
+            # Handle mock mode setup
+            if self.mock_mode and hasattr(self.user_wallet, 'address'):
+                try:
+                    from mock_server import nano_db
+                    print(f"Setting up mock account for {self.user_wallet.address}")
+                    
+                    if self.user_wallet.address not in nano_db.accounts:
+                        print("Creating new mock account with initial balance")
+                        nano_db.accounts[self.user_wallet.address] = 100.0
+                        nano_db.accounts_pending[self.user_wallet.address] = []
+                    else:
+                        print("Using existing mock account")
+                except Exception as e:
+                    print(f"[WARNING] Failed to set up mock account: {str(e)}")
+            
+            # Load or create user data
+            print("Loading user data...")
+            self.user_data = await self._load_user_data()
+            
+            if self.user_data is None:
+                print("No existing user data found, creating new user")
+                if not username:
+                    error_msg = "Username is required for new users"
+                    print(f"[ERROR] {error_msg}")
+                    raise ValueError(error_msg)
+                
+                self.user_data = User(
+                    public_key=public_key_hex,
+                    username=username,
+                    first_name=first_name or "",
+                    last_name=last_name or "",
+                    created_at=datetime.now(timezone.utc).isoformat()
+                )
+                
+                print(f"Saving new user: {username}")
+                await self._save_user_data()
+            else:
+                print(f"Loaded existing user: {self.user_data.username}")
+            
+            # Set current user
+            self.current_user = self.user_data
+            print(f"User initialization completed successfully: {self.current_user}")
+            print("==================================\n")
+            return self.current_user
+            
+        except Exception as e:
+            error_msg = f"Error in initialize_user: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            raise ValueError(error_msg) from e
         
     async def create_item(
         self,
@@ -309,7 +380,7 @@ class DecentralizedClient:
                 print("[DEBUG] Updating item in mock database...")
                 
                 # Import arweave_db here to avoid circular imports
-                from mock_servers import arweave_db
+                from mock_server import arweave_db
                 
                 if item_tx_id in arweave_db.pending_transactions:
                     print(f"[DEBUG] Updating pending transaction for {item_tx_id}")
@@ -462,11 +533,12 @@ class DecentralizedClient:
             # Convert public key to string for use as dictionary key
             public_key_str = self.user_wallet.public_key.to_ascii(encoding='hex').decode('utf-8')
             # Store user data in mock Arweave
-            tx_id = await arweave_db.store_user_data(public_key_str, user_dict)
+            tx_id = arweave_db.store_user_data(public_key_str, user_dict)
             print(f"[MOCK] Saved user data for {public_key_str} (TX: {tx_id})")
             return tx_id
             
         # In a real implementation, we would store the user data in Arweave
+        # Note: In a real implementation, this would still be async
         tx_id = await self.arweave.store_data(user_dict, self.user_wallet)
         return tx_id
         
