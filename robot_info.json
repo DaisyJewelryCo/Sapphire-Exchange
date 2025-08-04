@@ -1,0 +1,397 @@
+{
+  "application": {
+    "name": "Sapphire Exchange",
+    "version": "1.0.0",
+    "description": "Decentralized auction platform using Nano and Arweave"
+  },
+  "blockchain_networks": {
+    "nano": {
+      "network_type": "cryptocurrency",
+      "purpose": "Payments and transactions",
+      "key_characteristics": ["Feeless", "Fast", "Eco-friendly"],
+      "rpc_endpoint": "http://[::1]:7076",
+      "default_representative": "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3",
+      "wallet_specs": {
+        "seed_length_bits": 256,
+        "address_length": 64,
+        "key_derivation": "ed25519_blake2b",
+        "address_prefix": "nano_"
+      },
+      "transaction_parameters": {
+        "min_amount_raw": "1",
+        "max_amount_raw": "340282366920938463463374607431768211455",
+        "decimal_places": 30,
+        "confirmation_blocks": 1
+      },
+      "rpc_methods": [
+        "account_balance",
+        "account_info",
+        "account_create",
+        "block_confirm",
+        "send_payment"
+      ]
+    },
+    "arweave": {
+      "network_type": "data storage",
+      "purpose": "Permanent, decentralized data storage",
+      "key_characteristics": ["Permanent", "Decentralized", "Pay once, store forever"],
+      "gateway_url": "https://arweave.net",
+      "wallet_specs": {
+        "key_type": "RSA-PSS",
+        "key_length_bits": 4096,
+        "wallet_format": "JSON"
+      },
+      "data_parameters": {
+        "max_block_size_bytes": 10485760,
+        "transaction_fee_algorithm": "Winston",
+        "default_tags": [
+          "App-Name: Sapphire-Exchange",
+          "Content-Type: application/json"
+        ]
+      },
+      "api_endpoints": [
+        "/tx",
+        "/tx_anchor",
+        "/price/{bytes}",
+        "/wallet/{address}/balance"
+      ]
+    }
+  },
+  "variable_types": {
+    "nano_address": {
+      "type": "string",
+      "format": "nano_[a-z0-9]{60}",
+      "description": "Nano account address starting with 'nano_', followed by 60 alphanumeric characters",
+      "example": "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3"
+    },
+    "arweave_tx_id": {
+      "type": "string",
+      "format": "[a-zA-Z0-9_-]{43}",
+      "description": "Base64URL-encoded Arweave transaction ID",
+      "example": "fE1qV7O3z2-9aXhB5vRtFw4Q8X1xY7ZzABCDEFGHIJKLM"
+    },
+    "seed_phrase": {
+      "type": "string",
+      "format": "space-separated words (12/15/18/21/24 words)",
+      "description": "BIP-39 mnemonic phrase for wallet recovery",
+      "example": "word1 word2 ... word24"
+    },
+    "winston_amount": {
+      "type": "string",
+      "format": "integer as string",
+      "description": "Amount in winston (1 AR = 10^12 winston)",
+      "example": "1000000000000"
+    },
+    "nano_raw_amount": {
+      "type": "string",
+      "format": "integer as string",
+      "description": "Amount in raw (1 NANO = 10^30 raw)",
+      "example": "1000000000000000000000000000000"
+    }
+  },
+  "variable_interactions": {
+    "wallet_initialization": {
+      "description": "Sequence of operations when initializing a wallet",
+      "steps": [
+        "1. Generate or load seed_phrase (string)",
+        "2. Derive private_key from seed_phrase using PBKDF2-HMAC-SHA256",
+        "3. Generate public_key from private_key using ed25519",
+        "4. Derive nano_address from public_key using blake2b hashing"
+      ],
+      "dependencies": ["seed_phrase", "private_key", "public_key", "nano_address"]
+    },
+    "transaction_flow": {
+      "description": "Sequence of operations for a typical transaction",
+      "steps": [
+        "1. User provides seed_phrase for authentication",
+        "2. System loads wallet and checks nano_balance",
+        "3. User creates item with metadata (stored on Arweave)",
+        "4. Buyer places bid (creates Nano transaction)",
+        "5. On auction end, funds are transferred to seller"
+      ],
+      "dependencies": ["seed_phrase", "nano_balance", "arweave_tx_id", "nano_address"]
+    }
+  },
+  "cryptographic_parameters": {
+    "hashing_algorithms": ["SHA-256", "blake2b"],
+    "signing_algorithms": ["ed25519", "RSA-PSS"],
+    "key_derivation_functions": ["PBKDF2-HMAC-SHA256"],
+    "encryption_methods": ["AES-256-GCM", "ChaCha20-Poly1305"]
+  },
+  "data_models": {
+    "User": {
+      "description": "User account information",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "username": {"type": "string", "minLength": 3, "maxLength": 32},
+        "public_key": {"type": "string", "format": "base58"},
+        "nano_address": {"$ref": "#/variable_types/nano_address"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "inventory": {
+          "type": "array",
+          "items": {"type": "string", "format": "uuid"},
+          "description": "List of owned item IDs"
+        },
+        "reputation_score": {"type": "number", "minimum": 0, "maximum": 100}
+      },
+      "required": ["id", "username", "public_key", "nano_address", "created_at"]
+    },
+    "Item": {
+      "description": "Auction item listing",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "seller_id": {"type": "string", "format": "uuid"},
+        "title": {"type": "string", "maxLength": 100},
+        "description": {"type": "string", "maxLength": 2000},
+        "starting_price_raw": {"$ref": "#/variable_types/nano_raw_amount"},
+        "current_bid_raw": {"$ref": "#/variable_types/nano_raw_amount"},
+        "auction_end": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "enum": ["draft", "active", "sold", "expired", "cancelled"]},
+        "arweave_metadata_uri": {"type": "string"},
+        "bids": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Bid"},
+          "description": "List of bids placed on this item"
+        }
+      },
+      "required": ["id", "seller_id", "title", "starting_price_raw", "auction_end", "status"]
+    },
+    "Bid": {
+      "description": "Bid on an auction item",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "item_id": {"type": "string", "format": "uuid"},
+        "bidder_id": {"type": "string", "format": "uuid"},
+        "amount_raw": {"$ref": "#/variable_types/nano_raw_amount"},
+        "transaction_hash": {"type": "string", "pattern": "^[0-9A-F]{64}$"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "enum": ["pending", "confirmed", "outbid", "won", "refunded"]}
+      },
+      "required": ["id", "item_id", "bidder_id", "amount_raw", "created_at", "status"]
+    }
+  },
+  "data_storage": {
+    "user": {
+      "storage": "Arweave",
+      "fields": {
+        "id": "string (UUID)",
+        "username": "string",
+        "public_key": "string (base58)",
+        "nano_address": "string",
+        "created_at": "ISO 8601 timestamp",
+        "reputation_score": "float"
+      },
+      "indexes": ["id", "username", "nano_address"]
+    },
+    "item": {
+      "storage": "Arweave",
+      "fields": {
+        "id": "string (UUID)",
+        "seller_id": "string (UUID)",
+        "title": "string",
+        "description": "string",
+        "starting_price_raw": "string (Nano raw units)",
+        "current_bid_raw": "string (Nano raw units)",
+        "auction_end": "ISO 8601 timestamp",
+        "status": "string (active/sold/expired)",
+        "arweave_metadata_uri": "string (Arweave transaction ID)"
+      },
+      "indexes": ["id", "seller_id", "status"]
+    },
+    "bid": {
+      "storage": "Arweave + Nano blockchain",
+      "fields": {
+        "id": "string (UUID)",
+        "item_id": "string (UUID)",
+        "bidder_id": "string (UUID)",
+        "amount_raw": "string (Nano raw units)",
+        "transaction_hash": "string (Nano block hash)",
+        "created_at": "ISO 8601 timestamp",
+        "status": "string (pending/confirmed/outbid/won/refunded)"
+      },
+      "indexes": ["id", "item_id", "bidder_id", "transaction_hash"]
+    }
+  },
+  "environment_variables": {
+    "required": [
+      "ARWEAVE_GATEWAY_URL",
+      "ARWEAVE_WALLET_FILE",
+      "NANO_NODE_URL",
+      "NANO_REPRESENTATIVE"
+    ],
+    "optional": [
+      "MOCK_ARWEAVE",
+      "MOCK_NANO",
+      "DEBUG_LEVEL",
+      "LOG_FILE"
+    ]
+  },
+  "api_interactions": {
+    "nano_node": {
+      "base_url": "http://[::1]:7076",
+      "endpoints": [
+        {
+          "name": "account_balance",
+          "method": "POST",
+          "path": "/",
+          "request_schema": {
+            "action": {"type": "string", "enum": ["account_balance"]},
+            "account": {"$ref": "#/variable_types/nano_address"}
+          },
+          "response_schema": {
+            "balance": {"$ref": "#/variable_types/nano_raw_amount"},
+            "pending": {"$ref": "#/variable_types/nano_raw_amount"}
+          }
+        }
+      ]
+    },
+    "arweave_gateway": {
+      "base_url": "https://arweave.net",
+      "endpoints": [
+        {
+          "name": "submit_transaction",
+          "method": "POST",
+          "path": "/tx",
+          "content_type": "application/octet-stream",
+          "request_schema": {
+            "type": "string",
+            "format": "binary",
+            "description": "Signed Arweave transaction"
+          },
+          "response_schema": {
+            "type": "object",
+            "properties": {
+              "id": {"$ref": "#/variable_types/arweave_tx_id"}
+            }
+          }
+        }
+      ]
+    }
+  },
+  "error_handling": {
+    "network_errors": {
+      "timeout_ms": 10000,
+      "max_retries": 3,
+      "backoff_factor": 2
+    },
+    "transaction_errors": {
+      "max_confirm_attempts": 10,
+      "confirmation_delay_ms": 3000
+    }
+  },
+  "performance_parameters": {
+    "cache_ttl_ms": 300000,
+    "batch_size": 50,
+    "max_concurrent_requests": 10,
+    "request_timeout_ms": 30000
+  },
+  "security_parameters": {
+    "password_hashing": {
+      "algorithm": "PBKDF2-HMAC-SHA256",
+      "iterations": 100000,
+      "salt_length_bytes": 32
+    },
+    "session": {
+      "timeout_minutes": 120,
+      "inactivity_timeout_minutes": 30
+    },
+    "rate_limiting": {
+      "requests_per_minute": 60,
+      "burst_capacity": 10
+    }
+  },
+  "ui_constants": {
+    "default_page_size": 20,
+    "max_title_length": 100,
+    "max_description_length": 2000,
+    "max_tags_per_item": 10,
+    "max_tag_length": 20
+  },
+  "version_info": {
+    "schema_version": "1.0.0",
+    "last_updated": "2025-08-04T00:31:27-04:00",
+    "compatibility": {
+      "min_nano_node_version": "V25.0",
+      "min_arweave_node_version": "2.6.0.0",
+      "python_version": ">=3.7.0"
+    }
+  },
+  "api_reference": {
+    "nano_rpc": {
+      "account_balance": {
+        "method": "POST",
+        "params": {
+          "action": "account_balance",
+          "account": "nano_..."
+        },
+        "response": {
+          "balance": "string (raw)",
+          "pending": "string (raw)"
+        }
+      },
+      "account_info": {
+        "method": "POST",
+        "params": {
+          "action": "account_info",
+          "account": "nano_...",
+          "representative": "boolean"
+        }
+      }
+    },
+    "arweave_api": {
+      "get_transaction": {
+        "method": "GET",
+        "endpoint": "/tx/{id}",
+        "response": "Transaction data"
+      },
+      "submit_transaction": {
+        "method": "POST",
+        "endpoint": "/tx",
+        "content_type": "application/octet-stream"
+      }
+    }
+  },
+  "type_conversion": {
+    "nano_to_raw": {
+      "description": "Convert Nano to raw units",
+      "formula": "raw = nano * 10^30",
+      "example": {
+        "input": 1.5,
+        "output": "1500000000000000000000000000000"
+      }
+    },
+    "raw_to_nano": {
+      "description": "Convert raw units to Nano",
+      "formula": "nano = raw / 10^30",
+      "example": {
+        "input": "1500000000000000000000000000000",
+        "output": 1.5
+      }
+    },
+    "ar_to_winston": {
+      "description": "Convert AR to winston",
+      "formula": "winston = ar * 10^12",
+      "example": {
+        "input": 1.5,
+        "output": "1500000000000"
+      }
+    },
+    "winston_to_ar": {
+      "description": "Convert winston to AR",
+      "formula": "ar = winston / 10^12",
+      "example": {
+        "input": "1500000000000",
+        "output": 1.5
+      }
+    }
+  },
+  "glossary": {
+    "raw": "The smallest unit of Nano (10^30 raw = 1 Nano)",
+    "winston": "The smallest unit of Arweave (1 AR = 10^12 winston)",
+    "frontier": "The latest block in an account's blockchain",
+    "representative": "A Nano account that votes on network consensus"
+  }
+}

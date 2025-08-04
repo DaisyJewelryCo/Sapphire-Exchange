@@ -784,7 +784,7 @@ class MainWindow(QMainWindow):
         # Seed phrase input
         seed_label = QLabel("Your Seed Phrase:")
         self.seed_input = QTextEdit()
-        self.seed_input.setPlaceholderText("Enter your 12 or 24 word seed phrase")
+        self.seed_input.setPlaceholderText("seed should be 15 to 25 character long")
         self.seed_input.setMaximumHeight(80)  # Increased from 60 to 80
         self.seed_input.setStyleSheet("""
             QTextEdit {
@@ -886,7 +886,7 @@ class MainWindow(QMainWindow):
     def handle_new_account(self):
         """Handle new account creation."""
         try:
-            # Generate a simple seed phrase
+            # Generate a nano-compliant BIP-39 seed phrase
             import secrets
             wordlist = [
                 'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse',
@@ -971,7 +971,7 @@ class MainWindow(QMainWindow):
             copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(seed_phrase))
             
             # Confirm button
-            confirm_btn = QPushButton("I've Saved My Phrase")
+            confirm_btn = QPushButton("I have saved this seed")
             confirm_btn.clicked.connect(dialog.accept)
             confirm_btn.setStyleSheet("background: #27ae60;")
             
@@ -1104,11 +1104,13 @@ class MainWindow(QMainWindow):
             return
             
         # Validate seed phrase format (basic check)
-        if len(seed_phrase.split()) not in [12, 15, 18, 21, 24]:
+        words = seed_phrase.split()
+        if len(words) not in [12, 15, 18, 21, 24]:
             QMessageBox.warning(
                 self, 
                 "Invalid Seed Phrase",
                 "Seed phrase must be 12, 15, 18, 21, or 24 words long.\n\n"
+                f"Current length: {len(words)} words\n\n"
                 "If you just created a new account, please use the seed phrase that was shown to you."
             )
             return
