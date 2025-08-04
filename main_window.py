@@ -51,18 +51,23 @@ class AsyncWorker(QThread):
             self.error.emit(str(e))
         finally:
             self._is_running = False
+            if self.loop:
+                self.loop.close()
     
     def stop(self):
+        self._is_running = False
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self.loop.stop)
-        self._is_running = False
-        self.quit()
-        self.wait()
-        if self.loop:
-            self.loop.close()
+        if self.isRunning():
+            self.quit()
+            self.wait()
     
     def __del__(self):
-        self.stop()
+        try:
+            self.stop()
+        except RuntimeError:
+            # Handle case where C/C++ object has already been deleted
+            pass
 
 class ItemWidget(QWidget):
     """Widget for displaying an item in the marketplace."""
@@ -86,7 +91,7 @@ class ItemWidget(QWidget):
         self.name_label = QLabel(self.item_data.get('name', 'Unnamed Item'))
         self.name_label.setFont(QFont('Arial', 12, QFont.Bold))
         
-        self.price_label = QLabel(f"Price: {self.item_data.get('starting_price', 0)} NANO")
+        self.price_label = QLabel(f"Price: {self.item_data.get('starting_price', 0)} DOGE")
         self.seller_label = QLabel(f"Seller: {self.item_data.get('owner', 'Unknown')}")
         
         # Bid button
@@ -128,11 +133,11 @@ class BidDialog(QDialog):
         form_layout = QFormLayout()
         
         # Current price
-        self.current_price_label = QLabel(f"<b>Current Price:</b> {current_bid:.6f} NANO")
+        self.current_price_label = QLabel(f"<b>Current Price:</b> {current_bid:.6f} DOGE")
         form_layout.addRow(self.current_price_label)
         
         # Minimum bid
-        self.min_bid_label = QLabel(f"<b>Minimum Bid:</b> {min_bid:.6f} NANO")
+        self.min_bid_label = QLabel(f"<b>Minimum Bid:</b> {min_bid:.6f} DOGE")
         form_layout.addRow(self.min_bid_label)
         
         # Bid amount input
@@ -140,7 +145,7 @@ class BidDialog(QDialog):
         self.bid_input.setPlaceholderText(f"Minimum: {min_bid:.6f}")
         self.bid_input.setValidator(QDoubleValidator(min_bid, 1_000_000, 6))
         self.bid_input.textChanged.connect(self.validate_bid)
-        form_layout.addRow("Your Bid (NANO):", self.bid_input)
+        form_layout.addRow("Your Bid (DOGE):", self.bid_input)
         
         # Bid history group
         history_group = QGroupBox("Bid History")
@@ -217,7 +222,7 @@ class BidDialog(QDialog):
                 except (ValueError, AttributeError):
                     pass
             
-            history_text.append(f"{timestamp} - {amount:.6f} NANO by {bidder}")
+            history_text.append(f"{timestamp} - {amount:.6f} DOGE by {bidder}")
         
         self.history_browser.setPlainText("\n".join(history_text))
     
@@ -260,7 +265,7 @@ class BidDialog(QDialog):
             if self.bid_amount >= self.min_bid:
                 super().accept()
             else:
-                QMessageBox.warning(self, "Invalid Bid", f"Bid must be at least {self.min_bid:.6f} NANO")
+                QMessageBox.warning(self, "Invalid Bid", f"Bid must be at least {self.min_bid:.6f} DOGE")
         except ValueError:
             QMessageBox.warning(self, "Invalid Input", "Please enter a valid bid amount.")
 
@@ -291,6 +296,44 @@ class MainWindow(QMainWindow):
         
         # Initial connection check
         QTimer.singleShot(1000, self.check_connections)
+        
+        # Start real-time event simulation for demo purposes
+        self.start_event_simulation()
+        
+        # Add initial welcome message with data quality indicator after UI is fully initialized
+        QTimer.singleShot(100, lambda: self.add_message("Sapphire Exchange initialized", "info", "verified"))
+    
+    def start_event_simulation(self):
+        """Start simulating real-time events for demonstration of data quality indicators."""
+        self.event_timer = QTimer()
+        self.event_timer.timeout.connect(self.simulate_event)
+        self.event_timer.start(15000)  # Simulate an event every 15 seconds
+        self.event_counter = 0
+    
+    def simulate_event(self):
+        """Simulate various types of events with different data quality indicators."""
+        import random
+        
+        events = [
+            ("New bid received on Item #1234", "info", "pending"),
+            ("Arweave transaction confirmed", "success", "verified"),
+            ("DOGE wallet balance updated", "info", "verified"),
+            ("Bid verification in progress", "warning", "pending"),
+            ("RSA signature validation failed", "error", "failed"),
+            ("Nano block confirmation received", "success", "verified"),
+            ("Auction #5678 ended", "info", "verified"),
+            ("New item listed: Vintage Watch", "info", "pending"),
+            ("Payment processing timeout", "warning", "failed"),
+            ("Metadata integrity check passed", "success", "verified")
+        ]
+        
+        if self.event_counter < len(events):
+            message, level, quality = events[self.event_counter]
+            self.add_message(message, level, quality)
+            self.event_counter += 1
+        else:
+            # Stop simulation after all demo events
+            self.event_timer.stop()
     
     def _show_seed_message_box(self):
         """Show the seed message box on the main thread with copy functionality."""
@@ -360,6 +403,10 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
+        # Initialize message history
+        self.message_history = []
+        self.max_messages = 100  # Maximum number of messages to keep in history
+        
         # Content area with sidebar and main content
         content_widget = QWidget()
         content_layout = QHBoxLayout(content_widget)
@@ -413,12 +460,12 @@ class MainWindow(QMainWindow):
         self.main_status_indicator = QLabel("●")
         self.main_status_indicator.setObjectName("main_status_indicator")
         self.main_status_indicator.setToolTip("Click to expand error diagnostics")
+        self.main_status_indicator.setCursor(Qt.PointingHandCursor)
         self.main_status_indicator.setStyleSheet("""
             QLabel#main_status_indicator {
                 font-size: 16px;
                 color: #666;
                 padding: 0 5px;
-                cursor: pointer;
             }
         """)
         self.main_status_indicator.mousePressEvent = self.toggle_connection_details
@@ -468,8 +515,8 @@ class MainWindow(QMainWindow):
         self.update_connection_status('nano', False)
         self.update_connection_status('doge', False)
         
-        # Message log toggle button
-        self.toggle_log_btn = QPushButton("▲ Log")
+        # Message log toggle button - Enhanced for real-time activity feed
+        self.toggle_log_btn = QPushButton("▲ Activity Feed")
         self.toggle_log_btn.setFixedHeight(20)
         self.toggle_log_btn.setStyleSheet("""
             QPushButton {
@@ -504,11 +551,11 @@ class MainWindow(QMainWindow):
         """)
         self.message_log.hide()
         
-        # Add to main layout
+        # Add to main layout - only once
         main_layout.addWidget(self.status_bar)
         main_layout.addWidget(self.message_log)
         
-        # Initialize pages
+        # Initialize pages - only once
         self.create_login_page()
         self.create_marketplace_page()
         self.create_item_creation_page()
@@ -517,7 +564,7 @@ class MainWindow(QMainWindow):
         # Show login page by default
         self.stacked_widget.setCurrentIndex(0)
         
-        # Apply styles
+        # Apply styles - using the white background theme
         self.setStyleSheet("""
             QMainWindow {
                 background-color: white;
@@ -532,61 +579,6 @@ class MainWindow(QMainWindow):
             }
             QPushButton:hover {
                 background-color: #1f5f8b;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
-        
-        # Connect the toggle log button
-        self.toggle_log_btn.clicked.connect(self.toggle_message_log)
-        status_layout.addWidget(self.toggle_log_btn)
-        
-        # Message log (initially hidden)
-        self.message_log = QTextEdit()
-        self.message_log.setReadOnly(True)
-        self.message_log.setMaximumHeight(150)
-        self.message_log.setStyleSheet("""
-            QTextEdit {
-                background-color: #f9f9f9;
-                border: none;
-                border-top: 1px solid #eee;
-                padding: 8px;
-                font-family: 'Monospace';
-                font-size: 11px;
-                color: #333;
-            }
-        """)
-        self.message_log.hide()
-        
-        # Add to main layout
-        main_layout.addWidget(self.status_bar)
-        main_layout.addWidget(self.message_log)
-        
-        # Initialize pages
-        self.create_login_page()
-        self.create_marketplace_page()
-        self.create_item_creation_page()
-        self.create_my_items_page()
-        
-        # Show login page by default
-        self.stacked_widget.setCurrentIndex(0)
-        
-        # Apply styles
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f5f7fa;
-            }
-            QPushButton {
-                background-color: #4a6ee0;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #3a5ed0;
             }
             QPushButton:disabled {
                 background-color: #cccccc;
@@ -774,7 +766,7 @@ class MainWindow(QMainWindow):
                 )
         except Exception as e:
             self.status_text.setText(f"Error checking connections")
-            self.add_message(f"Connection check error: {str(e)}", "error")
+            self.add_message(f"Connection check error: {str(e)}", "error", "failed")
             print(f"Error in check_connections: {e}")
             self.connection_status = False
         
@@ -794,26 +786,32 @@ class MainWindow(QMainWindow):
             level (str): Message level ('info', 'warning', 'error', 'success')
             data_quality (str): Data quality status ('verified', 'pending', 'failed', 'unknown')
         """
-        # Add timestamp
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.message_history.append((timestamp, message, level, data_quality))
-        
-        # Keep only the last max_messages
-        if len(self.message_history) > self.max_messages:
-            self.message_history.pop(0)
+        try:
+            # Add timestamp
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            self.message_history.append((timestamp, message, level, data_quality))
             
-        # Update the log display
-        self.update_message_log()
-        
-        # Auto-scroll to bottom
-        self.message_log.verticalScrollBar().setValue(
-            self.message_log.verticalScrollBar().maximum()
-        )
-        
-        # If error level, also show in status bar for a few seconds
-        if level == "error":
-            self.status_text.setText(f"Error: {message}")
-            QTimer.singleShot(5000, lambda: self.status_text.setText(""))
+            # Keep only the last max_messages
+            if len(self.message_history) > self.max_messages:
+                self.message_history.pop(0)
+                
+            # Update the log display if it exists
+            if hasattr(self, 'message_log') and self.message_log is not None:
+                self.update_message_log()
+            
+            # Also update status bar for errors if it exists
+            if hasattr(self, 'status_text') and self.status_text is not None:
+                if level == "error":
+                    error_msg = f"Error: {message[:50]}..." if len(message) > 50 else f"Error: {message}"
+                    self.status_text.setText(error_msg)
+                    # Clear the error message after 5 seconds
+                    QTimer.singleShot(5000, lambda: self.status_text.setText(""))
+                    
+            # Print to console for debugging
+            print(f"[{timestamp}] [{level.upper()}] {message}")
+            
+        except Exception as e:
+            print(f"Error in add_message: {str(e)}")
     
     def update_message_log(self):
         """Update the message log with all messages and data quality indicators."""
@@ -865,34 +863,42 @@ class MainWindow(QMainWindow):
             
         # Count connected services
         connected = 0
+        total_services = len(self.connection_indicators)
+        
         for service in self.connection_indicators.values():
             dot = service.findChild(QLabel, service.objectName().replace('_widget', '_dot'))
             if dot and "color: #2ecc71" in dot.styleSheet():
                 connected += 1
         
-        # Set color based on connection state
-        if connected == 0:
-            color = "#e74c3c"  # Red if none connected
-        elif connected < 3:
-            color = "#f39c12"  # Orange if some connected
+        # Set color and tooltip based on connection state (as per JSON spec)
+        if connected == total_services:
+            color = "#2ecc71"  # Green - All connections healthy
+            status_text = "All connections healthy"
+        elif connected > 0:
+            color = "#f39c12"  # Orange - Partial connection issues
+            status_text = "Partial connection issues"
         else:
-            color = "#2ecc71"  # Green if all connected
+            color = "#e74c3c"  # Red - One or more services offline or malfunctioning
+            status_text = "One or more services offline or malfunctioning"
             
-        # Update main indicator
+        # Update main indicator with enhanced tooltip
         self.main_status_indicator.setStyleSheet(f"""
             QLabel#main_status_indicator {{
                 font-size: 16px;
                 color: {color};
-                padding: 0 5px;
-                cursor: pointer;
             }}
         """)
+        self.main_status_indicator.setCursor(Qt.PointingHandCursor)
+        
+        # Update tooltip to reflect current status
+        tooltip = f"Click to expand error diagnostics\n\nStatus: {status_text}\nConnected: {connected}/{total_services} services"
+        self.main_status_indicator.setToolTip(tooltip)
     
     def toggle_message_log(self):
         """Toggle the visibility of the message log."""
         is_visible = self.message_log.isVisible()
         self.message_log.setVisible(not is_visible)
-        self.toggle_log_btn.setText("▼ Log" if is_visible else "▲ Log")
+        self.toggle_log_btn.setText("▼ Activity Feed" if is_visible else "▲ Activity Feed")
         
         # Resize window to fit content
         self.adjustSize()
@@ -917,7 +923,6 @@ class MainWindow(QMainWindow):
                 font-size: 14px;
                 color: #ecf0f1;
                 background: transparent;
-                min-height: 40px;
             }
             QPushButton:hover {
                 background-color: #34495e;
@@ -1356,10 +1361,6 @@ class MainWindow(QMainWindow):
             if not success:
                 QTimer.singleShot(100, lambda: self._set_seed_phrase(seed_phrase))
             
-            # Force the input field to update and repaint
-            self.seed_input.update()
-            self.seed_input.repaint()
-            
             # Enable login and set flags
             self.login_btn.setEnabled(True)
             self.is_new_user = True
@@ -1479,56 +1480,12 @@ class MainWindow(QMainWindow):
         
         # Show status message
         status_msg = "Creating your account..." if self.is_new_user else "Logging in..."
-        self.statusBar().showMessage(status_msg)
         
-        # Force UI update before starting the login process
-        QApplication.processEvents()
-        
-        def on_login_complete(user_data):
-            """Handle successful login."""
-            try:
-                self.statusBar().clearMessage()
-                self.login_btn.setEnabled(True)
-                self.login_btn.setText("Continue")
-                
-                if user_data and hasattr(user_data, 'username'):
-                    self.current_user = user_data
-                    username = getattr(user_data, 'username', 'User')
-                    
-                    # Update UI for logged-in state
-                    if hasattr(self, 'user_info'):
-                        self.user_info.setText(f"Logged in as: {username}")
-                        self.user_info.setVisible(True)
-                    
-                    # Show all navigation buttons after successful login
-                    for btn_name in self.nav_buttons.keys():
-                        if hasattr(self, btn_name):
-                            getattr(self, btn_name).setVisible(True)
-                            
-                    # Also show other UI elements that should be visible after login
-                    for btn_name in ['create_item_btn', 'my_items_btn', 'logout_btn']:
-                        if hasattr(self, btn_name):
-                            getattr(self, btn_name).setVisible(True)
-                    
-                    # Update connection status
-                    if hasattr(self, 'client') and self.client:
-                        self.client._is_connected = True
-                    
-                    # Navigate to marketplace
-                    self.show_page(1)
-                    
-                    # Show success message
-                    self.add_message(f"Successfully logged in as {username}", "success", "verified")
-                    
-                else:
-                    QMessageBox.warning(self, "Login Failed", "Invalid user data received.")
-                    self.add_message("Login failed: Invalid user data", "error", "failed")
-                    
-            except Exception as e:
-                error_msg = f"Error during login: {str(e)}"
-                print(error_msg)
-                QMessageBox.critical(self, "Login Error", error_msg)
-                self.add_message(error_msg, "error", "failed")
+        # Create a worker for the login process
+        worker = AsyncWorker(self.login_async(seed_phrase, None))
+        worker.finished.connect(lambda result: self.on_login_complete(result))
+        worker.error.connect(lambda error: self.on_error(error))
+        worker.start()
         
         def on_error(error_msg):
             """Handle login errors."""
@@ -1568,8 +1525,8 @@ class MainWindow(QMainWindow):
                     raise
             
             self.worker = AsyncWorker(login_wrapper())
-            self.worker.finished.connect(on_login_complete)
-            self.worker.error.connect(on_error)
+            self.worker.finished.connect(self.on_login_complete)
+            self.worker.error.connect(self.on_error)
             self.worker.start()
             
         except Exception as e:
@@ -1577,25 +1534,44 @@ class MainWindow(QMainWindow):
             print(error_msg)
             on_error(error_msg)
     
+    def on_login_complete(self, user):
+        """Handle completion of the login process."""
+        try:
+            self.current_user = user
+            self.login_btn.setEnabled(True)
+            self.login_btn.setText("Continue")
+            
+            # Show user info
+            if hasattr(self, 'user_info_widget'):
+                self.user_info_widget.setVisible(True)
+            
+            # Show navigation buttons that require auth
+            # Get the sidebar layout from the sidebar widget
+            sidebar_layout = self.sidebar.layout()
+            if sidebar_layout:
+                for i in range(1, sidebar_layout.count() - 1):  # -1 to exclude logout button
+                    item = sidebar_layout.itemAt(i)
+                    if item and item.widget():
+                        btn = item.widget()
+                        if btn.property("requires_auth"):
+                            btn.setVisible(True)
+            
+            # Make logout button visible
+            if hasattr(self, 'logout_btn'):
+                self.logout_btn.setVisible(True)
+            
+            # Switch to marketplace
+            self.show_page(1)
+            
+            self.add_message("Login successful", "success", "verified")
+        except Exception as e:
+            QMessageBox.critical(self, "Login Error", f"Failed to complete login: {str(e)}")
+    
     def create_marketplace_page(self):
         """Create the marketplace page."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        # Add to stacked widget
-        self.stacked_widget.addWidget(page)
-        
-        # Search bar
-        search_layout = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search items...")
-        search_btn = QPushButton("Search")
-        search_btn.clicked.connect(self.search_items)
-        
-        search_layout.addWidget(self.search_input)
-        search_layout.addWidget(search_btn)
         
         # Items grid
         self.items_grid = QListWidget()
@@ -1604,41 +1580,47 @@ class MainWindow(QMainWindow):
         self.items_grid.setResizeMode(QListWidget.Adjust)
         self.items_grid.setSpacing(20)
         
-        # Add widgets to layout
-        layout.addLayout(search_layout)
+        # Add items grid to layout
         layout.addWidget(self.items_grid)
         
-        # Don't load items here - they'll be loaded when the page is shown
-        # via the show_page method
+        # Add to stacked widget
+        self.stacked_widget.addWidget(page)
+        
         print("  Marketplace page created")
         return page
     
     def create_item_creation_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 20, 20, 20)
         
         title = QLabel("Create New Item")
         title.setFont(QFont('Arial', 16, QFont.Bold))
         
         # Form layout
-        form_layout = QVBoxLayout()
+        form_layout = QFormLayout()
+        form_layout.setSpacing(15)
         
         # Item name
         self.item_name = QLineEdit()
         self.item_name.setPlaceholderText("Item Name")
+        form_layout.addRow("Item Name:", self.item_name)
         
         # Item description
         self.item_description = QTextEdit()
         self.item_description.setPlaceholderText("Item Description")
         self.item_description.setMaximumHeight(100)
+        form_layout.addRow("Description:", self.item_description)
         
         # Starting price
         self.starting_price = QLineEdit()
         self.starting_price.setPlaceholderText("Starting Price (NANO)")
+        form_layout.addRow("Starting Price (NANO):", self.starting_price)
         
         # Duration (in hours)
         self.duration = QLineEdit("24")
         self.duration.setPlaceholderText("Auction Duration (hours)")
+        form_layout.addRow("Auction Duration (hours):", self.duration)
         
         # Image upload
         self.image_path = QLineEdit()
@@ -1651,28 +1633,19 @@ class MainWindow(QMainWindow):
         image_layout = QHBoxLayout()
         image_layout.addWidget(self.image_path)
         image_layout.addWidget(browse_btn)
+        form_layout.addRow("Image:", image_layout)
+        
+        # Add form to layout
+        layout.addWidget(title)
+        layout.addLayout(form_layout)
         
         # Create button
         create_btn = QPushButton("Create Item")
         create_btn.clicked.connect(self.create_item)
+        layout.addWidget(create_btn, alignment=Qt.AlignRight)
         
-        # Add widgets to form
-        form_layout.addWidget(QLabel("Item Name:"))
-        form_layout.addWidget(self.item_name)
-        form_layout.addWidget(QLabel("Description:"))
-        form_layout.addWidget(self.item_description)
-        form_layout.addWidget(QLabel("Starting Price (NANO):"))
-        form_layout.addWidget(self.starting_price)
-        form_layout.addWidget(QLabel("Auction Duration (hours):"))
-        form_layout.addWidget(self.duration)
-        form_layout.addWidget(QLabel("Item Image:"))
-        form_layout.addLayout(image_layout)
-        form_layout.addWidget(create_btn)
-        
-        # Add title and form to main layout
-        layout.addWidget(title)
-        layout.addLayout(form_layout)
-        layout.addStretch()
+        # Add to stacked widget
+        self.stacked_widget.addWidget(page)
         
         return page
     
@@ -1755,54 +1728,148 @@ class MainWindow(QMainWindow):
             elif page_index == 3:  # My Items
                 if hasattr(self, 'my_items_list'):
                     self.load_my_items()
-            
-    def update_sidebar_for_user(self, user_data=None):
-        """Update the sidebar based on user authentication status.
+                    
+        # Update button states based on login status
+        user_logged_in = hasattr(self, 'current_user') and self.current_user is not None
         
-        Args:
-            user_data (dict, optional): User data containing name, wallet balances, etc.
-        """
-        if user_data:
-            # User is logged in
-            self.user_info_widget.setVisible(True)
-            self.logout_btn.setVisible(True)
+        # Update sidebar buttons based on login status
+        sidebar_layout = self.sidebar.layout()
+        if sidebar_layout:
+            for i in range(1, sidebar_layout.count() - 1):  # -1 to exclude logout button
+                item = sidebar_layout.itemAt(i)
+                if item and item.widget():
+                    btn = item.widget()
+                    if hasattr(btn, 'requires_auth') and btn.requires_auth:
+                        btn.setVisible(user_logged_in)
+        
+        # Update user info and logout button visibility
+        if hasattr(self, 'user_info_widget'):
+            self.user_info_widget.setVisible(user_logged_in)
             
-            # Update user info
-            name = user_data.get('name', 'User')
-            self.user_name.setText(name)
+        if hasattr(self, 'logout_btn'):
+            self.logout_btn.setVisible(user_logged_in)
+
+        # Update navigation buttons for guest users
+        for btn_name, btn_data in self.nav_buttons.items():
+            btn = getattr(self, btn_name)
+            btn.setVisible(not btn.property("requires_auth"))  # Only show non-auth buttons
+    
+    def logout(self):
+        """Handle user logout."""
+        self.current_user = None
+        self.client = None
+        
+        # Hide user info
+        if hasattr(self, 'user_info'):
+            self.user_info.setVisible(False)
+        
+        # Reset navigation buttons - only show Marketplace
+        if hasattr(self, 'nav_buttons'):
+            for btn_name, (_, _, _) in self.nav_buttons.items():
+                if hasattr(self, btn_name):
+                    getattr(self, btn_name).setVisible(False)  # Hide all buttons first
+            # Show only marketplace button
+            if hasattr(self, 'marketplace_btn'):
+                self.marketplace_btn.setVisible(True)
+        
+        # Hide other UI elements
+        for btn_name in ['create_item_btn', 'my_items_btn', 'logout_btn']:
+            if hasattr(self, btn_name):
+                getattr(self, btn_name).setVisible(False)
+        
+        # Clear any sensitive data
+        if hasattr(self, 'seed_input'):
+            self.seed_input.clear()
+        
+        # Show login page and add logout message
+        self.show_page(0)  # Assuming page 0 is the login page
+        self.add_message("Successfully logged out", "info", "verified")
+
+    def create_item(self):
+        # Get form data
+        name = self.item_name.text().strip()
+        description = self.item_description.toPlainText().strip()
+        price_text = self.starting_price.text().strip()
+        duration_text = self.duration.text().strip()
+        
+        # Validate inputs
+        if not name:
+            QMessageBox.warning(self, "Error", "Item name is required")
+            return
             
-            # Set avatar with first letter of name
-            if name and len(name) > 0:
-                self.user_avatar.setText(name[0].upper())
+        try:
+            price = float(price_text)
+            if price <= 0:
+                raise ValueError("Price must be positive")
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Invalid price")
+            return
             
-            # Update wallet balances
-            nano_balance = user_data.get('nano_balance', 0)
-            doge_balance = user_data.get('doge_balance', 0)
-            self.wallet_balance.setText(f"NANO: {nano_balance:.2f}  |  DOGE: {doge_balance:.2f}")
+        try:
+            duration = float(duration_text)
+            if duration <= 0:
+                raise ValueError("Duration must be positive")
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Invalid duration")
+            return
+        
+        # Create a simple loading overlay
+        loading_widget = QWidget(self)
+        loading_widget.setGeometry(self.rect())
+        loading_widget.setStyleSheet("background-color: rgba(0, 0, 0, 128);")
+        
+        loading_layout = QVBoxLayout(loading_widget)
+        loading_label = QLabel("Creating your item...")
+        loading_label.setStyleSheet("color: white; font-size: 16px;")
+        loading_label.setAlignment(Qt.AlignCenter)
+        
+        loading_layout.addWidget(loading_label, 0, Qt.AlignCenter)
+        loading_widget.show()
+        
+        # Make sure the loading widget is on top
+        loading_widget.raise_()
+        
+        def on_item_created(result):
+            loading_widget.deleteLater()  # Clean up the loading widget
             
-            # Update bid credits
-            bid_credits = user_data.get('bid_credits', 0)
-            self.bid_credits.setText(f"Bid Credits: {bid_credits}")
-            
-            # Show all navigation buttons for authenticated users
-            for btn_name, btn_data in self.nav_buttons.items():
-                btn = getattr(self, btn_name)
-                btn.setVisible(True)
-        else:
-            # User is not logged in
-            self.user_info_widget.setVisible(False)
-            self.logout_btn.setVisible(False)
-            
-            # Reset user info
-            self.user_name.setText("Guest User")
-            self.user_avatar.setText("")
-            self.wallet_balance.setText("NANO: 0.00  |  DOGE: 0.00")
-            self.bid_credits.setText("Bid Credits: 0")
-            
-            # Update navigation buttons for guest users
-            for btn_name, btn_data in self.nav_buttons.items():
-                btn = getattr(self, btn_name)
-                btn.setVisible(not btn.property("requires_auth"))  # Only show non-auth buttons
+            if result:
+                item, tx_id = result
+                QMessageBox.information(
+                    self,
+                    "Item Created",
+                    f"Item created successfully!\n\n"
+                    f"Transaction ID: {tx_id}\n"
+                    f"Nano Address: {item.metadata.get('nano_address', 'N/A')}"
+                )
+                # Clear form
+                self.item_name.clear()
+                self.item_description.clear()
+                self.starting_price.clear()
+                self.duration.setText("24")
+                self.image_path.clear()
+                
+                # Switch to marketplace
+                self.show_page(1)
+            else:
+                QMessageBox.critical(self, "Error", "Failed to create item")
+        
+        def on_error(error_msg):
+            loading_widget.deleteLater()  # Clean up the loading widget
+            QMessageBox.critical(self, "Error", f"Failed to create item: {error_msg}")
+        
+        # Start item creation in a worker thread
+        self.worker = AsyncWorker(
+            self.create_item_async(
+                name=name,
+                description=description,
+                starting_price=price,
+                duration_hours=duration,
+                image_path=self.image_path.text()
+            )
+        )
+        self.worker.finished.connect(on_item_created)
+        self.worker.error.connect(on_error)
+        self.worker.start()
     
     async def login_async(self, seed_phrase, user_data=None):
         """
@@ -1811,18 +1878,20 @@ class MainWindow(QMainWindow):
         Args:
             seed_phrase: The seed phrase for login
             user_data: Not used in simplified flow (kept for compatibility)
-            
+        
         Returns:
             User: The authenticated user object
-            
+        
         Raises:
             ValueError: If login or account creation fails
         """
         try:
             import random
             import asyncio
-            from datetime import datetime
+            import time
             from models import User
+            from decentralized_client import EnhancedDecentralizedClient
+            from nano_utils_fixed import NanoWallet
             
             # Simulate network delay (0.5-1.5 seconds)
             await asyncio.sleep(0.5 + random.random())
@@ -1835,8 +1904,9 @@ class MainWindow(QMainWindow):
             if len(words) not in [12, 15, 18, 21, 24]:
                 raise ValueError(f"Invalid seed phrase length: {len(words)} words. Must be 12, 15, 18, 21, or 24 words.")
             
-            # Initialize client and establish connection
-            self.client = EnhancedDecentralizedClient(mock_mode=True)
+            # Initialize client if needed
+            if not hasattr(self, 'client') or self.client is None:
+                self.client = EnhancedDecentralizedClient()
             
             # Connect to the network services
             connection_status = await self.client.connect()
@@ -1853,7 +1923,7 @@ class MainWindow(QMainWindow):
                 raise ValueError(error_msg.strip())
             
             # For new users (coming from handle_new_account)
-            if self.is_new_user:
+            if getattr(self, 'is_new_user', False):
                 print("Creating new account with provided seed phrase...")
                 try:
                     # Generate a default username
@@ -1875,114 +1945,86 @@ class MainWindow(QMainWindow):
                     error_msg = f"Error creating account: {str(e)}"
                     print(error_msg)
                     raise ValueError(error_msg) from e
-                    
+
             # For existing users
-            else:
-                print("Logging in with existing seed phrase...")
-                try:
-                    # First, try to create a wallet from the seed phrase
-                    self.client.user_wallet = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: NanoWallet.from_seed(seed_phrase, mock_mode=True)
-                    )
-                    
-                    if not self.client.user_wallet or not hasattr(self.client.user_wallet, 'public_key'):
-                        raise ValueError("Invalid seed phrase: Could not derive wallet")
-                    
-                    # Convert public key to hex for lookup
-                    public_key_hex = self.client.user_wallet.public_key.to_ascii(encoding='hex').decode('utf-8')
-                    
-                    # Try to load user data
-                    user = await self.client._load_user_data()
-                    
-                    if not user:
-                        # If no user data found, check if this is a valid Nano wallet
-                        if not hasattr(self.client.user_wallet, 'address'):
-                            raise ValueError("Invalid seed phrase: Not a valid wallet")
-                            
-                        # For mock mode, we'll create a new user if one doesn't exist
-                        print("No existing user found, creating new user...")
-                        username = f"user_{int(time.time()) % 10000}"
-                        user = await self.client.initialize_user(
-                            seed_phrase=seed_phrase,
-                            username=username
-                        )
-                    
-                    if not user:
-                        raise ValueError("Failed to load or create user")
+            print("Logging in with existing seed phrase...")
+            try:
+                # First, try to create a wallet from the seed phrase
+                self.client.user_wallet = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: NanoWallet.from_seed(seed_phrase, mock_mode=True)
+                )
+
+                if not self.client.user_wallet or not hasattr(self.client.user_wallet, 'public_key'):
+                    raise ValueError("Invalid seed phrase: Could not derive wallet")
+                
+                # Convert public key to hex for lookup
+                public_key_hex = self.client.user_wallet.public_key.to_ascii(encoding='hex').decode('utf-8')
+                
+                # Try to load user data
+                user = await self.client._load_user_data()
+                
+                if not user:
+                    # If no user data found, check if this is a valid Nano wallet
+                    if not hasattr(self.client.user_wallet, 'address'):
+                        raise ValueError("Invalid seed phrase: Not a valid wallet")
                         
-                    print(f"Successfully logged in as {getattr(user, 'username', 'unknown')}")
-                    return user
+                    # For mock mode, we'll create a new user if one doesn't exist
+                    print("No existing user found, creating new user...")
+                    username = f"user_{int(time.time()) % 10000}"
+                    user = await self.client.initialize_user(
+                        seed_phrase=seed_phrase,
+                        username=username
+                    )
+            
+                if not user:
+                    raise ValueError("Failed to load or create user")
                     
-                except Exception as e:
-                    error_msg = f"Login failed: {str(e)}"
-                    print(error_msg)
-                    raise ValueError(error_msg) from e
-                    
+                print(f"Successfully logged in as {getattr(user, 'username', 'unknown')}")
+                return user
+                
+            except Exception as e:
+                error_msg = f"Login failed: {str(e)}"
+                print(error_msg)
+                raise ValueError(error_msg) from e
+            
         except Exception as e:
             error_msg = f"Login error: {str(e)}"
             print(error_msg)
             raise ValueError(error_msg) from e
     
-    def load_marketplace_items(self):
-        # Clear existing items
-        self.items_grid.clear()
-        
-        # Show loading indicator
-        loading_item = QListWidgetItem("Loading items...")
-        self.items_grid.addItem(loading_item)
-        
-        # Load items in background
-        def on_items_loaded(items):
-            self.items_grid.clear()
+    def on_login_complete(self, user):
+        """Handle successful login completion."""
+        try:
+            print("Login completed successfully")
+            self.current_user = user
             
-            if not items:
-                self.items_grid.addItem(QListWidgetItem("No items found"))
-                return
-                
-            for item_data in items:
-                item_widget = ItemWidget(item_data)
-                # Connect the bid_clicked signal to the main window's on_bid_clicked method
-                item_widget.bid_clicked.connect(self.on_bid_clicked)
-                list_item = QListWidgetItem()
-                list_item.setSizeHint(QSize(220, 320))
-                self.items_grid.addItem(list_item)
-                self.items_grid.setItemWidget(list_item, item_widget)
-        
-        def on_error(error_msg):
-            self.items_grid.clear()
-            self.items_grid.addItem(QListWidgetItem(f"Error loading items: {error_msg}"))
-        
-        # Start loading items in a worker thread
-        self.worker = AsyncWorker(self.load_items_async())
-        self.worker.finished.connect(on_items_loaded)
-        self.worker.error.connect(on_error)
-        self.worker.start()
+            # Update UI
+            self.login_btn.setEnabled(True)
+            self.login_btn.setText("Continue")
             
-        # Show loading indicator
-        self.my_items_list.addItem("Loading your items...")
-        
-        # Load items in background
-        def on_items_loaded(items):
-            self.my_items_list.clear()
+            # Show user info
+            if hasattr(self, 'user_info'):
+                self.user_info.setVisible(True)
             
-            if not items:
-                self.my_items_list.addItem("You don't have any items yet")
-                return
-                
-            for item_data in items:
-                item = QListWidgetItem(item_data.get('name', 'Unnamed Item'))
-                self.my_items_list.addItem(item)
-        
-        def on_error(error_msg):
-            self.my_items_list.clear()
-            self.my_items_list.addItem(f"Error loading items: {error_msg}")
-        
-        # Start loading items in a worker thread
-        self.worker = AsyncWorker(self.load_user_items_async())
-        self.worker.finished.connect(on_items_loaded)
-        self.worker.error.connect(on_error)
-        self.worker.start()
+            # Show navigation buttons that require auth
+            for i in range(1, self.sidebar_layout.count() - 1):  # -1 to exclude logout button
+                item = self.sidebar_layout.itemAt(i)
+                if item and item.widget():
+                    btn = item.widget()
+                    if hasattr(btn, 'requires_auth') and btn.requires_auth:
+                        btn.setVisible(True)
+            
+            # Switch to marketplace
+            self.show_page(1)
+            
+            self.add_message("Login successful", "success", "verified")
+            
+        except Exception as e:
+            self.login_btn.setEnabled(True)
+            self.login_btn.setText("Continue")
+            QMessageBox.critical(self, "Login Error", f"Failed to complete login: {str(e)}")
+            print(f"Login completion error: {e}")
     
     async def load_items_async(self):
         """Load all items from the mock database."""
@@ -2076,92 +2118,6 @@ class MainWindow(QMainWindow):
         all_items = await self.load_items_async()
         return [item for item in all_items if item.get('owner') == self.current_user.public_key]
     
-    def create_item(self):
-        # Get form data
-        name = self.item_name.text().strip()
-        description = self.item_description.toPlainText().strip()
-        price_text = self.starting_price.text().strip()
-        duration_text = self.duration.text().strip()
-        
-        # Validate inputs
-        if not name:
-            QMessageBox.warning(self, "Error", "Item name is required")
-            return
-            
-        try:
-            price = float(price_text)
-            if price <= 0:
-                raise ValueError("Price must be positive")
-        except ValueError:
-            QMessageBox.warning(self, "Error", "Invalid price")
-            return
-            
-        try:
-            duration = float(duration_text)
-            if duration <= 0:
-                raise ValueError("Duration must be positive")
-        except ValueError:
-            QMessageBox.warning(self, "Error", "Invalid duration")
-            return
-        
-        # Create a simple loading overlay
-        loading_widget = QWidget(self)
-        loading_widget.setGeometry(self.rect())
-        loading_widget.setStyleSheet("background-color: rgba(0, 0, 0, 128);")
-        
-        loading_layout = QVBoxLayout(loading_widget)
-        loading_label = QLabel("Creating your item...")
-        loading_label.setStyleSheet("color: white; font-size: 16px;")
-        loading_label.setAlignment(Qt.AlignCenter)
-        
-        loading_layout.addWidget(loading_label, 0, Qt.AlignCenter)
-        loading_widget.show()
-        
-        # Make sure the loading widget is on top
-        loading_widget.raise_()
-        
-        def on_item_created(result):
-            loading_widget.deleteLater()  # Clean up the loading widget
-            
-            if result:
-                item, tx_id = result
-                QMessageBox.information(
-                    self,
-                    "Item Created",
-                    f"Item created successfully!\n\n"
-                    f"Transaction ID: {tx_id}\n"
-                    f"Nano Address: {item.metadata.get('nano_address', 'N/A')}"
-                )
-                # Clear form
-                self.item_name.clear()
-                self.item_description.clear()
-                self.starting_price.clear()
-                self.duration.setText("24")
-                self.image_path.clear()
-                
-                # Switch to marketplace
-                self.show_page(1)
-            else:
-                QMessageBox.critical(self, "Error", "Failed to create item")
-        
-        def on_error(error_msg):
-            loading_widget.deleteLater()  # Clean up the loading widget
-            QMessageBox.critical(self, "Error", f"Failed to create item: {error_msg}")
-        
-        # Start item creation in a worker thread
-        self.worker = AsyncWorker(
-            self.create_item_async(
-                name=name,
-                description=description,
-                starting_price=price,
-                duration_hours=duration,
-                image_path=self.image_path.text()
-            )
-        )
-        self.worker.finished.connect(on_item_created)
-        self.worker.error.connect(on_error)
-        self.worker.start()
-    
     async def create_item_async(self, name, description, starting_price, duration_hours, image_path=None):
         try:
             if not self.client or not self.current_user:
@@ -2198,7 +2154,7 @@ class MainWindow(QMainWindow):
         # Show loading indicator
         loading_msg = QMessageBox(self)
         loading_msg.setWindowTitle("Placing Bid")
-        loading_msg.setText(f"Placing bid of {amount} NANO...")
+        loading_msg.setText(f"Placing bid of {amount} DOGE...")
         loading_msg.setStandardButtons(QMessageBox.NoButton)
         loading_msg.show()
         
@@ -2209,7 +2165,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Bid Placed",
-                    f"Your bid of {amount} NANO has been placed!\n\n"
+                    f"Your bid of {amount} DOGE has been placed!\n\n"
                     f"Transaction ID: {result}"
                 )
                 # Refresh marketplace
@@ -2232,36 +2188,6 @@ class MainWindow(QMainWindow):
         # In a real implementation, this would use the EnhancedDecentralizedClient
         # For now, return a mock transaction ID
         return f"mock_bid_tx_{item_id}_{int(amount * 1e6)}"
-    
-    def search_items(self):
-        query = self.search_input.text().strip()
-        # In a real implementation, this would filter items based on the search query
-        # For now, just reload all items
-        self.load_marketplace_items()
-    
-    def logout(self):
-        """Handle user logout."""
-        self.current_user = None
-        self.client = None
-        
-        # Hide user info
-        if hasattr(self, 'user_info'):
-            self.user_info.setVisible(False)
-        
-        # Reset navigation buttons - only show Marketplace
-        if hasattr(self, 'nav_buttons'):
-            for btn_name, (_, _, visible) in self.nav_buttons.items():
-                if hasattr(self, btn_name):
-                    getattr(self, btn_name).setVisible(visible)
-        
-        # Hide other UI elements
-        for btn_name in ['create_item_btn', 'my_items_btn', 'logout_btn']:
-            if hasattr(self, btn_name):
-                getattr(self, btn_name).setVisible(False)
-        
-        # Clear any sensitive data
-        if hasattr(self, 'seed_input'):
-            self.seed_input.clear()
-        
-        # Show login page
-        self.stacked_widget.setCurrentIndex(0)
+
+    def on_error(self, error):
+        print(f"Error: {error}")
