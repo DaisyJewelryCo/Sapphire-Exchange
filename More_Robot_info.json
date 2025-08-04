@@ -1,0 +1,377 @@
+{
+  "application": {
+    "name": "Sapphire Exchange",
+    "version": "1.0.0",
+    "description": "Decentralized auction platform using Nano and Arweave, with DOGE-powered UI and USPS-integrated shipping automation"
+  },
+  "currency": {
+    "primary": "DOGE",
+    "display": "DOGE (toggle USD via CoinGecko API)",
+    "wallet_generation": {
+      "mnemonic": "BIP39-compliant",
+      "path": "m/44'/3'/0'/0/0",
+      "library": "mnemonic / bip_utils",
+      "security": {
+        "export_method": "Secure download only",
+        "re-display_policy": "Never re-display seed after initial generation"
+      }
+    }
+  },
+  "blockchain_networks": {
+    "nano": {
+      "network_type": "cryptocurrency",
+      "purpose": "Payments and transactions",
+      "key_characteristics": ["Feeless", "Fast", "Eco-friendly"],
+      "rpc_endpoint": "http://[::1]:7076",
+      "default_representative": "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3",
+      "wallet_specs": {
+        "seed_length_bits": 256,
+        "address_length": 64,
+        "key_derivation": "ed25519_blake2b",
+        "address_prefix": "nano_"
+      },
+      "transaction_parameters": {
+        "min_amount_raw": "1",
+        "max_amount_raw": "340282366920938463463374607431768211455",
+        "decimal_places": 30,
+        "confirmation_blocks": 1
+      },
+      "rpc_methods": [
+        "account_balance",
+        "account_info",
+        "account_create",
+        "block_confirm",
+        "send_payment"
+      ]
+    },
+    "arweave": {
+      "network_type": "data storage",
+      "purpose": "Permanent, decentralized data storage",
+      "key_characteristics": ["Permanent", "Decentralized", "Pay once, store forever"],
+      "gateway_url": "https://arweave.net",
+      "wallet_specs": {
+        "key_type": "RSA-PSS",
+        "key_length_bits": 4096,
+        "wallet_format": "JSON"
+      },
+      "data_parameters": {
+        "max_block_size_bytes": 10485760,
+        "transaction_fee_algorithm": "Winston",
+        "default_tags": [
+          "App-Name: Sapphire-Exchange",
+          "Content-Type: application/json"
+        ]
+      },
+      "api_endpoints": [
+        "/tx",
+        "/tx_anchor",
+        "/price/{bytes}",
+        "/wallet/{address}/balance"
+      ]
+    }
+  },
+  "bid": {
+    "storage": "Arweave + Nano blockchain",
+    "fields": {
+      "id": "string (UUID)",
+      "item_id": "string (UUID)",
+      "bidder_id": "string (UUID)",
+      "amount_raw": "string (Nano raw units)",
+      "transaction_hash": "string (Nano block hash)",
+      "created_at": "ISO 8601 timestamp",
+      "status": "string (pending/confirmed/outbid/won/refunded)"
+    },
+    "indexes": ["id", "item_id", "bidder_id", "transaction_hash"]
+  },
+  "environment_variables": {
+    "required": [
+      "ARWEAVE_GATEWAY_URL",
+      "ARWEAVE_WALLET_FILE",
+      "NANO_NODE_URL",
+      "NANO_REPRESENTATIVE"
+    ],
+    "optional": [
+      "MOCK_ARWEAVE",
+      "MOCK_NANO",
+      "DEBUG_LEVEL",
+      "LOG_FILE"
+    ]
+  },
+  "api_interactions": {
+    "nano_node": {
+      "base_url": "http://[::1]:7076",
+      "endpoints": [
+        {
+          "name": "account_balance",
+          "method": "POST",
+          "path": "/",
+          "request_schema": {
+            "action": "account_balance",
+            "account": "nano_address"
+          },
+          "response_schema": {
+            "balance": "nano_raw_amount",
+            "pending": "nano_raw_amount"
+          }
+        }
+      ]
+    },
+    "arweave_gateway": {
+      "base_url": "https://arweave.net",
+      "endpoints": [
+        {
+          "name": "submit_transaction",
+          "method": "POST",
+          "path": "/tx",
+          "content_type": "application/octet-stream",
+          "request_schema": "Signed Arweave transaction (binary)",
+          "response_schema": {
+            "id": "arweave_tx_id"
+          }
+        }
+      ]
+    }
+  },
+  "error_handling": {
+    "network_errors": {
+      "timeout_ms": 10000,
+      "max_retries": 3,
+      "backoff_factor": 2
+    },
+    "transaction_errors": {
+      "max_confirm_attempts": 10,
+      "confirmation_delay_ms": 3000
+    }
+  },
+  "performance_parameters": {
+    "cache_ttl_ms": 300000,
+    "batch_size": 50,
+    "max_concurrent_requests": 10,
+    "request_timeout_ms": 30000
+  },
+  "security_parameters": {
+    "password_hashing": {
+      "algorithm": "PBKDF2-HMAC-SHA256",
+      "iterations": 100000,
+      "salt_length_bytes": 32
+    },
+    "session": {
+      "timeout_minutes": 120,
+      "inactivity_timeout_minutes": 30
+    },
+    "rate_limiting": {
+      "requests_per_minute": 60,
+      "burst_capacity": 10
+    }
+  },
+  "ui_constants": {
+    "default_page_size": 20,
+    "max_title_length": 100,
+    "max_description_length": 2000,
+    "max_tags_per_item": 10,
+    "max_tag_length": 20
+  },
+  "version_info": {
+    "schema_version": "1.0.0",
+    "last_updated": "2025-08-04T00:31:27-04:00",
+    "compatibility": {
+      "min_nano_node_version": "V25.0",
+      "min_arweave_node_version": "2.6.0.0",
+      "python_version": ">=3.7.0"
+    }
+  },
+  "type_conversion": {
+    "nano_to_raw": {
+      "description": "Convert Nano to raw units",
+      "formula": "raw = nano * 10^30",
+      "example": {
+        "input": 1.5,
+        "output": "1500000000000000000000000000000"
+      }
+    },
+    "raw_to_nano": {
+      "description": "Convert raw units to Nano",
+      "formula": "nano = raw / 10^30",
+      "example": {
+        "input": "1500000000000000000000000000000",
+        "output": 1.5
+      }
+    },
+    "ar_to_winston": {
+      "description": "Convert AR to winston",
+      "formula": "winston = ar * 10^12",
+      "example": {
+        "input": 1.5,
+        "output": "1500000000000"
+      }
+    },
+    "winston_to_ar": {
+      "description": "Convert winston to AR",
+      "formula": "ar = winston / 10^12",
+      "example": {
+        "input": "1500000000000",
+        "output": 1.5
+      }
+    }
+  },
+  "glossary": {
+    "raw": "The smallest unit of Nano (10^30 raw = 1 Nano)",
+    "winston": "The smallest unit of Arweave (1 AR = 10^12 winston)",
+    "frontier": "The latest block in an account's blockchain",
+    "representative": "A Nano account that votes on network consensus"
+  }
+}
+{
+  "ui_design": {
+    "layout": {
+      "sidebar": {
+        "position": "left",
+        "visibility": "always",
+        "sections": [
+          {
+            "name": "Marketplace",
+            "description": "Displays all listed items. No page reloads or popups. Bidding and bid history happen inline on the item card."
+          },
+          {
+            "name": "My Items",
+            "description": "Shows items owned or won. Allows viewing delivery status and past bids."
+          },
+          {
+            "name": "User Information",
+            "location": "top of sidebar",
+            "description": "Displays current user’s wallet balances, username/avatar, and bid credit status."
+          }
+        ]
+      },
+      "bottom_bar": {
+        "position": "bottom-left",
+        "components": {
+          "connection_status": {
+            "type": "single_circle",
+            "tooltip": "Click to expand error diagnostics",
+            "overall_status_logic": "Evaluates all three wallet systems (Arweave, Nano, DOGE)",
+            "status_colors": {
+              "green": "All connections healthy",
+              "orange": "Partial connection issues",
+              "red": "One or more services offline or malfunctioning"
+            },
+            "on_click_expand": {
+              "content": [
+                {
+                  "system": "Arweave",
+                  "status": "Connected / Disconnected / Signature error",
+                  "notes": "Includes tag validation, data immutability checks"
+                },
+                {
+                  "system": "Nano",
+                  "status": "Connected / RPC error / Low confirmation",
+                  "notes": "Checks current balance, transaction confirmation depth"
+                },
+                {
+                  "system": "DOGE Wallet",
+                  "status": "Unlocked / Locked / Invalid Seed",
+                  "notes": "Wallet usability check and mnemonic verification"
+                }
+              ]
+            }
+          },
+          "activity_log": {
+            "position": "bottom bar (scrollable, expandable)",
+            "type": "real-time event feed",
+            "display": {
+              "events": [
+                "Bid placed",
+                "Bid status changed",
+                "Wallet connection change",
+                "Error events (RPC failed, transaction dropped)",
+                "Data integrity feedback (e.g. RSA verification failed)"
+              ],
+              "status_indicator": {
+                "type": "data quality circle",
+                "colors": {
+                  "green": "Valid Nano & Arweave confirmations",
+                  "orange": "Pending or recent bid / not yet verified",
+                  "red": "RSA verification failed / corrupted metadata"
+                },
+                "placement": "Next to each bid entry in log"
+              }
+            },
+            "log_behavior": {
+              "scroll_direction": "top-down",
+              "auto-collapse": true,
+              "filterable": true
+            }
+          }
+        }
+      }
+    },
+    "marketplace_behavior": {
+      "bid_action": {
+        "button_text": "Place Bid",
+        "action": "Send Nano transaction",
+        "result": "Update item card + Activity log + Expand bid history section"
+      },
+      "bid_history_display": {
+        "mode": "inline expandable",
+        "contents": [
+          "Bidder ID",
+          "Bid amount",
+          "Timestamp",
+          "Verification status (circle indicator)"
+        ]
+      },
+      "popup_behavior": "disabled",
+      "page_navigation": "none"
+    },
+    "data_integrity_indicators": {
+      "verification": {
+        "methods": ["Arweave signature check", "Nano block confirmation"],
+        "status_display": {
+          "type": "circle",
+          "colors": {
+            "green": "Arweave + Nano transaction confirmed",
+            "orange": "Only one source verified or recent",
+            "red": "RSA failure or metadata mismatch"
+          },
+          "location": "On marketplace item and activity log"
+        }
+      }
+    }
+  },
+  "application": {
+    "name": "Sapphire Exchange",
+    "version": "1.0.0",
+    "description": "Decentralized auction platform using Nano and Arweave, with DOGE-powered UI and USPS-integrated shipping automation"
+  },
+  "currency": {
+    "primary": "DOGE",
+    "wallet_seed_generation": {
+      "standard": "BIP39",
+      "derivation_path": "m/44'/3'/0'/0/0",
+      "python_library": ["mnemonic", "bip_utils"],
+      "secure_handling": {
+        "initial_display": true,
+        "allow_export": true,
+        "redisplay": false
+      }
+    }
+  },
+  "blockchain_networks": { /* Unchanged from your latest spec */ },
+  "bid": { /* Existing detailed spec */ },
+  "environment_variables": { /* Existing detailed spec */ },
+  "api_interactions": { /* RPC for Nano & Arweave */ },
+  "error_handling": { /* Timeout, retries, confirmation attempts */ },
+  "performance_parameters": { /* Cache, batching, concurrency */ },
+  "security_parameters": { /* Password hashes, session guards */ },
+  "ui_constants": { /* Max lengths, tags, pagination */ },
+  "version_info": { /* Schema version, dependencies */ },
+  "type_conversion": { /* Nano <-> raw, AR <-> Winston formulas */ },
+  "glossary": {
+    "raw": "Smallest unit of Nano currency",
+    "winston": "Smallest unit of Arweave data currency",
+    "representative": "Delegated node for Nano voting",
+    "frontier": "Last block of a Nano account chain",
+    "RSA signature": "Cryptographic method used in Arweave wallet validation"
+  }
+}
+

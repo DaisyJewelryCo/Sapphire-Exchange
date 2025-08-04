@@ -18,8 +18,14 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer, pyqtSlot, QProp
 from PyQt5.QtGui import (QFont, QPixmap, QIcon, QTextCursor, QTextCharFormat, QColor, 
                          QFontMetrics, QDoubleValidator)
 
-from decentralized_client import DecentralizedClient
-from models import Item, Auction, User
+from decentralized_client import EnhancedDecentralizedClient
+from models import Item, Auction, User, Bid
+from dogecoin_utils import DogeWalletManager
+from security_manager import SecurityManager, SessionManager
+from performance_manager import PerformanceManager
+from price_service import PriceConversionService, get_price_service
+from wallet_widget import MultiCurrencyWalletWidget
+from auction_widget import AuctionListWidget, AuctionDetailsWidget, CreateAuctionDialog
 
 class AsyncWorker(QThread):
     """Worker thread for running async functions."""
@@ -375,46 +381,107 @@ class MainWindow(QMainWindow):
         self.status_bar.setFrameShape(QFrame.StyledPanel)
         self.status_bar.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-top: 1px solid #ddd;
+                background-color: #2c3e50;
+                border-top: 1px solid #34495e;
                 padding: 4px 8px;
+                color: #ecf0f1;
             }
             QLabel {
-                color: #555;
+                color: #ecf0f1;
                 font-size: 12px;
+                margin: 0 5px;
+            }
+            QPushButton {
+                background: transparent;
+                border: 1px solid #4a627a;
+                border-radius: 3px;
+                padding: 2px 8px;
+                color: #ecf0f1;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: #3d5366;
             }
         """)
         
         # Status bar layout
         status_layout = QHBoxLayout(self.status_bar)
-        status_layout.setContentsMargins(8, 4, 8, 4)
-        status_layout.setSpacing(10)
+        status_layout.setContentsMargins(12, 4, 12, 4)
+        status_layout.setSpacing(15)
         
-        # Status indicator (colored dot)
-        self.status_indicator = QLabel("●")
-        self.status_indicator.setStyleSheet("font-size: 16px; color: #999;")
-        self.status_indicator.setCursor(Qt.PointingHandCursor)
-        self.status_indicator.mousePressEvent = self.on_status_clicked
-        status_layout.addWidget(self.status_indicator)
+        # Main status indicator (single dot)
+        self.main_status_indicator = QLabel("●")
+        self.main_status_indicator.setObjectName("main_status_indicator")
+        self.main_status_indicator.setToolTip("Click to expand error diagnostics")
+        self.main_status_indicator.setStyleSheet("""
+            QLabel#main_status_indicator {
+                font-size: 16px;
+                color: #666;
+                padding: 0 5px;
+                cursor: pointer;
+            }
+        """)
+        self.main_status_indicator.mousePressEvent = self.toggle_connection_details
+        status_layout.addWidget(self.main_status_indicator)
+        
+        # Connection details container (initially hidden)
+        self.connection_details = QWidget()
+        self.connection_details.setVisible(False)
+        details_layout = QHBoxLayout(self.connection_details)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(10)
+        
+        # Connection status indicators
+        self.connection_indicators = {}
+        
+        # Arweave status
+        arweave_status = self.create_status_indicator("Arweave", "#ff9500")
+        details_layout.addWidget(arweave_status)
+        self.connection_indicators['arweave'] = arweave_status
+        
+        # Nano status
+        nano_status = self.create_status_indicator("Nano", "#4a90e2")
+        details_layout.addWidget(nano_status)
+        self.connection_indicators['nano'] = nano_status
+        
+        # DOGE Wallet status
+        doge_status = self.create_status_indicator("DOGE Wallet", "#c2a633")
+        details_layout.addWidget(doge_status)
+        self.connection_indicators['doge'] = doge_status
+        
+        status_layout.addWidget(self.connection_details)
+        
+        # Spacer
+        status_layout.addStretch(1)
         
         # Status text
         self.status_text = QLabel("Initializing...")
-        status_layout.addWidget(self.status_text, 1)  # Take remaining space
+        status_layout.addWidget(self.status_text)
         
-        # Message log button
-        self.toggle_log_btn = QPushButton("▲")
-        self.toggle_log_btn.setFixedSize(20, 20)
-        self.toggle_log_btn.setFlat(True)
+        # Last updated time
+        self.last_updated = QLabel()
+        self.update_timestamp()
+        status_layout.addWidget(self.last_updated)
+        
+        # Set initial connection states
+        self.update_connection_status('arweave', False)
+        self.update_connection_status('nano', False)
+        self.update_connection_status('doge', False)
+        
+        # Message log toggle button
+        self.toggle_log_btn = QPushButton("▲ Log")
+        self.toggle_log_btn.setFixedHeight(20)
         self.toggle_log_btn.setStyleSheet("""
             QPushButton {
-                border: none;
-                font-size: 12px;
-                color: #666;
+                font-size: 11px;
+                padding: 0 8px;
+                border: 1px solid #4a627a;
+                border-radius: 3px;
+                color: #ecf0f1;
+                background: transparent;
             }
             QPushButton:hover {
-                color: #000;
-                background-color: #e0e0e0;
-                border-radius: 2px;
+                background: #3d5366;
             }
         """)
         self.toggle_log_btn.clicked.connect(self.toggle_message_log)
@@ -582,36 +649,132 @@ class MainWindow(QMainWindow):
             self.worker.stop()
         event.accept()
     
-    def check_connections(self):
-        """Check the current connection status."""
-        try:
-            # Update connection status
-            if hasattr(self, 'client') and self.client is not None:
-                # Ensure we have a valid connection status
-                if not hasattr(self, 'connection_status'):
-                    self.connection_status = False
-                
-                # Update status based on client state
-                if hasattr(self.client, 'is_connected') and callable(self.client.is_connected):
-                    self.connection_status = self.client.is_connected()
-                elif hasattr(self.client, '_is_connected'):
-                    self.connection_status = self.client._is_connected
-                
-                # Update the status dot
-                if hasattr(self, 'status_dot') and self.status_dot is not None:
-                    self.status_dot.setStyleSheet(
-                        f"background-color: {'#2ecc71' if self.connection_status else '#e74c3c'};"
-                        "border-radius: 8px; width: 16px; height: 16px;"
-                    )
+    def create_status_indicator(self, name, color):
+        """Create a status indicator widget.
+        
+        Args:
+            name (str): Name of the service (e.g., 'Arweave', 'Nano')
+            color (str): Base color for the indicator
+            
+        Returns:
+            QWidget: Configured status indicator widget
+        """
+        widget = QWidget()
+        widget.setObjectName(f"{name.lower()}_widget")
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        
+        # Status dot
+        dot = QLabel("●")
+        dot.setObjectName(f"{name.lower()}_dot")
+        dot.setStyleSheet(f"font-size: 16px; color: #666;")
+        
+        # Service name
+        label = QLabel(name)
+        label.setStyleSheet("font-size: 11px;")
+        
+        layout.addWidget(dot)
+        layout.addWidget(label)
+        
+        return widget
+    
+    def update_connection_status(self, service, is_connected, error_msg=None, status_detail=None):
+        """Update the connection status for a service.
+        
+        Args:
+            service (str): Service name ('arweave', 'nano', 'doge')
+            is_connected (bool): Whether the service is connected
+            error_msg (str, optional): Error message if connection failed
+            status_detail (str, optional): Detailed status information
+        """
+        if service not in self.connection_indicators:
+            return
+            
+        widget = self.connection_indicators[service]
+        dot = widget.findChild(QLabel, f"{service}_dot")
+        
+        if not dot:
+            return
+            
+        # Update tooltip with detailed status information
+        if service == 'arweave':
+            if is_connected:
+                tooltip = "Arweave: Connected\nIncludes tag validation, data immutability checks"
+                dot.setStyleSheet("font-size: 16px; color: #2ecc71;")
+                self.add_message("Arweave connected successfully", "success", "verified")
             else:
-                # Default to disconnected if no client
-                self.connection_status = False
-                if hasattr(self, 'status_dot') and self.status_dot is not None:
-                    self.status_dot.setStyleSheet(
-                        "background-color: #e74c3c;"
-                        "border-radius: 8px; width: 16px; height: 16px;"
-                    )
+                status = status_detail or "Disconnected"
+                tooltip = f"Arweave: {status}\nIncludes tag validation, data immutability checks"
+                dot.setStyleSheet("font-size: 16px; color: #e74c3c;")
+                self.add_message(f"Arweave {status.lower()}: {error_msg or 'Connection failed'}", "error", "failed")
+        elif service == 'nano':
+            if is_connected:
+                tooltip = "Nano: Connected\nChecks current balance, transaction confirmation depth"
+                dot.setStyleSheet("font-size: 16px; color: #2ecc71;")
+                self.add_message("Nano RPC connected successfully", "success", "verified")
+            else:
+                status = status_detail or "RPC error"
+                tooltip = f"Nano: {status}\nChecks current balance, transaction confirmation depth"
+                dot.setStyleSheet("font-size: 16px; color: #e74c3c;")
+                self.add_message(f"Nano {status}: {error_msg or 'Connection failed'}", "error", "failed")
+        elif service == 'doge':
+            if is_connected:
+                tooltip = "DOGE Wallet: Unlocked\nWallet usability check and mnemonic verification"
+                dot.setStyleSheet("font-size: 16px; color: #2ecc71;")
+                self.add_message("DOGE wallet unlocked successfully", "success", "verified")
+            else:
+                status = status_detail or "Locked"
+                tooltip = f"DOGE Wallet: {status}\nWallet usability check and mnemonic verification"
+                dot.setStyleSheet("font-size: 16px; color: #e74c3c;")
+                self.add_message(f"DOGE wallet {status.lower()}: {error_msg or 'Wallet locked'}", "error", "failed")
+        
+        widget.setToolTip(tooltip)
+        
+        # Update the main status indicator
+        self.update_main_status_indicator()
+    
+    def update_timestamp(self):
+        """Update the last updated timestamp."""
+        now = datetime.now().strftime("%H:%M:%S")
+        self.last_updated.setText(f"Last updated: {now}")
+    
+    def check_connections(self):
+        """Check the current connection status for all services."""
+        try:
+            # Check Arweave connection
+            arweave_connected = self.client and hasattr(self.client, 'arweave') and self.client.arweave is not None
+            self.update_connection_status('arweave', arweave_connected)
+            
+            # Check Nano connection
+            nano_connected = self.client and hasattr(self.client, 'nano') and self.client.nano is not None
+            self.update_connection_status('nano', nano_connected)
+            
+            # Check DOGE connection
+            doge_connected = self.client and hasattr(self.client, 'doge') and self.client.doge is not None
+            self.update_connection_status('doge', doge_connected)
+            
+            # Update status text based on overall connection state
+            all_connected = arweave_connected and nano_connected and doge_connected
+            self.status_text.setText("All systems operational" if all_connected else "Some services unavailable")
+            
+            # Update timestamp
+            self.update_timestamp()
+            
+            if hasattr(self.client, 'is_connected') and callable(self.client.is_connected):
+                self.connection_status = self.client.is_connected()
+            elif hasattr(self.client, '_is_connected'):
+                self.connection_status = self.client._is_connected
+                
+            # Update the status dot
+            if hasattr(self, 'status_dot') and self.status_dot is not None:
+                self.status_dot.setStyleSheet(
+                    f"background-color: {'#2ecc71' if self.connection_status else '#e74c3c'};"
+                    "border-radius: 8px; width: 16px; height: 16px;"
+                )
         except Exception as e:
+            self.status_text.setText(f"Error checking connections")
+            self.add_message(f"Connection check error: {str(e)}", "error")
             print(f"Error in check_connections: {e}")
             self.connection_status = False
         
@@ -620,17 +783,20 @@ class MainWindow(QMainWindow):
         
     def on_status_clicked(self, event):
         """Handle status indicator click."""
-        # Toggle connection status
-        if self.client and self.client.is_connected:
-            self.client.disconnect()
-        else:
-            self.client.connect()
+        # Toggle message log visibility when clicking on any status indicator
+        self.toggle_message_log()
             
-    def add_message(self, message, level="info"):
-        """Add a message to the log."""
+    def add_message(self, message, level="info", data_quality="unknown"):
+        """Add a message to the log with data quality indicator.
+        
+        Args:
+            message (str): The message to add
+            level (str): Message level ('info', 'warning', 'error', 'success')
+            data_quality (str): Data quality status ('verified', 'pending', 'failed', 'unknown')
+        """
         # Add timestamp
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.message_history.append((timestamp, message, level))
+        self.message_history.append((timestamp, message, level, data_quality))
         
         # Keep only the last max_messages
         if len(self.message_history) > self.max_messages:
@@ -650,87 +816,236 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(5000, lambda: self.status_text.setText(""))
     
     def update_message_log(self):
-        """Update the message log with all messages."""
+        """Update the message log with all messages and data quality indicators."""
         log_text = ""
-        for timestamp, msg, level in self.message_history:
-            if level == "error":
-                log_text += f"<font color='#e74c3c'>{timestamp} - {msg}</font><br>"
-            elif level == "warning":
-                log_text += f"<font color='#f39c12'>{timestamp} - {msg}</font><br>"
-            elif level == "success":
-                log_text += f"<font color='#2ecc71'>{timestamp} - {msg}</font><br>"
+        for entry in self.message_history:
+            # Handle both old format (3 items) and new format (4 items)
+            if len(entry) == 3:
+                timestamp, msg, level = entry
+                data_quality = "unknown"
             else:
-                log_text += f"{timestamp} - {msg}<br>"
+                timestamp, msg, level, data_quality = entry
+            
+            # Data quality indicator circle
+            if data_quality == "verified":
+                quality_circle = "<span style='color: #2ecc71;'>●</span>"  # Green
+                quality_tooltip = "Valid Nano & Arweave confirmations"
+            elif data_quality == "pending":
+                quality_circle = "<span style='color: #f39c12;'>●</span>"  # Orange
+                quality_tooltip = "Pending or recent bid / not yet verified"
+            elif data_quality == "failed":
+                quality_circle = "<span style='color: #e74c3c;'>●</span>"  # Red
+                quality_tooltip = "RSA verification failed / corrupted metadata"
+            else:
+                quality_circle = "<span style='color: #666;'>●</span>"  # Gray
+                quality_tooltip = "Unknown verification status"
+            
+            # Message color based on level
+            if level == "error":
+                log_text += f"<span title='{quality_tooltip}'>{quality_circle}</span> <font color='#e74c3c'>{timestamp} - {msg}</font><br>"
+            elif level == "warning":
+                log_text += f"<span title='{quality_tooltip}'>{quality_circle}</span> <font color='#f39c12'>{timestamp} - {msg}</font><br>"
+            elif level == "success":
+                log_text += f"<span title='{quality_tooltip}'>{quality_circle}</span> <font color='#2ecc71'>{timestamp} - {msg}</font><br>"
+            else:
+                log_text += f"<span title='{quality_tooltip}'>{quality_circle}</span> {timestamp} - {msg}<br>"
         
         self.message_log.setHtml(log_text)
         
+    def toggle_connection_details(self, event=None):
+        """Toggle the visibility of connection details."""
+        is_visible = self.connection_details.isVisible()
+        self.connection_details.setVisible(not is_visible)
+        self.update_main_status_indicator()
+        
+    def update_main_status_indicator(self):
+        """Update the main status indicator based on connection states."""
+        if not hasattr(self, 'connection_indicators'):
+            return
+            
+        # Count connected services
+        connected = 0
+        for service in self.connection_indicators.values():
+            dot = service.findChild(QLabel, service.objectName().replace('_widget', '_dot'))
+            if dot and "color: #2ecc71" in dot.styleSheet():
+                connected += 1
+        
+        # Set color based on connection state
+        if connected == 0:
+            color = "#e74c3c"  # Red if none connected
+        elif connected < 3:
+            color = "#f39c12"  # Orange if some connected
+        else:
+            color = "#2ecc71"  # Green if all connected
+            
+        # Update main indicator
+        self.main_status_indicator.setStyleSheet(f"""
+            QLabel#main_status_indicator {{
+                font-size: 16px;
+                color: {color};
+                padding: 0 5px;
+                cursor: pointer;
+            }}
+        """)
+    
     def toggle_message_log(self):
         """Toggle the visibility of the message log."""
-        is_visible = not self.message_log.isVisible()
-        self.message_log.setVisible(is_visible)
-        self.toggle_log_btn.setText("▼" if is_visible else "▲")
+        is_visible = self.message_log.isVisible()
+        self.message_log.setVisible(not is_visible)
+        self.toggle_log_btn.setText("▼ Log" if is_visible else "▲ Log")
         
         # Resize window to fit content
         self.adjustSize()
         
     def create_sidebar(self):
-        """Create the sidebar with navigation buttons."""
+        """Create the sidebar with navigation buttons and user information."""
         sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
         sidebar.setStyleSheet("""
-            QWidget {
-                background-color: #f5f5f5;
-                border-right: 1px solid #e0e0e0;
+            QWidget#sidebar {
+                background-color: #2c3e50;
+                color: #ecf0f1;
+                border-right: 1px solid #34495e;
+                min-width: 250px;
             }
             QPushButton {
                 text-align: left;
                 padding: 12px 20px;
                 border: none;
-                border-radius: 0;
+                border-radius: 4px;
+                margin: 4px 10px;
                 font-size: 14px;
-                color: #333;
+                color: #ecf0f1;
                 background: transparent;
+                min-height: 40px;
             }
             QPushButton:hover {
-                background-color: #e8e8e8;
+                background-color: #34495e;
             }
             QPushButton:checked {
-                background-color: #e0e0e0;
-                font-weight: bold;
+                background-color: #3498db;
+                font-weight: 600;
+            }
+            QLabel {
+                color: #ecf0f1;
+            }
+            #userInfo {
+                background-color: #34495e;
+                border-radius: 8px;
+                margin: 10px;
+                padding: 15px;
+            }
+            #walletBalance, #bidCredits {
+                font-size: 12px;
+                margin-top: 5px;
+                color: #bdc3c7;
+            }
+            #userName {
+                font-size: 16px;
+                font-weight: 600;
+                margin: 10px 0 5px 0;
             }
         """)
         
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 20, 0, 20)
+        layout.setContentsMargins(0, 0, 0, 10)
         layout.setSpacing(0)
         
         # App title/logo
         title = QLabel("Sapphire Exchange")
+        title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("""
             QLabel {
                 font-size: 18px;
-                font-weight: bold;
-                padding: 20px;
-                color: #333;
-                border-bottom: 1px solid #e0e0e0;
+                font-weight: 600;
+                padding: 20px 10px;
+                color: #ecf0f1;
+                background-color: #2c3e50;
+                border-bottom: 1px solid #34495e;
             }
         """)
         layout.addWidget(title)
         
-        # Navigation buttons - initially only show Marketplace
+        # User Information Section (initially hidden)
+        self.user_info_widget = QWidget()
+        self.user_info_widget.setObjectName("userInfo")
+        self.user_info_widget.setVisible(False)  # Hidden until login
+        user_info_layout = QVBoxLayout(self.user_info_widget)
+        user_info_layout.setContentsMargins(10, 10, 10, 10)
+        user_info_layout.setSpacing(8)
+        
+        # User avatar with initials
+        self.user_avatar = QLabel()
+        self.user_avatar.setFixedSize(60, 60)
+        self.user_avatar.setAlignment(Qt.AlignCenter)
+        self.user_avatar.setStyleSheet("""
+            QLabel {
+                background-color: #3498db;
+                border-radius: 30px;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                qproperty-alignment: AlignCenter;
+            }
+        """)
+        
+        # User name and info
+        self.user_name = QLabel("Guest User")
+        self.user_name.setObjectName("userName")
+        
+        # Wallet balances with proper formatting (DOGE primary)
+        self.wallet_balance = QLabel("DOGE: 0.00  |  NANO: 0.00")
+        self.wallet_balance.setObjectName("walletBalance")
+        
+        # Bid credits status with proper formatting
+        self.bid_credits = QLabel("Bid Credits: 0")
+        self.bid_credits.setObjectName("bidCredits")
+        
+        user_info_layout.addWidget(self.user_avatar, 0, Qt.AlignHCenter)
+        user_info_layout.addWidget(self.user_name, 0, Qt.AlignHCenter)
+        user_info_layout.addWidget(self.wallet_balance, 0, Qt.AlignHCenter)
+        user_info_layout.addWidget(self.bid_credits, 0, Qt.AlignHCenter)
+        user_info_layout.addStretch()
+        
+        layout.addWidget(self.user_info_widget)
+        
+        # Navigation buttons with proper visibility states
         self.nav_buttons = {
-            "marketplace_btn": ("🏠 Marketplace", 1, True),  # Always visible
-            "sell_item_btn": ("🛍️ Sell Item", 2, False),    # Hidden until login
-            "my_items_btn": ("📦 My Items", 3, False),     # Hidden until login
-            "settings_btn": ("⚙️ Settings", 4, False)      # Hidden until login
+            "marketplace_btn": {
+                "text": "🏠  Marketplace",
+                "page_id": 1,
+                "visible": True,  # Always visible
+                "requires_auth": False
+            },
+            "sell_item_btn": {
+                "text": "🛍️  Sell Item",
+                "page_id": 2,
+                "visible": False,  # Requires auth
+                "requires_auth": True
+            },
+            "my_items_btn": {
+                "text": "📦  My Items",
+                "page_id": 3,
+                "visible": False,  # Requires auth
+                "requires_auth": True
+            },
+            "settings_btn": {
+                "text": "⚙️  Settings",
+                "page_id": 4,
+                "visible": False,  # Requires auth
+                "requires_auth": True
+            }
         }
         
+        # Create navigation buttons
         self.nav_button_group = QButtonGroup()
-        for btn_name, (text, page_id, visible) in self.nav_buttons.items():
-            btn = QPushButton(text)
+        for btn_name, btn_data in self.nav_buttons.items():
+            btn = QPushButton(btn_data["text"])
             btn.setCheckable(True)
-            btn.setVisible(visible)  # Only Marketplace is visible by default
-            btn.clicked.connect(lambda checked, p=page_id: self.show_page(p))
-            self.nav_button_group.addButton(btn, page_id)
+            btn.setVisible(btn_data["visible"])
+            btn.setProperty("requires_auth", btn_data["requires_auth"])
+            btn.clicked.connect(lambda checked, p=btn_data["page_id"]: self.show_page(p))
+            self.nav_button_group.addButton(btn, btn_data["page_id"])
             setattr(self, btn_name, btn)  # Store reference to button
             layout.addWidget(btn)
         
@@ -738,9 +1053,22 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         
         # Logout button
-        self.logout_btn = QPushButton("🚪 Logout")
+        self.logout_btn = QPushButton("🚪  Logout")
         self.logout_btn.clicked.connect(self.logout)
         self.logout_btn.setVisible(False)  # Initially hidden until login
+        self.logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-weight: 600;
+                margin: 10px;
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
         layout.addWidget(self.logout_btn)
         
         return sidebar
@@ -972,8 +1300,34 @@ class MainWindow(QMainWindow):
             
             # Confirm button
             confirm_btn = QPushButton("I have saved this seed")
-            confirm_btn.clicked.connect(dialog.accept)
             confirm_btn.setStyleSheet("background: #27ae60;")
+            
+            # Continue button (initially hidden)
+            continue_btn = QPushButton("Continue")
+            continue_btn.setStyleSheet("background: #3498db;")
+            continue_btn.hide()
+            
+            def on_seed_saved():
+                """Handle when user confirms they saved the seed"""
+                # Hide the confirm button and show continue button
+                confirm_btn.hide()
+                continue_btn.show()
+                
+                # Add a message showing the seed will be filled in login form
+                connection_msg = QLabel("✅ Seed saved! This phrase will now be filled in your login form.")
+                connection_msg.setStyleSheet("color: #27ae60; font-weight: bold; padding: 10px;")
+                connection_msg.setWordWrap(True)
+                layout.addWidget(connection_msg)
+                
+                # Update dialog size to accommodate new content
+                dialog.adjustSize()
+            
+            def on_continue():
+                """Handle continue button click"""
+                dialog.accept()
+            
+            confirm_btn.clicked.connect(on_seed_saved)
+            continue_btn.clicked.connect(on_continue)
             
             # Add widgets to layout
             layout.addWidget(title)
@@ -985,6 +1339,7 @@ class MainWindow(QMainWindow):
             btn_layout = QHBoxLayout()
             btn_layout.addWidget(copy_btn)
             btn_layout.addWidget(confirm_btn)
+            btn_layout.addWidget(continue_btn)
             
             layout.addLayout(btn_layout)
             
@@ -1059,7 +1414,7 @@ class MainWindow(QMainWindow):
             
             # Initialize client if needed
             if not self.client:
-                self.client = DecentralizedClient()
+                self.client = EnhancedDecentralizedClient()
             
             # Try to login
             worker = AsyncWorker(self.login_async(seed_phrase))
@@ -1163,17 +1518,17 @@ class MainWindow(QMainWindow):
                     self.show_page(1)
                     
                     # Show success message
-                    self.add_message(f"Successfully logged in as {username}", "success")
+                    self.add_message(f"Successfully logged in as {username}", "success", "verified")
                     
                 else:
                     QMessageBox.warning(self, "Login Failed", "Invalid user data received.")
-                    self.add_message("Login failed: Invalid user data", "error")
+                    self.add_message("Login failed: Invalid user data", "error", "failed")
                     
             except Exception as e:
                 error_msg = f"Error during login: {str(e)}"
                 print(error_msg)
                 QMessageBox.critical(self, "Login Error", error_msg)
-                self.add_message(error_msg, "error")
+                self.add_message(error_msg, "error", "failed")
         
         def on_error(error_msg):
             """Handle login errors."""
@@ -1196,7 +1551,7 @@ class MainWindow(QMainWindow):
                 )
                 
                 # Log the error
-                self.add_message(f"Login error: {error_msg}", "error")
+                self.add_message(f"Login error: {error_msg}", "error", "failed")
                 
             except Exception as e:
                 print(f"Error in on_error handler: {e}")
@@ -1206,7 +1561,7 @@ class MainWindow(QMainWindow):
             async def login_wrapper():
                 try:
                     # Ensure we have a clean client instance
-                    self.client = DecentralizedClient(mock_mode=True)
+                    self.client = EnhancedDecentralizedClient(mock_mode=True)
                     return await self.login_async(seed_phrase, None)
                 except Exception as e:
                     print(f"Error in login_wrapper: {e}")
@@ -1389,30 +1744,65 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(on_error)
         self.worker.start()
     
-    def show_page(self, index):
-        print(f"\n=== show_page({index}) called ===")
-        print(f"  content_stack has {self.stacked_widget.count()} pages")
-        print(f"  Current attributes: {[attr for attr in dir(self) if not attr.startswith('__')]}")
-        
-        # Make sure the page exists in the stack
-        if index >= 0 and index < self.stacked_widget.count():
-            print(f"  Setting current index to {index}")
-            self.stacked_widget.setCurrentIndex(index)
+    def show_page(self, page_index):
+        """Show the page at the given index and load appropriate content."""
+        if 0 <= page_index < self.stacked_widget.count():
+            self.stacked_widget.setCurrentIndex(page_index)
             
             # Load content for the specific page
-            if index == 1:  # Marketplace
-                print("  Loading marketplace items...")
+            if page_index == 1:  # Marketplace
                 self.load_marketplace_items()
-            elif index == 3:  # My Items
-                print("  Attempting to load My Items page...")
+            elif page_index == 3:  # My Items
                 if hasattr(self, 'my_items_list'):
-                    print("  my_items_list found, calling load_my_items()")
                     self.load_my_items()
-                else:
-                    print("  WARNING: my_items_list attribute not found!")
-                    print("  Current attributes:", [attr for attr in dir(self) if not attr.startswith('__')])
+            
+    def update_sidebar_for_user(self, user_data=None):
+        """Update the sidebar based on user authentication status.
+        
+        Args:
+            user_data (dict, optional): User data containing name, wallet balances, etc.
+        """
+        if user_data:
+            # User is logged in
+            self.user_info_widget.setVisible(True)
+            self.logout_btn.setVisible(True)
+            
+            # Update user info
+            name = user_data.get('name', 'User')
+            self.user_name.setText(name)
+            
+            # Set avatar with first letter of name
+            if name and len(name) > 0:
+                self.user_avatar.setText(name[0].upper())
+            
+            # Update wallet balances
+            nano_balance = user_data.get('nano_balance', 0)
+            doge_balance = user_data.get('doge_balance', 0)
+            self.wallet_balance.setText(f"NANO: {nano_balance:.2f}  |  DOGE: {doge_balance:.2f}")
+            
+            # Update bid credits
+            bid_credits = user_data.get('bid_credits', 0)
+            self.bid_credits.setText(f"Bid Credits: {bid_credits}")
+            
+            # Show all navigation buttons for authenticated users
+            for btn_name, btn_data in self.nav_buttons.items():
+                btn = getattr(self, btn_name)
+                btn.setVisible(True)
         else:
-            print(f"  WARNING: Page index {index} out of range (0-{self.stacked_widget.count()-1})")
+            # User is not logged in
+            self.user_info_widget.setVisible(False)
+            self.logout_btn.setVisible(False)
+            
+            # Reset user info
+            self.user_name.setText("Guest User")
+            self.user_avatar.setText("")
+            self.wallet_balance.setText("NANO: 0.00  |  DOGE: 0.00")
+            self.bid_credits.setText("Bid Credits: 0")
+            
+            # Update navigation buttons for guest users
+            for btn_name, btn_data in self.nav_buttons.items():
+                btn = getattr(self, btn_name)
+                btn.setVisible(not btn.property("requires_auth"))  # Only show non-auth buttons
     
     async def login_async(self, seed_phrase, user_data=None):
         """
@@ -1445,12 +1835,22 @@ class MainWindow(QMainWindow):
             if len(words) not in [12, 15, 18, 21, 24]:
                 raise ValueError(f"Invalid seed phrase length: {len(words)} words. Must be 12, 15, 18, 21, or 24 words.")
             
-            # Initialize client
-            self.client = DecentralizedClient(mock_mode=True)
+            # Initialize client and establish connection
+            self.client = EnhancedDecentralizedClient(mock_mode=True)
             
-            # Connect the client
-            if not self.client.connect():
-                raise ValueError("Failed to connect to the network")
+            # Connect to the network services
+            connection_status = await self.client.connect()
+            
+            # Check connection status
+            if not connection_status or not self.client.is_connected:
+                error_msg = "Failed to connect to the network. "
+                if 'arweave' in connection_status and not connection_status['arweave']:
+                    error_msg += "Arweave connection failed. "
+                if 'nano' in connection_status and not connection_status['nano']:
+                    error_msg += "Nano connection failed. "
+                if 'doge' in connection_status and not connection_status['doge']:
+                    error_msg += "Dogecoin connection failed. "
+                raise ValueError(error_msg.strip())
             
             # For new users (coming from handle_new_account)
             if self.is_new_user:
@@ -1805,7 +2205,7 @@ class MainWindow(QMainWindow):
         def on_bid_placed(result):
             loading_msg.close()
             if result:
-                self.add_message("Bid placed successfully!", "success")
+                self.add_message("Bid placed successfully!", "success", "pending")
                 QMessageBox.information(
                     self,
                     "Bid Placed",
@@ -1819,7 +2219,7 @@ class MainWindow(QMainWindow):
         
         def on_error(error_msg):
             loading_msg.close()
-            self.add_message(f"Bid failed: {str(error_msg)}", "error")
+            self.add_message(f"Bid failed: {str(error_msg)}", "error", "failed")
             QMessageBox.critical(self, "Error", f"Failed to place bid: {error_msg}")
         
         # Start bid process in a worker thread
@@ -1829,7 +2229,7 @@ class MainWindow(QMainWindow):
         self.worker.start()
     
     async def place_bid_async(self, item_id, amount):
-        # In a real implementation, this would use the DecentralizedClient
+        # In a real implementation, this would use the EnhancedDecentralizedClient
         # For now, return a mock transaction ID
         return f"mock_bid_tx_{item_id}_{int(amount * 1e6)}"
     

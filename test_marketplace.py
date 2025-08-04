@@ -10,14 +10,14 @@ from datetime import datetime, timezone, timedelta
 # Add the current directory to the Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from decentralized_client import DecentralizedClient
+from decentralized_client import EnhancedDecentralizedClient
 from mock_server import arweave_db, nano_db
 
 async def test_marketplace():
     print("=== Testing Marketplace Functionality ===")
     
     # Initialize client with mock mode
-    client = DecentralizedClient(mock_mode=True)
+    client = EnhancedDecentralizedClient(mock_mode=True)
     
     # Test data
     seed_phrase = "test_seed_123"

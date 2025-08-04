@@ -1,6 +1,6 @@
 """
-Dogecoin integration for Sapphire Exchange.
-Handles Dogecoin as the main currency with wallet management and transaction capabilities.
+Enhanced Dogecoin integration for Sapphire Exchange.
+BIP39-compliant wallet generation with secure key management and multi-currency support.
 """
 import os
 import json
@@ -8,8 +8,22 @@ import hashlib
 import base58
 import ecdsa
 import requests
+import secrets
+import time
 from typing import Dict, Optional, Tuple, List, Union
 from dataclasses import dataclass, asdict
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+# Import BIP39 and BIP44 libraries
+try:
+    from mnemonic import Mnemonic
+    from bip_utils import Bip44, Bip44Coins, Bip44Changes
+    BIP_UTILS_AVAILABLE = True
+except ImportError:
+    print("Warning: BIP utilities not available. Install with: pip install mnemonic bip-utils")
+    BIP_UTILS_AVAILABLE = False
 
 # Dogecoin network parameters
 DOGECOIN_MAINNET = {
@@ -28,8 +42,224 @@ DOGECOIN_TESTNET = {
     'rpc_port': 44555
 }
 
+class DogeWalletManager:
+    """Enhanced DOGE wallet with BIP39 compliance and security features."""
+    
+    def __init__(self, network: str = 'mainnet'):
+        """Initialize DOGE wallet manager.
+        
+        Args:
+            network: 'mainnet' or 'testnet'
+        """
+        self.derivation_path = "m/44'/3'/0'/0/0"  # DOGE standard path
+        self.network = DOGECOIN_TESTNET if network == 'testnet' else DOGECOIN_MAINNET
+        self.network_name = network
+        
+        # Security parameters (from robot_info.json)
+        self.hash_iterations = 100000
+        self.salt_length_bytes = 32
+        
+    def generate_wallet(self) -> Dict[str, str]:
+        """Generate BIP39-compliant DOGE wallet.
+        
+        Returns:
+            Dict containing mnemonic, private_key, public_key, address
+            
+        Security: One-time display only, never re-display after generation
+        """
+        if not BIP_UTILS_AVAILABLE:
+            raise ImportError("BIP utilities required for wallet generation")
+            
+        try:
+            # Use mnemonic library for BIP39 compliance
+            mnemonic = Mnemonic("english")
+            words = mnemonic.generate(strength=128)  # 12-word phrase
+            
+            # Derive keys using bip_utils
+            seed = mnemonic.to_seed(words)
+            bip44_mst_ctx = Bip44.FromSeed(seed, Bip44Coins.DOGECOIN)
+            bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(0)
+            bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+            bip44_addr_ctx = bip44_chg_ctx.AddressIndex(0)
+            
+            wallet_data = {
+                'mnemonic': words,
+                'private_key': bip44_addr_ctx.PrivateKey().Raw().ToHex(),
+                'public_key': bip44_addr_ctx.PublicKey().RawCompressed().ToHex(),
+                'address': bip44_addr_ctx.PublicKey().ToAddress(),
+                'derivation_path': self.derivation_path,
+                'network': self.network_name,
+                'created_at': time.time()
+            }
+            
+            return wallet_data
+            
+        except Exception as e:
+            raise ValueError(f"Failed to generate DOGE wallet: {str(e)}")
+    
+    def from_seed(self, seed_phrase: str) -> Dict[str, str]:
+        """Create wallet from existing seed phrase.
+        
+        Args:
+            seed_phrase: BIP39 mnemonic phrase
+            
+        Returns:
+            Dict containing wallet data
+        """
+        if not BIP_UTILS_AVAILABLE:
+            raise ImportError("BIP utilities required for wallet generation")
+            
+        try:
+            # Validate mnemonic
+            mnemonic = Mnemonic("english")
+            if not mnemonic.check(seed_phrase):
+                raise ValueError("Invalid mnemonic phrase")
+            
+            # Derive keys using bip_utils
+            seed = mnemonic.to_seed(seed_phrase)
+            bip44_mst_ctx = Bip44.FromSeed(seed, Bip44Coins.DOGECOIN)
+            bip44_acc_ctx = bip44_mst_ctx.Purpose().Coin().Account(0)
+            bip44_chg_ctx = bip44_acc_ctx.Change(Bip44Changes.CHAIN_EXT)
+            bip44_addr_ctx = bip44_chg_ctx.AddressIndex(0)
+            
+            wallet_data = {
+                'mnemonic': seed_phrase,
+                'private_key': bip44_addr_ctx.PrivateKey().Raw().ToHex(),
+                'public_key': bip44_addr_ctx.PublicKey().RawCompressed().ToHex(),
+                'address': bip44_addr_ctx.PublicKey().ToAddress(),
+                'derivation_path': self.derivation_path,
+                'network': self.network_name,
+                'restored_at': time.time()
+            }
+            
+            return wallet_data
+            
+        except Exception as e:
+            raise ValueError(f"Failed to restore DOGE wallet from seed: {str(e)}")
+    
+    def secure_export(self, wallet_data: Dict, password: str) -> bytes:
+        """Secure wallet export for download only.
+        
+        Args:
+            wallet_data: Wallet data to encrypt
+            password: Password for encryption
+            
+        Returns:
+            Encrypted wallet data as bytes
+        """
+        try:
+            # Generate salt
+            salt = os.urandom(self.salt_length_bytes)
+            
+            # Derive key from password using PBKDF2-HMAC-SHA256
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=self.hash_iterations,
+            )
+            key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+            
+            # Encrypt wallet data
+            f = Fernet(key)
+            wallet_json = json.dumps(wallet_data).encode()
+            encrypted_data = f.encrypt(wallet_json)
+            
+            # Combine salt and encrypted data
+            export_data = {
+                'salt': base64.b64encode(salt).decode(),
+                'encrypted_wallet': base64.b64encode(encrypted_data).decode(),
+                'iterations': self.hash_iterations,
+                'export_time': time.time(),
+                'version': '1.0'
+            }
+            
+            return json.dumps(export_data).encode()
+            
+        except Exception as e:
+            raise ValueError(f"Failed to export wallet securely: {str(e)}")
+    
+    def secure_import(self, encrypted_data: bytes, password: str) -> Dict[str, str]:
+        """Import securely exported wallet.
+        
+        Args:
+            encrypted_data: Encrypted wallet data
+            password: Password for decryption
+            
+        Returns:
+            Decrypted wallet data
+        """
+        try:
+            import base64
+            
+            # Parse export data
+            export_data = json.loads(encrypted_data.decode())
+            salt = base64.b64decode(export_data['salt'])
+            encrypted_wallet = base64.b64decode(export_data['encrypted_wallet'])
+            iterations = export_data.get('iterations', self.hash_iterations)
+            
+            # Derive key from password
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=iterations,
+            )
+            key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+            
+            # Decrypt wallet data
+            f = Fernet(key)
+            wallet_json = f.decrypt(encrypted_wallet)
+            wallet_data = json.loads(wallet_json.decode())
+            
+            return wallet_data
+            
+        except Exception as e:
+            raise ValueError(f"Failed to import wallet: {str(e)}")
+    
+    def validate_address(self, address: str) -> bool:
+        """Validate DOGE address format.
+        
+        Args:
+            address: DOGE address to validate
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        try:
+            # DOGE addresses start with 'D' for mainnet, 'n' for testnet
+            if self.network_name == 'mainnet' and not address.startswith('D'):
+                return False
+            elif self.network_name == 'testnet' and not address.startswith('n'):
+                return False
+                
+            # Basic length check (DOGE addresses are typically 34 characters)
+            if len(address) != 34:
+                return False
+                
+            # Try to decode base58
+            try:
+                decoded = base58.b58decode(address)
+                return len(decoded) == 25  # 21 bytes + 4 byte checksum
+            except:
+                return False
+                
+        except Exception:
+            return False
+    
+    def calculate_mnemonic_hash(self, mnemonic: str) -> str:
+        """Calculate hash of mnemonic for verification (never store the actual mnemonic).
+        
+        Args:
+            mnemonic: BIP39 mnemonic phrase
+            
+        Returns:
+            SHA-256 hash of the mnemonic
+        """
+        return hashlib.sha256(mnemonic.encode()).hexdigest()
+
 class DogecoinWallet:
-    """A wallet for Dogecoin cryptocurrency."""
+    """Legacy wallet class for backward compatibility."""
     
     def __init__(self, private_key: bytes = None, network: str = 'testnet'):
         """Initialize a Dogecoin wallet.

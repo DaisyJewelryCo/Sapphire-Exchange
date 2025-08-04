@@ -11,9 +11,11 @@ base58>=2.1.1
 ed25519-blake2b==1.4.1  # Pinned for compatibility
 pynacl>=1.4.0
 
-# Dogecoin
+# Dogecoin (Enhanced for BIP39 compliance)
 ecdsa>=0.18.0  # For Dogecoin wallet operations
 python-bitcoinlib>=0.12.0  # For Bitcoin/Dogecoin address handling
+mnemonic>=0.20  # BIP39 mnemonic phrase generation
+bip-utils>=2.7.0  # BIP44 key derivation
 
 # Cryptography
 cryptography>=3.4.7

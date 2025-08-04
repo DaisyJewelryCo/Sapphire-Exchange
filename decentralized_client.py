@@ -1,57 +1,365 @@
-"""Sapphire Exchange - Decentralized Client
+"""Enhanced Sapphire Exchange - Decentralized Client
 
-This client interacts directly with Arweave and Nano networks without relying on a centralized API.
+Multi-currency client supporting DOGE, Nano, and Arweave with robust error handling,
+performance optimization, and security features.
 """
 import json
 import asyncio
 import os
+import aiohttp
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 
 from arweave_utils import ArweaveClient
 from nano_utils import NanoWallet, NanoRPC, MOCK_MODE
-from models import User, Item, Auction
+from dogecoin_utils import DogeWalletManager
+from models import User, Item, Auction, Bid
 from mock_server import arweave_db, nano_db
+from security_manager import SecurityManager, SessionManager, EncryptionManager
+from performance_manager import PerformanceManager, NetworkErrorHandler, TransactionConfirmationManager
 
-class DecentralizedClient:
-    """Client for interacting with the decentralized Sapphire Exchange."""
+class EnhancedDecentralizedClient:
+    """Enhanced client supporting DOGE, Nano, and Arweave with robust error handling."""
     
     def __init__(self, arweave_client: Optional[ArweaveClient] = None, mock_mode: bool = MOCK_MODE):
-        """Initialize the DecentralizedClient.
+        """Initialize the Enhanced DecentralizedClient.
         
         Args:
             arweave_client: Optional ArweaveClient instance
             mock_mode: If True, use mock implementations for testing
         """
         self.mock_mode = mock_mode
+        
+        # Legacy fields for backward compatibility
         self.user_wallet = None
-        self.arweave = ArweaveClient()
-        self.nano_rpc = NanoRPC()
         self.user_data = None
-        self.current_user = None  # Track the current user
-        self._is_connected = False  # Track connection status
+        self.current_user = None
+        
+        # Network clients
+        self.arweave_client = arweave_client or ArweaveClient()
+        self.nano_rpc = NanoRPC()
+        self.doge_wallet_manager = DogeWalletManager()
+        
+        # Multi-currency wallet storage
+        self.wallets = {
+            'nano': None,
+            'doge': None,
+            'arweave': None
+        }
+        
+        # Connection status tracking
+        self.connection_status = {
+            'arweave': False,
+            'nano': False,
+            'doge': False,
+            'overall': False
+        }
+        
+        # Enhanced managers
+        self.security_manager = SecurityManager()
+        self.session_manager = SessionManager(self.security_manager)
+        self.encryption_manager = EncryptionManager()
+        self.performance_manager = PerformanceManager()
+        self.network_error_handler = NetworkErrorHandler()
+        self.confirmation_manager = TransactionConfirmationManager()
+        
+        # Error handling parameters (from error_handling section)
+        self.network_timeout_ms = 10000
+        self.max_retries = 3
+        self.backoff_factor = 2
+        self.max_confirm_attempts = 10
+        self.confirmation_delay_ms = 3000
+        
+        # Performance parameters
+        self.cache_ttl_ms = 300000  # 5 minutes
+        self.batch_size = 50
+        self.max_concurrent_requests = 10
+        self.request_timeout_ms = 30000
+        
+        # Rate limiting (security_parameters)
+        self.requests_per_minute = 60
+        self.burst_capacity = 10
         
     @property
     def is_connected(self):
-        """Get the current connection status."""
-        return self._is_connected
+        """Get the current overall connection status."""
+        return self.connection_status['overall']
         
-    def connect(self):
-        """Establish connections to required services."""
+    async def connect(self):
+        """Establish connections to all blockchain services."""
         try:
-            # In a real implementation, this would connect to the blockchain nodes
-            # For now, we'll just set the status to connected
-            self._is_connected = True
-            return True
+            # Check all connections concurrently
+            connection_tasks = [
+                self._check_arweave_connection(),
+                self._check_nano_connection(),
+                self._check_doge_connection()
+            ]
+            
+            results = await asyncio.gather(*connection_tasks, return_exceptions=True)
+            
+            # Update connection status
+            self.connection_status['arweave'] = not isinstance(results[0], Exception) and results[0]
+            self.connection_status['nano'] = not isinstance(results[1], Exception) and results[1]
+            self.connection_status['doge'] = not isinstance(results[2], Exception) and results[2]
+            
+            # Overall status is true if at least one connection is working
+            self.connection_status['overall'] = any([
+                self.connection_status['arweave'],
+                self.connection_status['nano'],
+                self.connection_status['doge']
+            ])
+            
+            return self.connection_status
+            
         except Exception as e:
             print(f"Error connecting to services: {e}")
-            self._is_connected = False
-            return False
+            self.connection_status['overall'] = False
+            return self.connection_status
             
     def disconnect(self):
         """Disconnect from all services."""
-        self._is_connected = False
+        self.connection_status = {
+            'arweave': False,
+            'nano': False,
+            'doge': False,
+            'overall': False
+        }
         return True
+    
+    async def _check_arweave_connection(self) -> bool:
+        """Check Arweave gateway connection."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "https://arweave.net/info",
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    return response.status == 200
+        except Exception:
+            return False
+    
+    async def _check_nano_connection(self) -> bool:
+        """Check Nano node connection."""
+        try:
+            # Try to get node version
+            result = await self.nano_rpc.call_async("version")
+            return 'node_vendor' in result
+        except Exception:
+            return False
+    
+    async def _check_doge_connection(self) -> bool:
+        """Check Dogecoin network connection (placeholder)."""
+        # For now, assume DOGE connection is available
+        # In a real implementation, this would check a DOGE node or API
+        return True
+    
+    async def check_all_connections(self) -> Dict[str, bool]:
+        """Check connection status for all blockchain networks."""
+        await self.connect()
+        return self.connection_status
+    
+    async def initialize_multi_currency_wallet(self, seed_phrase: str) -> Dict:
+        """Initialize wallets for all supported currencies.
+        
+        Args:
+            seed_phrase: BIP39 mnemonic phrase
+            
+        Returns:
+            Dict containing wallet initialization results
+        """
+        try:
+            results = {}
+            
+            # Initialize Nano wallet (existing logic)
+            try:
+                nano_wallet = NanoWallet.from_seed(seed_phrase, mock_mode=self.mock_mode)
+                self.wallets['nano'] = nano_wallet
+                self.user_wallet = nano_wallet  # For backward compatibility
+                results['nano'] = {
+                    'status': 'success',
+                    'address': getattr(nano_wallet, 'address', 'unknown')
+                }
+            except Exception as e:
+                results['nano'] = {'status': 'error', 'error': str(e)}
+            
+            # Initialize DOGE wallet from same seed
+            try:
+                doge_wallet_data = self.doge_wallet_manager.from_seed(seed_phrase)
+                self.wallets['doge'] = doge_wallet_data
+                results['doge'] = {
+                    'status': 'success',
+                    'address': doge_wallet_data.get('address', 'unknown')
+                }
+            except Exception as e:
+                results['doge'] = {'status': 'error', 'error': str(e)}
+            
+            # Verify Arweave wallet compatibility (if available)
+            try:
+                # For now, use existing Arweave client
+                self.wallets['arweave'] = self.arweave_client
+                results['arweave'] = {'status': 'success', 'address': 'arweave_wallet'}
+            except Exception as e:
+                results['arweave'] = {'status': 'error', 'error': str(e)}
+            
+            # Determine overall status
+            success_count = sum(1 for r in results.values() if r['status'] == 'success')
+            results['overall'] = {
+                'status': 'success' if success_count > 0 else 'error',
+                'wallets_initialized': success_count,
+                'total_wallets': len(results) - 1  # Exclude 'overall'
+            }
+            
+            return results
+            
+        except Exception as e:
+            return {
+                'overall': {'status': 'error', 'error': str(e)},
+                'nano': {'status': 'error', 'error': 'Not attempted'},
+                'doge': {'status': 'error', 'error': 'Not attempted'},
+                'arweave': {'status': 'error', 'error': 'Not attempted'}
+            }
+    
+    async def get_balance(self, currency: str, address: str = None) -> Dict:
+        """Get balance for specified currency.
+        
+        Args:
+            currency: Currency type ('nano', 'doge', 'arweave')
+            address: Optional address (uses wallet address if not provided)
+            
+        Returns:
+            Dict containing balance information
+        """
+        try:
+            if currency == 'nano':
+                return await self._get_nano_balance(address)
+            elif currency == 'doge':
+                return await self._get_doge_balance(address)
+            elif currency == 'arweave':
+                return await self._get_arweave_balance(address)
+            else:
+                return {'status': 'error', 'error': f'Unsupported currency: {currency}'}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def _get_nano_balance(self, address: str = None) -> Dict:
+        """Get Nano balance."""
+        try:
+            if not address and self.wallets['nano']:
+                address = getattr(self.wallets['nano'], 'address', None)
+            
+            if not address:
+                return {'status': 'error', 'error': 'No Nano address available'}
+            
+            # Use cached balance if available
+            cache_key = f"nano_balance_{address}"
+            cached_balance = self.performance_manager.get_cached_data(cache_key)
+            if cached_balance:
+                return cached_balance
+            
+            # Get balance from network
+            balance_data = await self.nano_rpc.call_async("account_balance", {"account": address})
+            
+            result = {
+                'status': 'success',
+                'currency': 'nano',
+                'address': address,
+                'balance': balance_data.get('balance', '0'),
+                'pending': balance_data.get('pending', '0'),
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Cache the result
+            self.performance_manager.set_cached_data(cache_key, result, ttl_ms=30000)  # 30 seconds
+            
+            return result
+            
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def _get_doge_balance(self, address: str = None) -> Dict:
+        """Get DOGE balance (placeholder implementation)."""
+        try:
+            if not address and self.wallets['doge']:
+                address = self.wallets['doge'].get('address')
+            
+            if not address:
+                return {'status': 'error', 'error': 'No DOGE address available'}
+            
+            # Placeholder - in real implementation, query DOGE network
+            return {
+                'status': 'success',
+                'currency': 'doge',
+                'address': address,
+                'balance': '100.0',  # Mock balance
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def _get_arweave_balance(self, address: str = None) -> Dict:
+        """Get Arweave balance (placeholder implementation)."""
+        try:
+            # Placeholder - in real implementation, query Arweave network
+            return {
+                'status': 'success',
+                'currency': 'arweave',
+                'address': address or 'arweave_address',
+                'balance': '1.0',  # Mock balance in AR
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def convert_to_usd(self, amount: float, currency: str) -> Optional[float]:
+        """Convert cryptocurrency amount to USD via CoinGecko API.
+        
+        Args:
+            amount: Amount to convert
+            currency: Currency type ('nano', 'doge', 'arweave')
+            
+        Returns:
+            USD equivalent or None if conversion fails
+        """
+        try:
+            # Map currency names to CoinGecko IDs
+            currency_map = {
+                'nano': 'nano',
+                'doge': 'dogecoin',
+                'arweave': 'arweave'
+            }
+            
+            coin_id = currency_map.get(currency.lower())
+            if not coin_id:
+                return None
+            
+            # Check cache first
+            cache_key = f"price_{coin_id}_usd"
+            cached_price = self.performance_manager.get_cached_data(cache_key)
+            
+            if cached_price:
+                return amount * cached_price
+            
+            # Fetch from CoinGecko API
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        price = data[coin_id]['usd']
+                        
+                        # Cache the price for 5 minutes
+                        self.performance_manager.set_cached_data(cache_key, price, ttl_ms=300000)
+                        
+                        return amount * price
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error converting to USD: {e}")
+            return None
         
     def get_seed_phrase(self) -> Optional[str]:
         """Get the seed phrase for the current wallet.
@@ -558,8 +866,8 @@ class DecentralizedClient:
 
 
 async def example_usage():
-    """Example usage of the DecentralizedClient."""
-    client = DecentralizedClient(mock_mode=True)
+    """Example usage of the EnhancedDecentralizedClient."""
+    client = EnhancedDecentralizedClient(mock_mode=True)
     
     # Create a new user
     seed_phrase = "test seed phrase"
