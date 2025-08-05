@@ -515,9 +515,13 @@ class WalletGenerationDialog(QDialog):
         self.button_box.button(QDialogButtonBox.Ok).setEnabled(False)
         layout.addWidget(self.button_box)
         
-        self.confirm_checkbox.toggled.connect(
-            lambda checked: self.button_box.button(QDialogButtonBox.Ok).setEnabled(checked)
-        )
+        self.confirm_checkbox.toggled.connect(self._on_confirm_checkbox)
+    
+    def _on_confirm_checkbox(self, checked):
+        self.button_box.button(QDialogButtonBox.Ok).setEnabled(checked)
+        if checked:
+            # Simulate click on OK button to ensure QDialogButtonBox logic is triggered
+            self.button_box.button(QDialogButtonBox.Ok).click()
     
     def generate_wallet(self):
         """Generate new wallet and display seed phrase."""

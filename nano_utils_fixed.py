@@ -300,6 +300,44 @@ class NanoRPC:
         # In a real implementation, this would confirm a block
         return {"started": "1"}
     
+    def _mock_version(self) -> dict:
+        """Mock implementation of version RPC."""
+        return {
+            "node_vendor": "Mock Nano Node",
+            "protocol_version": "1",
+            "store_version": "1"
+        }
+    
+    def call_async(self, action: str, params: dict = None) -> dict:
+        """
+        Make an asynchronous RPC request to the Nano node.
+        
+        Args:
+            action: The RPC action to perform
+            params: Additional parameters for the RPC call
+            
+        Returns:
+            dict: The JSON response from the node or mock data
+        """
+        if params is None:
+            params = {}
+            
+        if self.mock_mode:
+            return self._mock_rpc(action, **params)
+            
+        payload = {
+            "action": action,
+            **params
+        }
+        
+        try:
+            response = self.session.post(self.node_url, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"RPC request failed: {e}")
+            return {"error": str(e)}
+    
     def get_account_balance(self, account: str) -> dict:
         """
         Get the balance of a Nano account.

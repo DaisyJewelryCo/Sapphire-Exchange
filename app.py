@@ -13,6 +13,8 @@ from qasync import QEventLoop
 
 from main_window import MainWindow
 
+did_shutdown = False
+
 def handle_exception(exc_type, exc_value, exc_traceback):
     """Handle uncaught exceptions."""
     sys.__excepthook__(exc_type, exc_value, exc_traceback)
@@ -51,29 +53,50 @@ def main():
     
     # Connect the aboutToQuit signal to clean up resources
     def handle_quit():
+        global did_shutdown
+        if did_shutdown:
+            return
+        did_shutdown = True
         print("Shutting down...")
-        # Cancel all running tasks
-        for task in asyncio.all_tasks(loop):
-            if not task.done():
-                task.cancel()
-        # Stop the event loop
-        if loop.is_running():
-            loop.stop()
-    
+        import threading
+        print("[Shutdown] Active threads:", threading.enumerate())
+        try:
+            # Cancel all running tasks
+            for task in asyncio.all_tasks(loop):
+                if not task.done() and task != asyncio.current_task():
+                    task.cancel()
+            # Give tasks a chance to cancel gracefully, but don't hang forever
+            try:
+                loop.run_until_complete(asyncio.wait_for(asyncio.sleep(0.1), timeout=2.0))
+            except Exception as e:
+                print(f"Shutdown wait timeout or error: {e}")
+            # Stop the event loop
+            if loop.is_running():
+                loop.stop()
+            # Force Qt event loop to quit
+            from PyQt5.QtWidgets import QApplication
+            QApplication.quit()
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+        
     app.aboutToQuit.connect(handle_quit)
     
     # Run the application
-    with loop:
+    try:
+        return app.exec_()
+    except KeyboardInterrupt:
+        print("Application interrupted by user")
+        return 0
+    except Exception as e:
+        print(f"Application error: {e}")
+        return 1
+    finally:
+        # Ensure the loop is properly closed
         try:
-            loop.run_forever()
-        except asyncio.CancelledError:
-            pass  # Expected during shutdown
-        except Exception as e:
-            print(f"Unexpected error in event loop: {e}")
-            return 1
+            loop.close()
+        except:
+            pass
     
-    return 0
-
 if __name__ == "__main__":
     # Don't use asyncio.run() with qasync
     sys.exit(main())

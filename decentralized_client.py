@@ -88,6 +88,16 @@ class EnhancedDecentralizedClient:
     async def connect(self):
         """Establish connections to all blockchain services."""
         try:
+            # In mock mode, all connections should succeed
+            if self.mock_mode:
+                self.connection_status = {
+                    'arweave': True,
+                    'nano': True,
+                    'doge': True,
+                    'overall': True
+                }
+                return self.connection_status
+            
             # Check all connections concurrently
             connection_tasks = [
                 self._check_arweave_connection(),
@@ -128,6 +138,15 @@ class EnhancedDecentralizedClient:
     
     async def _check_arweave_connection(self) -> bool:
         """Check Arweave gateway connection."""
+        # In mock mode, simulate a successful connection to a mock server
+        if self.mock_mode:
+            try:
+                # Simulate a successful response from a mock Arweave server
+                # This is a simple check that would succeed in mock mode
+                return True
+            except Exception:
+                return False
+            
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -140,6 +159,15 @@ class EnhancedDecentralizedClient:
     
     async def _check_nano_connection(self) -> bool:
         """Check Nano node connection."""
+        # In mock mode, simulate a successful connection to a mock server
+        if self.mock_mode:
+            try:
+                # Try to get node version from mock implementation
+                result = self.nano_rpc.call_async("version")
+                return 'node_vendor' in result
+            except Exception:
+                return False
+        
         try:
             # Try to get node version
             result = await self.nano_rpc.call_async("version")
@@ -149,8 +177,16 @@ class EnhancedDecentralizedClient:
     
     async def _check_doge_connection(self) -> bool:
         """Check Dogecoin network connection (placeholder)."""
-        # For now, assume DOGE connection is available
-        # In a real implementation, this would check a DOGE node or API
+        # In mock mode, simulate a successful connection to a mock server
+        if self.mock_mode:
+            try:
+                # For DOGE, we'll just simulate a successful connection in mock mode
+                return True
+            except Exception:
+                return False
+        
+        # Placeholder for actual Dogecoin connection check
+        # In a real implementation, this would check connection to a Dogecoin node
         return True
     
     async def check_all_connections(self) -> Dict[str, bool]:

@@ -1,11 +1,12 @@
 """
-Mock servers for Nano and Arweave to simulate blockchain operations.
+Mock servers for Nano, Arweave, and Dogecoin to simulate blockchain operations.
 """
 import json
 import os
 import asyncio
 import time
 import random
+import hashlib
 from typing import Dict, List, Optional, Any, Callable, Awaitable
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
@@ -15,7 +16,6 @@ from typing import Optional, Dict, Any
 from nano_utils import MOCK_MODE
 import random
 import string
-import hashlib
 
 # Simulate network latency (in seconds)
 MIN_LATENCY = 0.1  # 100ms
@@ -115,19 +115,41 @@ class MockArweaveDB:
     user_data: Dict[str, dict] = field(default_factory=dict)  # public_key -> user_data
     pending_transactions: Dict[str, dict] = field(default_factory=dict)  # tx_id -> tx_data
     _background_tasks: set = field(default_factory=set, init=False)
+    _pending_tasks: set = field(default_factory=set, init=False)
+    _shutdown: bool = field(default=False, init=False)
     
     def __post_init__(self):
         # Initialize with some test data
         # The actual test data is initialized by the global initialize_test_data() function
         pass
         
-    def __del__(self):
-        # Cancel all background tasks when the instance is destroyed
-        for task in self._background_tasks:
+    async def shutdown(self):
+        """Properly shutdown the mock Arweave server and clean up all tasks."""
+        self._shutdown = True
+        
+        # Cancel all pending tasks
+        for task in list(self._background_tasks):
             if not task.done():
                 task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         self._background_tasks.clear()
-    
+        
+        # Cancel all pending transaction tasks
+        for task in list(self._pending_tasks):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._pending_tasks.clear()
+        
+        # Clean up pending transactions
+        self.pending_transactions.clear()
+
     def _simulate_network(self):
         """Simulate network operations."""
         simulate_latency()
@@ -156,17 +178,31 @@ class MockArweaveDB:
     
     async def _confirm_transaction(self, tx_id: str) -> None:
         """Simulate transaction confirmation after a delay."""
-        await asyncio.sleep(CONFIRMATION_DELAY)
-        if tx_id in self.pending_transactions:
-            tx = self.pending_transactions[tx_id]
-            tx['status'] = 'confirmed'
-            tx['block_height'] = random.randint(1_000_000, 2_000_000)
-            tx['confirmations'] = 1
-            
-            # Move to confirmed items if it's an item
-            if 'name' in tx['data']:  # This is an item
-                self.items[tx_id] = tx['data']
-                print(f"[MOCK] Item {tx_id} confirmed and added to marketplace")
+        try:
+            if self._shutdown:
+                return
+            await asyncio.sleep(CONFIRMATION_DELAY)
+            if self._shutdown:
+                return
+            if tx_id in self.pending_transactions:
+                tx = self.pending_transactions[tx_id]
+                tx['status'] = 'confirmed'
+                tx['block_height'] = random.randint(1_000_000, 2_000_000)
+                tx['confirmations'] = 1
+                
+                # Move to confirmed items if it's an item
+                if 'name' in tx['data']:  # This is an item
+                    self.items[tx_id] = tx['data']
+                    print(f"[MOCK] Item {tx_id} confirmed and added to marketplace")
+                
+                # Remove from pending
+                del self.pending_transactions[tx_id]
+                
+        except asyncio.CancelledError:
+            # Task was cancelled during shutdown
+            pass
+        except Exception as e:
+            print(f"[MOCK] Error confirming transaction {tx_id}: {e}")
     
     async def get_data(self, tx_id: str) -> Optional[dict]:
         """Retrieve data by transaction ID with simulated latency."""
@@ -391,7 +427,7 @@ class MockNanoDB:
         
         # Update balances
         self.accounts[source] -= amount
-        self.accounts[destination] = self.accounts.get(destination, 0) + amount
+        self.accounts[destination] = self.accounts.get(destination, 0.0) + amount
         
         # Create receive block
         receive_hash = f"{generate_arweave_tx_id()[:64]}"
@@ -451,13 +487,294 @@ class MockNanoDB:
         history.sort(key=lambda x: x['timestamp'], reverse=True)
         return history[:count]
 
+@dataclass
+class MockNanoRPC:
+    """Mock Nano RPC server for simulating Nano blockchain operations with realistic behavior."""
+    accounts: Dict[str, float] = field(default_factory=dict)
+    pending_blocks: Dict[str, dict] = field(default_factory=dict)
+    confirmed_blocks: Dict[str, dict] = field(default_factory=dict)
+    account_history_data: Dict[str, List[dict]] = field(default_factory=dict)
+    _background_tasks: set = field(default_factory=set, init=False)
+    _shutdown: bool = field(default=False, init=False)
+    
+    def __post_init__(self):
+        """Initialize with some test accounts and realistic balances."""
+        # Initialize with realistic test accounts
+        test_accounts = [
+            "nano_1test1test1test1test1test1test1test1test1test1test1test1test1",
+            "nano_1test2test2test2test2test2test2test2test2test2test2test2test2",
+            "nano_1test3test3test3test3test3test3test3test3test3test3test3test3",
+        ]
+        
+        # Initialize with realistic balances (in raw Nano units)
+        for account in test_accounts:
+            self.accounts[account] = random.uniform(1.0, 1000.0)  # 1-1000 NANO
+            self.account_history_data[account] = []
+    
+    async def shutdown(self):
+        """Properly shutdown the mock Nano server."""
+        self._shutdown = True
+        for task in list(self._background_tasks):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._background_tasks.clear()
+    
+    def _simulate_network(self):
+        """Simulate network operations for Nano."""
+        simulate_latency()
+    
+    async def account_balance(self, account: str) -> dict:
+        """Get account balance with realistic Nano RPC response format."""
+        self._simulate_network()
+        
+        balance = self.accounts.get(account, 0.0)
+        pending = sum(block['amount'] for block in self.pending_blocks.values() 
+                     if block.get('account') == account)
+        
+        return {
+            "balance": str(int(balance * 1e30)),  # Convert to raw
+            "pending": str(int(pending * 1e30)),
+            "receivable": str(int(pending * 1e30)),
+            "account": account
+        }
+    
+    async def account_info(self, account: str) -> dict:
+        """Get account information with realistic Nano RPC response."""
+        self._simulate_network()
+        
+        balance = self.accounts.get(account, 0.0)
+        
+        return {
+            "account": account,
+            "balance": str(int(balance * 1e30)),
+            "block_count": str(len(self.account_history_data.get(account, []))),
+            "confirmation_height": str(len(self.account_history_data.get(account, []))),
+            "representative": "nano_1representativerepresentativerepresentat",
+            "frontier": generate_tx_id(),
+            "open_block": generate_tx_id(),
+            "modified_timestamp": str(int(time.time()))
+        }
+    
+    async def send_nano(self, wallet: str, source: str, destination: str, amount: float, 
+                       id: str = None) -> dict:
+        """Send Nano with realistic transaction simulation."""
+        self._simulate_network()
+        
+        if source not in self.accounts:
+            raise ValueError("Source account not found")
+        
+        current_balance = self.accounts[source]
+        if current_balance < amount:
+            raise ValueError("Insufficient balance")
+        
+        # Create transaction
+        tx_hash = generate_tx_id()
+        block_data = {
+            "hash": tx_hash,
+            "type": "send",
+            "account": source,
+            "previous": generate_tx_id(),
+            "representative": "nano_1representativerepresentativerepresentat",
+            "balance": str(int((current_balance - amount) * 1e30)),
+            "link": destination,
+            "link_as_account": destination,
+            "signature": generate_tx_id(),
+            "work": generate_tx_id()[:8],
+            "amount": str(int(amount * 1e30))
+        }
+        
+        # Update balances
+        self.accounts[source] -= amount
+        self.accounts[destination] = self.accounts.get(destination, 0.0) + amount
+        
+        # Add to confirmed blocks
+        self.confirmed_blocks[tx_hash] = block_data
+        
+        # Add to account history
+        if source not in self.account_history_data:
+            self.account_history_data[source] = []
+        self.account_history_data[source].append({
+            "hash": tx_hash,
+            "type": "send",
+            "account": destination,
+            "amount": str(int(amount * 1e30)),
+            "local_timestamp": str(int(time.time())),
+            "height": str(len(self.account_history_data[source]) + 1),
+            "confirmed": "true"
+        })
+        
+        return {
+            "block": block_data,
+            "hash": tx_hash,
+            "amount": str(int(amount * 1e30))
+        }
+    
+    async def account_history(self, account: str, count: int = 10) -> dict:
+        """Get account history with realistic Nano RPC response."""
+        self._simulate_network()
+        
+        history = self.account_history_data.get(account, [])[-count:]
+        
+        return {
+            "account": account,
+            "history": history,
+            "previous": generate_tx_id() if history else "",
+            "next": ""
+        }
+
+@dataclass
+class MockDogecoinRPC:
+    """Mock Dogecoin RPC server for simulating Dogecoin blockchain operations."""
+    accounts: Dict[str, float] = field(default_factory=dict)
+    transactions: Dict[str, dict] = field(default_factory=dict)
+    unspent_outputs: Dict[str, List[dict]] = field(default_factory=dict)
+    _background_tasks: set = field(default_factory=set, init=False)
+    _shutdown: bool = field(default=False, init=False)
+    
+    def __post_init__(self):
+        """Initialize with realistic test data."""
+        # Initialize with realistic Dogecoin addresses and balances
+        test_addresses = [
+            "D5x7Y8Z9aBcDeFgHiJkLmNoPqRsTuVwXyZ",
+            "D9mN8oP7qR6sT5uV4wX3yZ2aBcDeFgHiJk",
+            "D3fG4hJ5kL6mN7pQ8rS9tU0vW1xY2z3a4b",
+        ]
+        
+        # Initialize with realistic balances (in DOGE units)
+        for address in test_addresses:
+            self.accounts[address] = random.uniform(10.0, 10000.0)  # 10-10000 DOGE
+            self.unspent_outputs[address] = []
+            
+            # Create some unspent outputs
+            for i in range(random.randint(1, 5)):
+                self.unspent_outputs[address].append({
+                    "txid": generate_tx_id(),
+                    "vout": i,
+                    "address": address,
+                    "account": "",
+                    "scriptPubKey": "76a914" + hashlib.sha256(address.encode()).hexdigest()[:40] + "88ac",
+                    "amount": random.uniform(1.0, 100.0),
+                    "confirmations": random.randint(1, 100),
+                    "spendable": True,
+                    "solvable": True,
+                    "safe": True
+                })
+    
+    async def shutdown(self):
+        """Properly shutdown the mock Dogecoin server."""
+        self._shutdown = True
+        for task in list(self._background_tasks):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._background_tasks.clear()
+    
+    def _simulate_network(self):
+        """Simulate network operations for Dogecoin."""
+        simulate_latency()
+    
+    async def get_balance(self, address: str) -> dict:
+        """Get address balance with realistic Dogecoin RPC response."""
+        self._simulate_network()
+        
+        balance = self.accounts.get(address, 0.0)
+        
+        return {
+            "address": address,
+            "balance": str(balance),
+            "received": str(balance + random.uniform(0.1, 10.0)),
+            "sent": str(random.uniform(0.1, 10.0))
+        }
+    
+    async def get_transaction(self, txid: str) -> dict:
+        """Get transaction details with realistic Dogecoin RPC response."""
+        self._simulate_network()
+        
+        if txid not in self.transactions:
+            self.transactions[txid] = {
+                "txid": txid,
+                "hash": txid,
+                "version": 1,
+                "size": random.randint(200, 1000),
+                "vsize": random.randint(200, 1000),
+                "weight": random.randint(800, 4000),
+                "locktime": 0,
+                "vin": [],
+                "vout": [],
+                "confirmations": random.randint(1, 100),
+                "time": int(time.time() - random.randint(3600, 86400)),
+                "blocktime": int(time.time() - random.randint(3600, 86400))
+            }
+        
+        return self.transactions[txid]
+    
+    async def send_to_address(self, address: str, amount: float) -> str:
+        """Send Dogecoin to address with realistic transaction simulation."""
+        self._simulate_network()
+        
+        if address not in self.accounts:
+            self.accounts[address] = 0.0
+        
+        txid = generate_tx_id()
+        
+        transaction = {
+            "txid": txid,
+            "hash": txid,
+            "version": 1,
+            "size": 250,
+            "vsize": 250,
+            "weight": 1000,
+            "locktime": 0,
+            "vin": [{
+                "txid": generate_tx_id(),
+                "vout": 0,
+                "scriptSig": {
+                    "asm": "",
+                    "hex": ""
+                },
+                "sequence": 4294967295
+            }],
+            "vout": [{
+                "value": amount,
+                "n": 0,
+                "scriptPubKey": {
+                    "asm": "OP_DUP OP_HASH160 " + hashlib.sha256(address.encode()).hexdigest()[:40] + " OP_EQUALVERIFY OP_CHECKSIG",
+                    "hex": "76a914" + hashlib.sha256(address.encode()).hexdigest()[:40] + "88ac",
+                    "addresses": [address]
+                }
+            }],
+            "confirmations": 1,
+            "time": int(time.time()),
+            "blocktime": int(time.time())
+        }
+        
+        self.transactions[txid] = transaction
+        self.accounts[address] += amount
+        
+        return txid
+    
+    async def list_unspent(self, address: str) -> List[dict]:
+        """List unspent outputs with realistic Dogecoin RPC response."""
+        self._simulate_network()
+        
+        return self.unspent_outputs.get(address, [])
+
 # Global instances with some initial test data
 arweave_db = MockArweaveDB()
 nano_db = MockNanoDB()
+nano_rpc = MockNanoRPC()
+doge_db = MockDogecoinRPC()
 
 # Initialize with some test data for demo purposes
 async def initialize_test_data_async():
-    """Initialize the mock databases with test data asynchronously."""
+    """Initialize test data for the mock servers."""
     # Create some test users
     test_users = [
         {
@@ -566,3 +883,23 @@ def initialize_test_data():
 
 # Initialize test data when module loads
 initialize_test_data()
+
+# Clean shutdown handler
+async def cleanup_all_servers():
+    """Clean up all mock servers."""
+    await arweave_db.shutdown()
+    await nano_db.shutdown()
+    await nano_rpc.shutdown()
+    await doge_db.shutdown()
+
+# Register cleanup on exit
+import atexit
+
+def safe_cleanup():
+    try:
+        asyncio.run(cleanup_all_servers())
+    except RuntimeError as e:
+        if "Event loop is closed" not in str(e):
+            raise
+
+atexit.register(safe_cleanup)

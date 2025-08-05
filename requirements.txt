@@ -3,10 +3,21 @@ python-dotenv>=0.19.2
 requests>=2.28.0
 aiohttp>=3.8.0  # Async HTTP client
 
+# UI and Event Loop
+PyQt5>=5.15.0
+PyQt5-Qt5>=5.15.2
+PyQt5-sip>=12.12.1
+qasync>=0.27.1  # Async event loop for PyQt5
+
+# QR Code Generation
+qrcode[pil]>=7.3.1
+Pillow>=9.5.0
+
 # Arweave
 PyArweave==0.6.0
 
 # Nano
+cryptography>=3.4.8
 base58>=2.1.1
 ed25519-blake2b==1.4.1  # Pinned for compatibility
 pynacl>=1.4.0
@@ -18,23 +29,15 @@ mnemonic>=0.20  # BIP39 mnemonic phrase generation
 bip-utils>=2.7.0  # BIP44 key derivation
 
 # Cryptography
-cryptography>=3.4.7
-pycryptodome>=3.20.0
-
-# UI
-PyQt5>=5.15.9
-PyQt5-Qt5>=5.15.2
-PyQt5-sip>=12.12.1
-qasync>=0.27.0
-qrcode>=7.4.2
-Pillow>=9.5.0
+cryptography>=3.4.8
+pycryptodome>=3.15.0
 
 # Testing
 pytest>=7.0.0
 pytest-asyncio>=0.20.0
 
 # Development
-black>=22.0.0
+black>=22.1.0
 isort>=5.10.0
 mypy>=0.910
 pylint>=2.12.0
