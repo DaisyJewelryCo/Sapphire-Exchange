@@ -11,7 +11,7 @@ from PyQt5.QtCore import Qt
 # Enable asyncio event loop for PyQt5
 from qasync import QEventLoop
 
-from main_window import MainWindow
+from main_window_unified import MainWindow
 
 did_shutdown = False
 

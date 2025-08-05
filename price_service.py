@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
 
-from performance_manager import PerformanceManager
+from security.performance_manager import PerformanceManager
 
 
 @dataclass

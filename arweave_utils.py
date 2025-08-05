@@ -72,8 +72,15 @@ class MockWallet:
     def to_dict(self) -> Dict:
         return {'kty': 'RSA', 'e': 'AQAB', 'n': 'mock_key'}
 
-# Import the ArweaveTransaction class from mock_server when in mock mode
-from mock_server import ArweaveTransaction
+# Import ArweaveTransaction class conditionally to avoid circular imports
+try:
+    from mock_server import ArweaveTransaction
+except ImportError:
+    # Define a minimal ArweaveTransaction class if mock_server is not available
+    class ArweaveTransaction:
+        def __init__(self, *args, **kwargs):
+            self.id = f"mock_tx_{random.randint(1000, 9999)}"
+            self.status = "pending"
 
 # Mock Transaction class for simulation - keeping for backward compatibility
 class MockArweaveTransaction(ArweaveTransaction):

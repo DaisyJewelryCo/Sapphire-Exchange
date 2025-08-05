@@ -12,8 +12,14 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 
-# Import MOCK_MODE from nano_utils
-from nano_utils import MOCK_MODE
+# Import MOCK_MODE from config
+try:
+    from config.app_config import app_config
+    MOCK_MODE = app_config.mock_mode
+except ImportError:
+    # Fallback to environment variable
+    import os
+    MOCK_MODE = os.getenv('MOCK_MODE', 'true').lower() == 'true'
 import random
 import string
 

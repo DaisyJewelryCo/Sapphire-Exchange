@@ -10,8 +10,8 @@ from typing import Dict, List, Optional, Type, TypeVar, Generic, Any, Tuple
 from dataclasses import asdict
 from models import User, Item, Auction, Bid
 from arweave_utils import ArweaveClient
-from performance_manager import PerformanceManager
-from security_manager import SecurityManager, EncryptionManager
+from security.performance_manager import PerformanceManager
+from security.security_manager import SecurityManager, EncryptionManager
 
 T = TypeVar('T', User, Item, Auction, Bid)
 

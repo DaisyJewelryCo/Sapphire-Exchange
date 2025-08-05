@@ -18,14 +18,15 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer, pyqtSlot, QProp
 from PyQt5.QtGui import (QFont, QPixmap, QIcon, QTextCursor, QTextCharFormat, QColor, 
                          QFontMetrics, QDoubleValidator)
 
-from decentralized_client import EnhancedDecentralizedClient
-from models import Item, Auction, User, Bid
-from dogecoin_utils import DogeWalletManager
-from security_manager import SecurityManager, SessionManager
-from performance_manager import PerformanceManager
+from models import Item, User, Bid
+from blockchain.blockchain_manager import blockchain_manager
+from services.auction_service import auction_service
+from services.wallet_service import wallet_service
+from security.security_manager import SecurityManager, SessionManager
+from security.performance_manager import PerformanceManager
 from price_service import PriceConversionService, get_price_service
-from wallet_widget import MultiCurrencyWalletWidget
-from auction_widget import AuctionListWidget, AuctionDetailsWidget, CreateAuctionDialog
+from ui.wallet_widget import WalletWidget
+from ui.auction_widget import AuctionListWidget, AuctionItemWidget
 
 class AsyncWorker(QThread):
     """Worker thread for running async functions."""
