@@ -345,6 +345,26 @@ class ArweaveClient:
         except Exception:
             return False
     
+    async def generate_address(self) -> Optional[str]:
+        """Generate a new Arweave address."""
+        try:
+            if self.mock_mode:
+                # Generate a mock address for testing
+                import uuid
+                address_id = str(uuid.uuid4()).replace('-', '')[:43]
+                return f"mock_arweave_{address_id}"
+            else:
+                # For real Arweave network, generate from RSA key
+                # This is a simplified implementation
+                key = RSA.generate(2048)
+                # In real implementation, address would be derived from public key
+                address_hash = hashlib.sha256(key.publickey().export_key()).hexdigest()
+                return f"arweave_{address_hash[:43]}"
+                
+        except Exception as e:
+            print(f"Error generating Arweave address: {e}")
+            return None
+
     def format_balance(self, winston_amount: str, decimals: int = 6) -> str:
         """Format winston balance for display."""
         try:

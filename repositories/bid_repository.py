@@ -6,7 +6,7 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 
-from models import Bid
+from models.models import Bid
 from .base_repository import ArweaveRepository
 
 

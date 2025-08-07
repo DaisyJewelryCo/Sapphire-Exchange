@@ -6,7 +6,7 @@ import asyncio
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import asdict
 
-from models import User
+from models.models import User
 from blockchain.blockchain_manager import blockchain_manager
 from config.app_config import app_config
 

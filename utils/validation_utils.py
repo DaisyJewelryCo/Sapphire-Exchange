@@ -335,7 +335,7 @@ class Validator:
         }
         
         # Required fields
-        required_fields = ['username', 'email', 'password']
+        required_fields = ['username', 'password']
         for field in required_fields:
             if field not in user_data or not user_data[field]:
                 result['errors'].append(f'{field} is required')
@@ -344,11 +344,6 @@ class Validator:
         username = user_data.get('username')
         if username and not Validator.validate_username(username):
             result['errors'].append('Username must be 3-30 characters and contain only letters, numbers, hyphens, and underscores')
-        
-        # Email validation
-        email = user_data.get('email')
-        if email and not Validator.validate_email(email):
-            result['errors'].append('Invalid email format')
         
         # Password validation
         password = user_data.get('password')

@@ -10,12 +10,26 @@ The Sapphire Exchange has been successfully unified into a clean, maintainable, 
 ```
 sapphire_exchange/
 ├── app.py                          # Application entry point
-├── main_window_unified.py          # Unified main UI
-├── application_service.py          # Central orchestration service
-├── database_adapter.py             # Database abstraction layer
-├── models.py                       # Enhanced data models
-├── price_service.py                # Currency pricing service
+├── main_window.py                  # Unified main UI
 ├── test_unified_system.py          # Comprehensive test suite
+├── models/
+│   ├── __init__.py                # Models package exports
+│   └── models.py                  # Enhanced data models
+├── services/
+│   ├── __init__.py                # Services package exports
+│   ├── application_service.py     # Central orchestration service
+│   ├── price_service.py           # Currency pricing service
+│   ├── auction_service.py         # Auction business logic
+│   ├── wallet_service.py          # Wallet operations
+│   └── user_service.py            # User management
+├── repositories/
+│   ├── __init__.py                # Repository package exports
+│   ├── database_adapter.py        # Database abstraction layer
+│   ├── database.py                # Enhanced database operations
+│   ├── base_repository.py         # Repository pattern base
+│   ├── user_repository.py         # User data access
+│   ├── item_repository.py         # Item data access
+│   └── bid_repository.py          # Bid data access
 ├── config/
 │   ├── app_config.py              # Application configuration
 │   └── blockchain_config.py        # Blockchain settings
@@ -54,11 +68,44 @@ sapphire_exchange/
 - **Async/Await Pattern**: Consistent async operations throughout
 - **Error Handling**: Centralized error management and user feedback
 
-### 2. **Repository Pattern** 📊
-- **Data Access Layer**: Clean separation between business logic and data persistence
-- **Caching Strategy**: Built-in caching with TTL management
+### 2. **Unified Data Layer** 📊
+- **Repository Pattern**: Clean separation between business logic and data persistence
+- **Database Adapter**: Unified interface bridging legacy and modern patterns
+- **Enhanced Database**: Arweave-based storage with performance optimization
+- **Caching Strategy**: Multi-level caching with TTL management
 - **Batch Operations**: Efficient bulk data operations
 - **Health Monitoring**: Repository health checks and status reporting
+
+#### Data Layer Architecture
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Service Layer                            │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │ ApplicationSvc  │  │  AuctionService │  │ UserService  │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                 Repository Layer                            │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │ UserRepository  │  │ ItemRepository  │  │BidRepository │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+│                              │                              │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │            DatabaseAdapter                              │ │
+│  │  ┌─────────────────┐    ┌─────────────────────────────┐ │ │
+│  │  │ EnhancedDatabase│    │    Repository Cache         │ │ │
+│  │  └─────────────────┘    └─────────────────────────────┘ │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                Blockchain Layer                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │ ArweaveClient   │  │   NanoClient    │  │DogecoClient  │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### 3. **Enhanced Blockchain Manager** ⛓️
 - **Unified Interface**: Single point of access for all blockchain operations
@@ -78,6 +125,44 @@ sapphire_exchange/
 - **Display Formatting**: Consistent formatting for UI display
 - **Time Formatting**: Human-readable time remaining calculations
 
+## Unified Data Layer Summary
+
+The Sapphire Exchange now features a completely unified data layer that provides:
+
+### 🏗️ **Three-Tier Data Architecture**
+
+1. **Service Layer** (`services/`)
+   - `ApplicationService`: Central orchestration and business logic
+   - `AuctionService`, `UserService`, `WalletService`: Domain-specific services
+   - `PriceService`: Currency conversion and pricing
+
+2. **Repository Layer** (`repositories/`)
+   - `DatabaseAdapter`: Unified interface for all data operations
+   - `UserRepository`, `ItemRepository`, `BidRepository`: Entity-specific data access
+   - `EnhancedDatabase`: Direct Arweave operations with caching and indexing
+   - `BaseRepository`: Common repository functionality
+
+3. **Blockchain Layer** (`blockchain/`)
+   - `BlockchainManager`: Unified blockchain interface
+   - `ArweaveClient`, `NanoClient`, `DogecoinClient`: Blockchain-specific operations
+
+### 🔄 **Data Flow Patterns**
+
+```
+UI Layer → ApplicationService → Repository → DatabaseAdapter → EnhancedDatabase → Blockchain
+```
+
+### 📦 **Package Organization**
+
+- **`models/`**: All data models with unified imports
+- **`repositories/`**: Complete data access layer with caching
+- **`services/`**: Business logic and orchestration
+- **`blockchain/`**: Blockchain client implementations
+- **`config/`**: Configuration management
+- **`security/`**: Security and performance management
+- **`utils/`**: Shared utilities and validation
+- **`ui/`**: User interface components
+
 ## Component Integration
 
 ### Service Layer Integration
@@ -95,6 +180,48 @@ success, message, bid = await app_service.place_bid(item_id, amount)
 
 # Wallet operations
 balances = await app_service.get_wallet_balances()
+```
+
+### Unified Data Access Patterns
+
+#### Repository Pattern Usage
+```python
+# Direct repository access for specific operations
+user_repo = UserRepository()
+user = await user_repo.get_by_id(user_id)
+await user_repo.save(user)
+
+# Batch operations for performance
+users = await user_repo.get_batch(['id1', 'id2', 'id3'])
+await user_repo.save_batch([user1, user2, user3])
+```
+
+#### Database Adapter Usage
+```python
+# Unified interface for all data operations
+from repositories import database_adapter
+
+# High-level operations
+user = await database_adapter.get_user(user_id)
+items = await database_adapter.get_items_by_seller(seller_id)
+bids = await database_adapter.get_bids_for_item(item_id)
+
+# Transaction support
+async with database_adapter.transaction():
+    await database_adapter.save_item(item)
+    await database_adapter.save_bid(bid)
+```
+
+#### Enhanced Database Direct Access
+```python
+# For advanced operations requiring direct database access
+from repositories.database import EnhancedDatabase
+
+db = EnhancedDatabase()
+# Complex queries with indexing
+items = await db.query_with_index('items_by_category', 'electronics')
+# Batch operations with performance monitoring
+await db.batch_save([item1, item2, item3])
 ```
 
 ### Repository Pattern Usage

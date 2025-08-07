@@ -6,9 +6,9 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 
-from models import User, Item, Bid
+from models.models import User, Item, Bid
 from repositories import UserRepository, ItemRepository, BidRepository
-from database import EnhancedDatabase
+from repositories.database import EnhancedDatabase
 from blockchain.blockchain_manager import blockchain_manager
 from security.performance_manager import PerformanceManager
 

@@ -17,6 +17,7 @@ class User:
     username: str = ""  # 3-32 characters (ui_constants)
     public_key: str = ""  # base58 format
     nano_address: str = ""  # nano_[a-z0-9]{60} format
+    arweave_address: str = ""  # Arweave wallet address
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
     # DOGE wallet integration (from More_Robot_info.json)
@@ -32,6 +33,11 @@ class User:
     inventory: List[str] = field(default_factory=list)  # UUID list
     reputation_score: float = 0.0  # 0-100 range
     bid_credits: float = 0.0  # For bid escrow system
+    is_active: bool = True  # Account status
+    total_sales: int = 0  # Total number of sales
+    total_purchases: int = 0  # Total number of purchases
+    data_hash: str = ""  # Data integrity hash
+    arweave_profile_uri: str = ""  # Arweave transaction ID for profile
     
     # Security & session management
     last_login: str = ""

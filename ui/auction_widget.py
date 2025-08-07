@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QDateTime, QThread
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QColor, QPalette
 
-from models import Item, Bid, User
+from models.models import Item, Bid, User
 
 
 class AuctionItemWidget(QWidget):
@@ -149,7 +149,9 @@ class AuctionItemWidget(QWidget):
             }
         """)
         
-        self.setMaximumHeight(200)
+        # Remove height constraint to prevent text cutoff
+        # self.setMaximumHeight(200)
+        self.setMinimumHeight(180)  # Set minimum height instead
         
         # Initial countdown update
         self.update_countdown()
@@ -397,7 +399,7 @@ class AuctionListWidget(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarNever)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
         self.scroll_widget = QWidget()
         self.scroll_layout = QVBoxLayout(self.scroll_widget)
@@ -531,7 +533,9 @@ class AuctionDetailsWidget(QWidget):
         
         # Item description
         self.description_browser = QTextBrowser()
-        self.description_browser.setMaximumHeight(150)
+        # Increase height to prevent text cutoff
+        self.description_browser.setMinimumHeight(100)
+        self.description_browser.setMaximumHeight(200)  # Increased from 150 to 200
         layout.addWidget(self.description_browser)
         
         # Pricing info
@@ -754,7 +758,9 @@ class CreateAuctionDialog(QDialog):
         
         # Item description
         self.description_edit = QTextEdit()
-        self.description_edit.setMaximumHeight(100)
+        # Increase height to prevent text cutoff
+        self.description_edit.setMinimumHeight(80)
+        self.description_edit.setMaximumHeight(150)  # Increased from 100 to 150
         form_layout.addRow("Description:", self.description_edit)
         
         # Starting price

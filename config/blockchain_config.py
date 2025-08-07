@@ -108,10 +108,10 @@ class BlockchainConfig:
             rpc_password=os.getenv('DOGECOIN_RPC_PASSWORD', 'password')
         )
         
-        # Environment-specific settings
-        self.mock_nano = os.getenv('MOCK_NANO', 'false').lower() == 'true'
-        self.mock_arweave = os.getenv('MOCK_ARWEAVE', 'false').lower() == 'true'
-        self.mock_dogecoin = os.getenv('MOCK_DOGECOIN', 'false').lower() == 'true'
+        # Environment-specific settings - default to mock mode for development
+        self.mock_nano = os.getenv('MOCK_NANO', 'true').lower() == 'true'
+        self.mock_arweave = os.getenv('MOCK_ARWEAVE', 'true').lower() == 'true'
+        self.mock_dogecoin = os.getenv('MOCK_DOGECOIN', 'true').lower() == 'true'
         
         # Wallet file paths
         self.arweave_wallet_file = os.getenv('ARWEAVE_WALLET_FILE', 'wallet.json')

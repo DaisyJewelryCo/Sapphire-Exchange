@@ -7,7 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Optional, Union, Any
 from datetime import datetime, timezone
 
-from price_service import PriceConversionService
+from services.price_service import PriceConversionService
 
 
 class ConversionUtils:

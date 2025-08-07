@@ -11,7 +11,7 @@ from PyQt5.QtCore import Qt
 # Enable asyncio event loop for PyQt5
 from qasync import QEventLoop
 
-from main_window_unified import MainWindow
+from main_window import MainWindow
 
 did_shutdown = False
 
@@ -57,7 +57,6 @@ def main():
         if did_shutdown:
             return
         did_shutdown = True
-        print("Shutting down...")
         import threading
         print("[Shutdown] Active threads:", threading.enumerate())
         try:
@@ -83,7 +82,8 @@ def main():
     
     # Run the application
     try:
-        return app.exec_()
+        return_code = app.exec_()
+        return return_code
     except KeyboardInterrupt:
         print("Application interrupted by user")
         return 0

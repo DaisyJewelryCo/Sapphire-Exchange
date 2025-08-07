@@ -6,7 +6,7 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 
-from models import Item
+from models.models import Item
 from .base_repository import ArweaveRepository
 
 

@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import asdict
 
-from models import Item, Bid, User
+from models.models import Item, Bid, User
 from blockchain.blockchain_manager import blockchain_manager
 from config.app_config import app_config
 

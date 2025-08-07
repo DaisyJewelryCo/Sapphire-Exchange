@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import asdict
 
-from models import User
+from models.models import User
 from blockchain.blockchain_manager import blockchain_manager
 from config.app_config import app_config
 from security.security_manager import SecurityManager
@@ -32,20 +32,16 @@ class UserService:
         self.user_login_callbacks = []
         self.user_logout_callbacks = []
     
-    async def create_user(self, username: str, email: str, password: str) -> Optional[User]:
+    async def create_user(self, username: str, password: str) -> Optional[User]:
         """Create a new user account."""
         try:
             # Validate input
-            if not self._validate_user_data(username, email, password):
+            if not self._validate_user_data(username, password):
                 return None
             
             # Check if user already exists
             if await self.get_user_by_username(username):
                 print(f"User {username} already exists")
-                return None
-            
-            if await self.get_user_by_email(email):
-                print(f"Email {email} already registered")
                 return None
             
             # Generate blockchain addresses
@@ -63,7 +59,6 @@ class UserService:
             # Create user
             user = User(
                 username=username,
-                email=email,
                 password_hash=password_hash,
                 nano_address=nano_address,
                 arweave_address=arweave_address,
@@ -90,7 +85,6 @@ class UserService:
             # Remove sensitive data for Arweave storage
             public_profile = user.to_dict()
             del public_profile['password_hash']
-            del public_profile['email']  # Keep email private
             
             tx_id = await self.blockchain.store_data(public_profile, user_tags)
             if tx_id:
@@ -194,15 +188,7 @@ class UserService:
             print(f"Error getting user by username: {e}")
             return None
     
-    async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get user by email."""
-        try:
-            if self.database:
-                return await self.database.get_user_by_email(email)
-            return None
-        except Exception as e:
-            print(f"Error getting user by email: {e}")
-            return None
+
     
     async def update_user_profile(self, user: User, updates: Dict[str, Any]) -> bool:
         """Update user profile."""
@@ -226,7 +212,6 @@ class UserService:
             # Update on Arweave
             public_profile = user.to_dict()
             del public_profile['password_hash']
-            del public_profile['email']
             
             user_tags = [
                 ("Content-Type", "application/json"),
@@ -321,7 +306,7 @@ class UserService:
             print(f"Error getting user stats: {e}")
             return {}
     
-    def _validate_user_data(self, username: str, email: str, password: str) -> bool:
+    def _validate_user_data(self, username: str, password: str) -> bool:
         """Validate user registration data."""
         try:
             # Username validation
@@ -329,10 +314,6 @@ class UserService:
                 return False
             
             if not username.replace('_', '').replace('-', '').isalnum():
-                return False
-            
-            # Email validation (basic)
-            if not email or '@' not in email or len(email) > 100:
                 return False
             
             # Password validation

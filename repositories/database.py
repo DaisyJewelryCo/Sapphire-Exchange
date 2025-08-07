@@ -8,8 +8,9 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Type, TypeVar, Generic, Any, Tuple
 from dataclasses import asdict
-from models import User, Item, Auction, Bid
-from arweave_utils import ArweaveClient
+from models.models import User, Item, Auction, Bid
+from blockchain.arweave_client import ArweaveClient
+from config.blockchain_config import blockchain_config
 from security.performance_manager import PerformanceManager
 from security.security_manager import SecurityManager, EncryptionManager
 
@@ -22,7 +23,7 @@ class EnhancedDatabase:
                  performance_manager: Optional[PerformanceManager] = None,
                  security_manager: Optional[SecurityManager] = None):
         """Initialize the enhanced database."""
-        self.arweave = arweave_client or ArweaveClient()
+        self.arweave = arweave_client or ArweaveClient(blockchain_config.get_arweave_config())
         self.performance_manager = performance_manager or PerformanceManager()
         self.security_manager = security_manager or SecurityManager()
         self.encryption_manager = EncryptionManager()

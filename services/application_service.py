@@ -6,14 +6,14 @@ import asyncio
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timezone
 
-from models import User, Item, Bid
+from models.models import User, Item, Bid
 from services import AuctionService, WalletService, UserService, user_service
 from repositories import UserRepository, ItemRepository, BidRepository
 from blockchain.blockchain_manager import blockchain_manager, BlockchainStatus
-from database_adapter import database_adapter
+from repositories.database_adapter import database_adapter
 from security.security_manager import SecurityManager
 from security.performance_manager import PerformanceManager
-from price_service import PriceConversionService
+from services.price_service import PriceConversionService
 from utils.validation_utils import Validator
 from utils.conversion_utils import conversion_utils
 from config.app_config import app_config
@@ -96,13 +96,12 @@ class ApplicationService:
             return False
     
     # User Management
-    async def register_user(self, username: str, email: str, password: str) -> Tuple[bool, str, Optional[User]]:
+    async def register_user(self, username: str, password: str) -> Tuple[bool, str, Optional[User]]:
         """Register a new user."""
         try:
             # Validate input
             validation = Validator.validate_user_data({
                 'username': username,
-                'email': email,
                 'password': password
             })
             
@@ -110,7 +109,7 @@ class ApplicationService:
                 return False, '; '.join(validation['errors']), None
             
             # Create user
-            user = await self.user_service.create_user(username, email, password)
+            user = await self.user_service.create_user(username, password)
             if user:
                 return True, "User registered successfully", user
             else:
@@ -122,12 +121,11 @@ class ApplicationService:
     async def register_user_with_seed(self, seed_phrase: str) -> Tuple[bool, str, Optional[User]]:
         """Register a new user with a seed phrase."""
         try:
-            # For now, we'll create a simple username and email based on the seed phrase
+            # For now, we'll create a simple username based on the seed phrase
             # In a real implementation, you would derive the user's identity from the seed
             # Ensure username meets requirements: 3-30 chars, alphanumeric with _ and - only
             username_hash = hash(seed_phrase) % 1000000
             username = f"user_{username_hash:06d}"
-            email = f"{username}@sapphire.exchange"
             
             # Generate a proper password that meets requirements
             # Using a combination of the seed phrase and some fixed characters
@@ -136,7 +134,6 @@ class ApplicationService:
             # Validate input
             validation = Validator.validate_user_data({
                 'username': username,
-                'email': email,
                 'password': password
             })
             
@@ -144,7 +141,7 @@ class ApplicationService:
                 return False, '; '.join(validation['errors']), None
             
             # Create user
-            user = await self.user_service.create_user(username, email, password)
+            user = await self.user_service.create_user(username, password)
             if user:
                 return True, "User registered successfully", user
             else:

@@ -9,7 +9,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QTabWidget, QGroupBox, QLineEdit, QTextEdit, QMessageBox,
                              QProgressBar, QFrame, QScrollArea, QDialog, QDialogButtonBox,
                              QFormLayout, QCheckBox, QSpinBox, QComboBox, QTableWidget,
-                             QTableWidgetItem, QHeaderView, QApplication, QFileDialog)
+                             QTableWidgetItem, QHeaderView, QApplication, QFileDialog,
+                             QSizePolicy)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QColor, QPalette
 import qrcode
@@ -18,6 +19,28 @@ import io
 
 from security.security_manager import SecurityManager
 from security.performance_manager import PerformanceManager
+
+
+class StatusDotsWidget(QWidget):
+    def __init__(self, statuses, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(22)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignTop)
+        self.set_statuses(statuses)
+    def set_statuses(self, statuses):
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        for status in statuses:
+            dot = QLabel()
+            dot.setFixedSize(14, 14)
+            color = "#2ecc40" if status == "success" or status == "connected" else ("#ff4136" if status == "error" or status == "disconnected" else "#ffdc00")
+            dot.setStyleSheet(f"background-color: {color}; border-radius: 7px; margin: 2px 0 2px 0;")
+            self.layout.addWidget(dot)
 
 
 class WalletBalanceWidget(QWidget):
@@ -29,6 +52,7 @@ class WalletBalanceWidget(QWidget):
         super().__init__(parent)
         self.currency = currency.upper()
         self.balance_data = {}
+        self.statuses = ["disconnected"]
         self.setup_ui()
         
     def setup_ui(self):
@@ -89,13 +113,21 @@ class WalletBalanceWidget(QWidget):
         
         layout.addLayout(button_layout)
         
-        # Status indicator
+        # Status indicator and label layout
+        status_row = QHBoxLayout()
+        self.status_dots_widget = StatusDotsWidget(self.statuses)
+        status_row.addWidget(self.status_dots_widget)
+        status_row.setAlignment(self.status_dots_widget, Qt.AlignLeft | Qt.AlignTop)
         self.status_label = QLabel("Status: Disconnected")
         self.status_label.setFont(QFont("Arial", 8))
         self.status_label.setStyleSheet("color: red;")
-        layout.addWidget(self.status_label)
+        status_row.addWidget(self.status_label)
+        status_row.addStretch()
+        layout.addLayout(status_row)
         
-        self.setMaximumHeight(200)
+        # Remove height constraint to prevent text cutoff
+        # self.setMaximumHeight(200)
+        self.setMinimumHeight(150)  # Set minimum height instead
         self.setStyleSheet("""
             QWidget {
                 border: 1px solid #ddd;
@@ -106,46 +138,48 @@ class WalletBalanceWidget(QWidget):
             }
         """)
     
+    def update_status_dots(self, statuses):
+        self.status_dots_widget.set_statuses(statuses)
+
     def update_balance(self, balance_data: dict):
         """Update the balance display."""
         self.balance_data = balance_data
-        
-        if balance_data.get('status') == 'success':
+        # Determine statuses
+        statuses = []
+        status_val = balance_data.get('status')
+        if isinstance(status_val, list):
+            statuses = status_val
+        elif status_val:
+            statuses = [status_val]
+        else:
+            statuses = ["disconnected"]
+        self.update_status_dots(statuses)
+        if 'success' in statuses or 'connected' in statuses:
             balance = balance_data.get('balance', '0')
-            
-            # Format balance based on currency
             if self.currency == 'NANO':
-                # Convert from raw to NANO
                 try:
                     balance_nano = float(balance) / (10**30)
                     formatted_balance = f"{balance_nano:.6f} NANO"
                 except:
                     formatted_balance = f"{balance} raw"
             elif self.currency == 'DOGE':
-                formatted_balance = f"{balance} DOGE"
-            elif self.currency == 'ARWEAVE':
-                formatted_balance = f"{balance} AR"
+                try:
+                    formatted_balance = f"{float(balance):,.2f} DOGE"
+                except:
+                    formatted_balance = f"{balance} DOGE"
             else:
-                formatted_balance = f"{balance} {self.currency}"
-            
+                formatted_balance = str(balance)
             self.balance_label.setText(f"Balance: {formatted_balance}")
-            
-            # Update USD equivalent if available
-            usd_value = balance_data.get('usd_value')
-            if usd_value:
-                self.usd_label.setText(f"USD: ${usd_value:.2f}")
-            
-            # Update address
-            address = balance_data.get('address', 'Unknown')
+            usd_value = balance_data.get('usd', '0.00')
+            self.usd_label.setText(f"USD: ${usd_value}")
+            address = balance_data.get('address', 'N/A')
             if len(address) > 40:
                 display_address = f"{address[:20]}...{address[-20:]}"
             else:
                 display_address = address
             self.address_label.setText(f"Address: {display_address}")
-            
             self.status_label.setText("Status: Connected")
             self.status_label.setStyleSheet("color: green;")
-            
         else:
             error = balance_data.get('error', 'Unknown error')
             self.balance_label.setText(f"Balance: Error - {error}")
@@ -306,7 +340,9 @@ class ReceiveDialog(QDialog):
         address_text = QTextEdit()
         address_text.setPlainText(self.address)
         address_text.setReadOnly(True)
-        address_text.setMaximumHeight(60)
+        # Increase height to prevent text cutoff
+        address_text.setMinimumHeight(50)
+        address_text.setMaximumHeight(80)  # Increased from 60 to 80
         address_layout.addWidget(address_text)
         
         # Copy button
@@ -328,8 +364,8 @@ class ReceiveDialog(QDialog):
         QMessageBox.information(self, "Copied", "Address copied to clipboard!")
 
 
-class MultiCurrencyWalletWidget(QWidget):
-    """Main multi-currency wallet widget."""
+class WalletWidget(QWidget):
+    """Main widget to display multiple currency balances."""
     
     def __init__(self, client, parent=None):
         super().__init__(parent)
@@ -455,10 +491,14 @@ class PortfolioSummaryWidget(QWidget):
         self.breakdown_table = QTableWidget(0, 4)
         self.breakdown_table.setHorizontalHeaderLabels(["Currency", "Balance", "USD Value", "Percentage"])
         self.breakdown_table.horizontalHeader().setStretchLastSection(True)
-        self.breakdown_table.setMaximumHeight(150)
+        # Increase height to prevent text cutoff
+        self.breakdown_table.setMinimumHeight(120)
+        self.breakdown_table.setMaximumHeight(180)  # Increased from 150 to 180
         layout.addWidget(self.breakdown_table)
         
-        self.setMaximumHeight(250)
+        # Remove height constraint to prevent text cutoff
+        # self.setMaximumHeight(250)
+        self.setMinimumHeight(200)
         self.setStyleSheet("""
             QWidget {
                 border: 1px solid #ddd;
