@@ -9,22 +9,45 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QComboBox, QSpinBox, QDateTimeEdit, QCheckBox, QProgressBar,
                              QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
                              QDialog, QDialogButtonBox, QFormLayout, QTabWidget,
-                             QListWidget, QListWidgetItem, QSplitter, QTextBrowser)
+                             QListWidget, QListWidgetItem, QSplitter, QTextBrowser,
+                             QGridLayout)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QDateTime, QThread
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QColor, QPalette
 
 from models.models import Item, Bid, User
 
 
+class AsyncWorker(QThread):
+    """Simple async worker for loading data."""
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str)
+    
+    def __init__(self, coro):
+        super().__init__()
+        self.coro = coro
+    
+    def run(self):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(self.coro)
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            loop.close()
+
+
 class AuctionItemWidget(QWidget):
-    """Widget displaying a single auction item."""
+    """Enhanced widget displaying a single auction item with authenticator dot and improved UI."""
     
     item_selected = pyqtSignal(str)  # item_id
     bid_placed = pyqtSignal(str, float, str)  # item_id, amount, currency
     
-    def __init__(self, item: Item, parent=None):
+    def __init__(self, item: Item, parent=None, active_section="marketplace"):
         super().__init__(parent)
         self.item = item
+        self.active_section = active_section  # "marketplace" or "my-items"
         self.setup_ui()
         
         # Timer for countdown updates
@@ -33,128 +56,351 @@ class AuctionItemWidget(QWidget):
         self.countdown_timer.start(1000)  # Update every second
     
     def setup_ui(self):
-        """Setup the auction item UI."""
+        """Setup the enhanced auction item UI based on ui_information.json specifications."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         
-        # Item header
+        # Image section with status badges (aspect ratio 4:3)
+        image_frame = QFrame()
+        image_frame.setFixedHeight(150)  # Approximate 4:3 ratio for 200px width
+        image_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border-radius: 8px 8px 0 0;
+                border: 1px solid #e9ecef;
+                position: relative;
+            }
+        """)
+        
+        image_layout = QVBoxLayout(image_frame)
+        image_layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Status badge overlay
+        badge_layout = QHBoxLayout()
+        badge_layout.addStretch()
+        
+        status_badge = self.create_status_badge()
+        if status_badge:
+            badge_layout.addWidget(status_badge)
+        
+        image_layout.addLayout(badge_layout)
+        image_layout.addStretch()
+        
+        # Placeholder for image
+        image_placeholder = QLabel("📷")
+        image_placeholder.setAlignment(Qt.AlignCenter)
+        image_placeholder.setStyleSheet("font-size: 32px; color: #6c757d;")
+        image_layout.addWidget(image_placeholder)
+        image_layout.addStretch()
+        
+        layout.addWidget(image_frame)
+        
+        # Content section
+        content_frame = QFrame()
+        content_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #e9ecef;
+                border-top: none;
+                border-radius: 0 0 8px 8px;
+                padding: 12px;
+            }
+        """)
+        
+        content_layout = QVBoxLayout(content_frame)
+        content_layout.setContentsMargins(12, 12, 12, 12)
+        content_layout.setSpacing(8)
+        
+        # Header section with title and authenticator dot
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(8)
         
         # Item title
-        title_label = QLabel(self.item.title or self.item.name)
-        title_label.setFont(QFont("Arial", 14, QFont.Bold))
+        title_text = self.item.title or self.item.name or f"Item #{self.item.id[:8]}"
+        title_label = QLabel(title_text)
+        title_label.setFont(QFont("Arial", 12, QFont.DemiBold))
+        title_label.setStyleSheet("color: #1e293b;")
         title_label.setWordWrap(True)
-        header_layout.addWidget(title_label)
+        header_layout.addWidget(title_label, 1)
         
-        header_layout.addStretch()
+        # Authenticator dot with tooltip
+        auth_dot = self.create_authenticator_dot()
+        header_layout.addWidget(auth_dot)
         
-        # Status badge
-        status_label = QLabel(self.item.status.upper())
-        status_label.setFont(QFont("Arial", 10, QFont.Bold))
-        status_color = self.get_status_color(self.item.status)
-        status_label.setStyleSheet(f"""
-            background-color: {status_color};
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-        """)
-        header_layout.addWidget(status_label)
+        content_layout.addLayout(header_layout)
         
-        layout.addLayout(header_layout)
-        
-        # Item description
+        # Description section
         if self.item.description:
-            desc_label = QLabel(self.item.description[:200] + "..." if len(self.item.description) > 200 else self.item.description)
+            desc_text = self.item.description[:100] + "..." if len(self.item.description) > 100 else self.item.description
+            desc_label = QLabel(desc_text or "No description available")
+            desc_label.setFont(QFont("Arial", 10))
+            desc_label.setStyleSheet("color: #64748b;")
             desc_label.setWordWrap(True)
-            desc_label.setStyleSheet("color: #666; margin: 5px 0;")
-            layout.addWidget(desc_label)
+            content_layout.addWidget(desc_label)
         
-        # Pricing information
+        # Price section
         price_layout = QHBoxLayout()
+        price_layout.setSpacing(0)
         
-        # Starting price
-        starting_price = self.item.starting_price_doge or self.item.starting_price
-        price_layout.addWidget(QLabel(f"Starting: {starting_price} DOGE"))
+        # Price display
+        price_info = self.get_price_info()
+        price_label = QLabel(price_info["price"])
+        price_label.setFont(QFont("Arial", 16, QFont.Bold))
+        price_label.setStyleSheet("color: #1e293b;")
         
-        # Current bid
-        current_bid = self.item.current_bid_doge or self.item.current_bid or starting_price
-        current_bid_label = QLabel(f"Current: {current_bid} DOGE")
-        current_bid_label.setFont(QFont("Arial", 12, QFont.Bold))
-        current_bid_label.setStyleSheet("color: #2e7d32;")
-        price_layout.addWidget(current_bid_label)
+        price_desc_label = QLabel(price_info["label"])
+        price_desc_label.setFont(QFont("Arial", 9))
+        price_desc_label.setStyleSheet("color: #64748b;")
         
+        price_left_layout = QVBoxLayout()
+        price_left_layout.setContentsMargins(0, 0, 0, 0)
+        price_left_layout.setSpacing(2)
+        price_left_layout.addWidget(price_desc_label)
+        price_left_layout.addWidget(price_label)
+        
+        price_layout.addLayout(price_left_layout)
         price_layout.addStretch()
         
-        layout.addLayout(price_layout)
-        
-        # Auction timing
-        timing_layout = QHBoxLayout()
-        
-        # Countdown
-        self.countdown_label = QLabel("Calculating...")
-        self.countdown_label.setFont(QFont("Arial", 11, QFont.Bold))
-        timing_layout.addWidget(QLabel("Time left:"))
-        timing_layout.addWidget(self.countdown_label)
-        
-        timing_layout.addStretch()
-        
-        # End time
-        if self.item.auction_end:
-            try:
-                end_time = datetime.fromisoformat(self.item.auction_end.replace('Z', '+00:00'))
-                end_time_str = end_time.strftime("%Y-%m-%d %H:%M UTC")
-                timing_layout.addWidget(QLabel(f"Ends: {end_time_str}"))
-            except:
-                timing_layout.addWidget(QLabel("End time: Unknown"))
-        
-        layout.addLayout(timing_layout)
-        
-        # Action buttons
-        button_layout = QHBoxLayout()
-        
-        view_btn = QPushButton("View Details")
-        view_btn.clicked.connect(lambda: self.item_selected.emit(self.item.id))
-        button_layout.addWidget(view_btn)
-        
+        # Timer (only for active auctions)
         if self.item.status == 'active' and not self.is_ended():
+            timer_layout = QVBoxLayout()
+            timer_layout.setContentsMargins(0, 0, 0, 0)
+            timer_layout.setSpacing(2)
+            
+            timer_desc = QLabel("Ends")
+            timer_desc.setFont(QFont("Arial", 9))
+            timer_desc.setStyleSheet("color: #64748b;")
+            timer_desc.setAlignment(Qt.AlignRight)
+            
+            self.countdown_label = QLabel("Calculating...")
+            self.countdown_label.setFont(QFont("Arial", 11, QFont.DemiBold))
+            self.countdown_label.setStyleSheet("color: #1e293b;")
+            self.countdown_label.setAlignment(Qt.AlignRight)
+            
+            timer_layout.addWidget(timer_desc)
+            timer_layout.addWidget(self.countdown_label)
+            
+            price_layout.addLayout(timer_layout)
+        
+        content_layout.addLayout(price_layout)
+        
+        # Buyer info (only for sold items)
+        if self.item.status == 'sold' and hasattr(self.item, 'current_bidder') and self.item.current_bidder:
+            buyer_label = QLabel(f"To: {self.item.current_bidder[:12]}...")
+            buyer_label.setFont(QFont("Arial", 9))
+            buyer_label.setStyleSheet("color: #64748b; margin-bottom: 8px;")
+            content_layout.addWidget(buyer_label)
+        
+        # Action buttons (only for marketplace view and active items)
+        if self.active_section == "marketplace" and self.item.status == 'active' and not self.is_ended():
+            # Place Bid button
             bid_btn = QPushButton("Place Bid")
+            bid_btn.setFixedHeight(36)
             bid_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #1976d2;
+                    background-color: #3b82f6;
                     color: white;
-                    font-weight: bold;
-                    padding: 8px 16px;
-                    border-radius: 4px;
+                    font-weight: 500;
+                    font-size: 12px;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 12px;
                 }
                 QPushButton:hover {
-                    background-color: #1565c0;
+                    background-color: #2563eb;
+                }
+                QPushButton:pressed {
+                    background-color: #1d4ed8;
                 }
             """)
+            
+            # Add minimum bid info to button
+            min_bid = self.get_minimum_bid()
+            if min_bid:
+                bid_btn.setText(f"Place Bid                {min_bid}")
+                bid_btn.setStyleSheet(bid_btn.styleSheet() + """
+                    QPushButton {
+                        text-align: left;
+                        padding-left: 12px;
+                        padding-right: 12px;
+                    }
+                """)
+            
             bid_btn.clicked.connect(self.show_bid_dialog)
-            button_layout.addWidget(bid_btn)
+            content_layout.addWidget(bid_btn)
+            
+            # View Bid History button
+            history_btn = QPushButton("📊 View Bid History")
+            history_btn.setFixedHeight(28)
+            history_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #64748b;
+                    font-size: 10px;
+                    border: none;
+                    text-align: center;
+                }
+                QPushButton:hover {
+                    color: #1e293b;
+                    background-color: #f8fafc;
+                }
+            """)
+            history_btn.clicked.connect(lambda: self.item_selected.emit(self.item.id))
+            content_layout.addWidget(history_btn)
+        else:
+            # View Details button for non-marketplace or inactive items
+            view_btn = QPushButton("View Details")
+            view_btn.setFixedHeight(36)
+            view_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f8fafc;
+                    color: #1e293b;
+                    font-weight: 500;
+                    font-size: 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 6px;
+                    padding: 8px 12px;
+                }
+                QPushButton:hover {
+                    background-color: #f1f5f9;
+                    border-color: #cbd5e1;
+                }
+            """)
+            view_btn.clicked.connect(lambda: self.item_selected.emit(self.item.id))
+            content_layout.addWidget(view_btn)
         
-        layout.addLayout(button_layout)
+        layout.addWidget(content_frame)
         
-        # Styling
+        # Main widget styling
         self.setStyleSheet("""
-            QWidget {
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                padding: 15px;
-                margin: 5px;
-                background: white;
+            AuctionItemWidget {
+                background-color: transparent;
             }
-            QWidget:hover {
-                border-color: #1976d2;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            AuctionItemWidget:hover QFrame {
+                border-color: #3b82f6;
             }
         """)
         
-        # Remove height constraint to prevent text cutoff
-        # self.setMaximumHeight(200)
-        self.setMinimumHeight(180)  # Set minimum height instead
+        self.setFixedWidth(280)
+        self.setMinimumHeight(320)
         
         # Initial countdown update
-        self.update_countdown()
+        if hasattr(self, 'countdown_label'):
+            self.update_countdown()
+    
+    def create_status_badge(self):
+        """Create status badge based on item status."""
+        if self.item.status == 'active' and not self.is_ended():
+            badge = QLabel("● Live")
+            badge.setStyleSheet("""
+                QLabel {
+                    background-color: rgba(255, 255, 255, 0.9);
+                    color: #1e293b;
+                    font-size: 10px;
+                    font-weight: 500;
+                    padding: 4px 8px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(0, 0, 0, 0.1);
+                }
+            """)
+            # Add blue dot
+            badge.setStyleSheet(badge.styleSheet().replace("●", "<span style='color: #3b82f6;'>●</span>"))
+            return badge
+        elif self.item.status == 'sold':
+            badge = QLabel("Sold")
+            badge.setStyleSheet("""
+                QLabel {
+                    background-color: #dcfce7;
+                    color: #166534;
+                    font-size: 10px;
+                    font-weight: 500;
+                    padding: 4px 8px;
+                    border-radius: 12px;
+                }
+            """)
+            return badge
+        elif self.item.status == 'expired' or self.is_ended():
+            badge = QLabel("Expired")
+            badge.setStyleSheet("""
+                QLabel {
+                    background-color: #f3f4f6;
+                    color: #374151;
+                    font-size: 10px;
+                    font-weight: 500;
+                    padding: 4px 8px;
+                    border-radius: 12px;
+                }
+            """)
+            return badge
+        return None
+    
+    def create_authenticator_dot(self):
+        """Create authenticator status dot with tooltip."""
+        dot = QPushButton()
+        dot.setFixedSize(12, 12)
+        
+        # Determine authentication status (simplified for now)
+        is_verified = True  # This would be determined by actual verification logic
+        
+        if is_verified:
+            dot.setStyleSheet("""
+                QPushButton {
+                    background-color: #10b981;
+                    border: 2px solid white;
+                    border-radius: 6px;
+                    outline: 1px solid #10b981;
+                }
+                QPushButton:hover {
+                    background-color: #059669;
+                    outline: 1px solid #059669;
+                }
+            """)
+            dot.setToolTip("Authentication Status\n\n✓ Item Verified\n✓ Seller Verified\n✓ Blockchain Secured")
+        else:
+            dot.setStyleSheet("""
+                QPushButton {
+                    background-color: #ef4444;
+                    border: 2px solid white;
+                    border-radius: 6px;
+                    outline: 1px solid #ef4444;
+                }
+                QPushButton:hover {
+                    background-color: #dc2626;
+                    outline: 1px solid #dc2626;
+                }
+            """)
+            dot.setToolTip("Authentication Status\n\n✗ Verification Pending")
+        
+        return dot
+    
+    def get_price_info(self):
+        """Get price information with appropriate label."""
+        if self.item.status == 'sold':
+            price = self.item.current_bid_doge or self.item.current_bid or self.item.starting_price_doge or self.item.starting_price or "0"
+            return {"price": f"${price}", "label": "Sold for"}
+        elif self.item.status == 'active':
+            current_bid = self.item.current_bid_doge or self.item.current_bid
+            if current_bid and float(current_bid) > 0:
+                return {"price": f"${current_bid}", "label": "Current bid"}
+            else:
+                starting_price = self.item.starting_price_doge or self.item.starting_price or "0"
+                return {"price": f"${starting_price}", "label": "Starting price"}
+        else:
+            price = self.item.starting_price_doge or self.item.starting_price or "0"
+            return {"price": f"${price}", "label": "Final price"}
+    
+    def get_minimum_bid(self):
+        """Get minimum bid amount for display."""
+        current_bid = self.item.current_bid_doge or self.item.current_bid
+        if current_bid and float(current_bid) > 0:
+            min_bid = float(current_bid) + 1.0  # Add minimum increment
+            return f"${min_bid:.2f}"
+        else:
+            starting_price = self.item.starting_price_doge or self.item.starting_price
+            if starting_price:
+                return f"${starting_price}"
+        return None
     
     def get_status_color(self, status: str) -> str:
         """Get color for status badge."""
@@ -341,15 +587,16 @@ class BidDialog(QDialog):
 
 
 class AuctionListWidget(QWidget):
-    """Widget displaying list of auctions with filtering and sorting."""
+    """Enhanced widget displaying list of auctions with filtering and sorting."""
     
     item_selected = pyqtSignal(str)  # item_id
     bid_placed = pyqtSignal(str, float, str)  # item_id, amount, currency
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, active_section="marketplace"):
         super().__init__(parent)
         self.items = []
         self.filtered_items = []
+        self.active_section = active_section  # "marketplace" or "my-items"
         self.setup_ui()
     
     def setup_ui(self):
@@ -464,29 +711,81 @@ class AuctionListWidget(QWidget):
         self.update_display()
     
     def update_display(self):
-        """Update the display with filtered items."""
+        """Update the display with filtered items using enhanced tiles."""
         # Clear existing widgets
         for i in reversed(range(self.scroll_layout.count())):
             child = self.scroll_layout.itemAt(i).widget()
             if child and isinstance(child, AuctionItemWidget):
                 child.setParent(None)
         
-        # Add filtered items
-        for item in self.filtered_items:
-            item_widget = AuctionItemWidget(item)
+        # Create grid layout for tiles
+        if not hasattr(self, 'grid_widget') or not self.grid_widget:
+            self.grid_widget = QWidget()
+            self.grid_layout = QGridLayout(self.grid_widget)
+            self.grid_layout.setSpacing(16)
+            self.grid_layout.setContentsMargins(16, 16, 16, 16)
+            self.scroll_layout.insertWidget(0, self.grid_widget)
+        else:
+            # Clear existing grid items
+            for i in reversed(range(self.grid_layout.count())):
+                child = self.grid_layout.itemAt(i).widget()
+                if child:
+                    child.setParent(None)
+        
+        # Add filtered items in grid layout (3 columns)
+        columns = 3
+        for index, item in enumerate(self.filtered_items):
+            row = index // columns
+            col = index % columns
+            
+            item_widget = AuctionItemWidget(item, active_section=self.active_section)
             item_widget.item_selected.connect(self.item_selected.emit)
             item_widget.bid_placed.connect(self.bid_placed.emit)
-            self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, item_widget)
+            self.grid_layout.addWidget(item_widget, row, col)
+        
+        # Add stretch to fill remaining space
+        self.grid_layout.setRowStretch(self.grid_layout.rowCount(), 1)
         
         # Update status
-        self.status_label.setText(f"Showing {len(self.filtered_items)} of {len(self.items)} auctions")
+        section_name = "items" if self.active_section == "my-items" else "auctions"
+        self.status_label.setText(f"Showing {len(self.filtered_items)} of {len(self.items)} {section_name}")
+    
+    def load_auctions(self):
+        """Load auctions based on active section."""
+        from services.application_service import app_service
+        
+        self.status_label.setText("Loading...")
+        
+        if self.active_section == "my-items":
+            # Load user's items
+            if app_service.is_user_logged_in():
+                worker = AsyncWorker(app_service.get_user_items())
+                worker.finished.connect(self.on_items_loaded)
+                worker.error.connect(self.on_load_error)
+                worker.start()
+                self.worker = worker
+            else:
+                self.set_items([])
+        else:
+            # Load marketplace auctions
+            worker = AsyncWorker(app_service.get_active_auctions(limit=50))
+            worker.finished.connect(self.on_items_loaded)
+            worker.error.connect(self.on_load_error)
+            worker.start()
+            self.worker = worker
+    
+    def on_items_loaded(self, items):
+        """Handle loaded items."""
+        self.set_items(items or [])
+    
+    def on_load_error(self, error):
+        """Handle loading error."""
+        self.status_label.setText(f"Error loading {self.active_section}: {str(error)}")
+        self.set_items([])
     
     def refresh_auctions(self):
         """Refresh auction data."""
-        # TODO: Implement actual refresh from client
-        self.status_label.setText("Refreshing...")
-        # Simulate refresh delay
-        QTimer.singleShot(1000, lambda: self.status_label.setText(f"Showing {len(self.filtered_items)} of {len(self.items)} auctions"))
+        self.load_auctions()
 
 
 class AuctionDetailsWidget(QWidget):

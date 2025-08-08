@@ -15,6 +15,7 @@ class User:
     # Core identification (from robot_info.json)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     username: str = ""  # 3-32 characters (ui_constants)
+    email: str = ""  # User email address
     public_key: str = ""  # base58 format
     nano_address: str = ""  # nano_[a-z0-9]{60} format
     arweave_address: str = ""  # Arweave wallet address

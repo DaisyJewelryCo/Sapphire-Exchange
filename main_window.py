@@ -818,37 +818,12 @@ class MainWindow(QMainWindow):
         self.init_worker = worker
     
     def setup_ui(self):
-        """Setup the user interface."""
-        # Create and configure status bar
-        status_bar = self.statusBar()
-        status_bar.setStyleSheet("""
-            QStatusBar {
-                background-color: #f8f9fa;
-                color: #212529;
-                border-top: 1px solid #dee2e6;
-                font-size: 12px;
-                padding: 4px;
-            }
-            QStatusBar::item {
-                border: none;
-                padding: 0 8px;
-            }
-        """)
+        """Setup the user interface based on ui_information.json specifications."""
+        # Apply global theming
+        self.apply_global_theme()
         
-        # Add permanent widgets to status bar
-        self.status_label = QLabel("Status: Initializing...")
-        self.connection_status = QLabel("Connections: Checking...")
-        self.last_update = QLabel("Last update: --:--:--")
-        
-        # Add widgets to status bar
-        status_bar.addPermanentWidget(self.status_label, 1)
-        status_bar.addPermanentWidget(self.connection_status, 2)
-        status_bar.addPermanentWidget(self.last_update)
-        
-        # Create a timer to update the status bar periodically
-        self.status_timer = QTimer(self)
-        self.status_timer.timeout.connect(self.update_status)
-        self.status_timer.start(5000)  # Update every 5 seconds
+        # Create and configure status bar (bottom status bar from ui_information.json)
+        self.setup_status_bar()
         
         # Initialize connection status indicators
         self.setup_connection_indicators()
@@ -863,148 +838,539 @@ class MainWindow(QMainWindow):
         
         # Create main interface
         main_widget = QWidget()
-        main_layout = QHBoxLayout(main_widget)  # Changed to horizontal layout for sidebar
-        main_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins to prevent spacing issues
-        main_layout.setSpacing(0)  # Remove spacing between sidebar and content
+        main_layout = QVBoxLayout(main_widget)  # Vertical layout for header + content
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # Create header/navbar
+        self.create_header(main_layout)
+        
+        # Create main content area with sidebar
+        content_container = QWidget()
+        content_layout = QHBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
         
         # Create sidebar
-        self.create_sidebar(main_layout)
+        self.create_sidebar(content_layout)
         
         # Create main content area
-        self.create_main_content(main_layout)
+        self.create_main_content(content_layout)
+        
+        main_layout.addWidget(content_container, 1)  # Give content area stretch
         
         # Add main widget to stacked widget
         self.stacked_widget.addWidget(main_widget)
         
+        # Create activity log overlay
+        self.create_activity_log()
+        
+        # Create dev tools overlay
+        self.create_dev_tools()
+        
         # Start with login screen
         self.stacked_widget.setCurrentWidget(self.login_screen)
+        
+        # Setup timers
+        self.setup_timers()
         
         # Initial status update
         self.update_status()
     
+    def apply_global_theme(self):
+        """Apply global theming based on ui_information.json specifications."""
+        global_style = """
+            QMainWindow {
+                background-color: #ffffff;
+                color: #1e293b;
+                font-family: 'Inter', system-ui, sans-serif;
+                font-size: 16px;
+            }
+            QWidget {
+                background-color: #ffffff;
+                color: #1e293b;
+            }
+            QPushButton {
+                background-color: #000000;
+                color: #ffffff;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: 500;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #374151;
+            }
+            QPushButton:pressed {
+                background-color: #111827;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+                color: #6b7280;
+            }
+            QLabel {
+                color: #1e293b;
+            }
+            QLineEdit {
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                padding: 8px 12px;
+                background-color: #ffffff;
+                color: #1e293b;
+            }
+            QLineEdit:focus {
+                border-color: #3b82f6;
+                outline: none;
+            }
+        """
+        self.setStyleSheet(global_style)
+    
+    def setup_status_bar(self):
+        """Setup the bottom status bar based on ui_information.json specifications."""
+        status_bar = self.statusBar()
+        status_bar.setFixedHeight(48)  # h-12 = 48px
+        status_bar.setStyleSheet("""
+            QStatusBar {
+                background-color: #f1f5f9;
+                color: #1e293b;
+                border-top: 1px solid #e2e8f0;
+                font-size: 12px;
+                padding: 0 16px;
+            }
+            QStatusBar::item {
+                border: none;
+                padding: 0 8px;
+            }
+        """)
+        
+        # Network status indicator
+        self.network_status = QLabel("● Online")
+        self.network_status.setStyleSheet("color: #10b981; font-weight: 500;")
+        
+        # Connection status indicator
+        self.connection_status_label = QLabel("● Connected")
+        self.connection_status_label.setStyleSheet("color: #10b981; font-weight: 500;")
+        
+        # Last updated timestamp
+        self.last_update = QLabel("Last updated: --:--:--")
+        self.last_update.setStyleSheet("color: #64748b;")
+        
+        # Activity log toggle button
+        self.activity_toggle_btn = QPushButton("Activity Log")
+        self.activity_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: 1px solid #d1d5db;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #f8fafc;
+                color: #1e293b;
+            }
+        """)
+        self.activity_toggle_btn.clicked.connect(self.toggle_activity_log_overlay)
+        
+        # Add widgets to status bar
+        status_bar.addWidget(self.network_status)
+        status_bar.addWidget(self.connection_status_label)
+        status_bar.addPermanentWidget(self.activity_toggle_btn)
+        status_bar.addPermanentWidget(self.last_update)
+        
+        # Create a timer to update the status bar periodically
+        self.status_timer = QTimer(self)
+        self.status_timer.timeout.connect(self.update_status)
+        self.status_timer.start(5000)  # Update every 5 seconds
+    
+    def create_header(self, parent_layout):
+        """Create the header/navbar based on ui_information.json specifications."""
+        self.header = QWidget()
+        self.header.setFixedHeight(64)  # Fixed top header
+        self.header.setStyleSheet("""
+            QWidget {
+                background-color: #ffffff;
+                border-bottom: 1px solid #e2e8f0;
+            }
+        """)
+        
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(16, 0, 16, 0)
+        header_layout.setSpacing(16)
+        
+        # Logo section
+        logo_container = QWidget()
+        logo_layout = QHBoxLayout(logo_container)
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(8)
+        
+        # Logo icon (using text for now, could be replaced with actual icon)
+        logo_icon = QLabel("⚖️")
+        logo_icon.setStyleSheet("font-size: 24px;")
+        logo_layout.addWidget(logo_icon)
+        
+        # Logo text
+        logo_text = QLabel("SapphireX")
+        logo_text.setStyleSheet("""
+            font-size: 20px;
+            font-weight: bold;
+            color: #000000;
+        """)
+        logo_layout.addWidget(logo_text)
+        
+        header_layout.addWidget(logo_container)
+        
+        # Navigation section (for unauthenticated users)
+        self.nav_container = QWidget()
+        nav_layout = QHBoxLayout(self.nav_container)
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(24)
+        
+        # Marketplace link
+        marketplace_link = QPushButton("Marketplace")
+        marketplace_link.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: none;
+                padding: 8px 0;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                color: #000000;
+            }
+        """)
+        marketplace_link.clicked.connect(lambda: self.switch_tab(0))
+        nav_layout.addWidget(marketplace_link)
+        
+        # Auctions link
+        auctions_link = QPushButton("Auctions")
+        auctions_link.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: none;
+                padding: 8px 0;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                color: #000000;
+            }
+        """)
+        auctions_link.clicked.connect(lambda: self.switch_tab(0))  # Same as marketplace for now
+        nav_layout.addWidget(auctions_link)
+        
+        header_layout.addWidget(self.nav_container)
+        
+        # Spacer
+        header_layout.addStretch(1)
+        
+        # Auth action button
+        self.auth_action_btn = QPushButton("Join Now")
+        self.auth_action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #000000;
+                color: #ffffff;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #374151;
+            }
+        """)
+        self.auth_action_btn.clicked.connect(self.show_login)
+        header_layout.addWidget(self.auth_action_btn)
+        
+        parent_layout.addWidget(self.header)
+    
+    def create_activity_log(self):
+        """Create the activity log overlay based on ui_information.json specifications."""
+        self.activity_log_overlay = QWidget(self)
+        self.activity_log_overlay.setVisible(False)
+        self.activity_log_overlay.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.1);
+                border-top: 1px solid #e2e8f0;
+            }
+        """)
+        
+        # Position at bottom, above status bar
+        self.activity_log_overlay.setGeometry(0, self.height() - 176, self.width(), 128)  # h-32 = 128px
+        
+        overlay_layout = QVBoxLayout(self.activity_log_overlay)
+        overlay_layout.setContentsMargins(16, 8, 16, 8)
+        
+        # Header
+        header_layout = QHBoxLayout()
+        activity_title = QLabel("Activity Log")
+        activity_title.setStyleSheet("font-weight: 600; color: #1e293b;")
+        header_layout.addWidget(activity_title)
+        
+        close_btn = QPushButton("×")
+        close_btn.setFixedSize(24, 24)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: none;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                color: #1e293b;
+                background-color: #f1f5f9;
+                border-radius: 12px;
+            }
+        """)
+        close_btn.clicked.connect(self.toggle_activity_log_overlay)
+        header_layout.addWidget(close_btn)
+        
+        overlay_layout.addLayout(header_layout)
+        
+        # Activity list
+        self.activity_list = QTextBrowser()
+        self.activity_list.setMaximumHeight(80)
+        self.activity_list.setStyleSheet("""
+            QTextBrowser {
+                background-color: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 12px;
+            }
+        """)
+        overlay_layout.addWidget(self.activity_list)
+    
+    def create_dev_tools(self):
+        """Create the dev tools overlay based on ui_information.json specifications."""
+        self.dev_tools_overlay = QWidget(self)
+        self.dev_tools_overlay.setVisible(False)
+        self.dev_tools_overlay.setFixedWidth(384)  # w-96 = 384px
+        self.dev_tools_overlay.setStyleSheet("""
+            QWidget {
+                background-color: #f8fafc;
+                border-left: 1px solid #e2e8f0;
+            }
+        """)
+        
+        # Position at right side
+        self.dev_tools_overlay.setGeometry(self.width() - 384, 0, 384, self.height())
+        
+        dev_layout = QVBoxLayout(self.dev_tools_overlay)
+        dev_layout.setContentsMargins(16, 16, 16, 16)
+        
+        # Header
+        dev_title = QLabel("Dev Tools")
+        dev_title.setStyleSheet("font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 16px;")
+        dev_layout.addWidget(dev_title)
+        
+        # Sections (placeholder for now)
+        sections = ["Blockchain", "State", "API", "Logs"]
+        for section in sections:
+            section_label = QLabel(f"{section} - Coming Soon")
+            section_label.setStyleSheet("color: #64748b; padding: 8px; border-bottom: 1px solid #e2e8f0;")
+            dev_layout.addWidget(section_label)
+        
+        dev_layout.addStretch(1)
+    
     def create_sidebar(self, parent_layout):
-        """Create the sidebar navigation."""
+        """Create the sidebar navigation based on ui_information.json specifications."""
         self.sidebar = QWidget()
-        # Remove fixed width to make it responsive, but set a reasonable minimum and maximum width
-        self.sidebar.setMinimumWidth(220)
-        self.sidebar.setMaximumWidth(280)
-        sidebar_style = (
-            "QWidget { background-color: #2c3e50; border-right: 1px solid #34495e; }"
-            "QPushButton { background-color: transparent; color: #ecf0f1; border: none; padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 500; }"
-            "QPushButton:hover { background-color: #34495e; }"
-            "QPushButton:checked { background-color: #1abc9c; }"
-            "QPushButton:pressed { background-color: #16a085; }"
-            "QLabel { color: #ecf0f1; padding: 8px; }"
-            "QLabel#user_info { font-size: 12px; padding: 4px 8px; background-color: rgba(0, 0, 0, 0.2); border-radius: 4px; margin: 8px; }"
-            "QLabel#user_balance { font-size: 12px; font-weight: bold; color: #1abc9c; }"
-            "QLabel#balance_item { font-size: 11px; color: #bdc3c7; padding: 2px 8px; }"
-            "QLabel#bid_credits { font-size: 12px; font-weight: bold; color: #f39c12; padding: 4px 8px; }"
-        )
+        self.sidebar.setFixedWidth(256)  # w-64 = 256px
+        self.sidebar.setVisible(False)  # Initially hidden for unauthenticated users
+        
+        sidebar_style = """
+            QWidget {
+                background-color: #f8fafc;
+                border-right: 1px solid #e2e8f0;
+            }
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: none;
+                padding: 12px 16px;
+                text-align: left;
+                font-size: 14px;
+                font-weight: 500;
+                border-radius: 6px;
+                margin: 2px 8px;
+            }
+            QPushButton:hover {
+                background-color: #f1f5f9;
+                color: #1e293b;
+            }
+            QPushButton:checked {
+                background-color: #000000;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #374151;
+            }
+            QLabel {
+                color: #1e293b;
+                padding: 8px 16px;
+            }
+            QLabel#user_name {
+                font-size: 14px;
+                font-weight: 600;
+                color: #1e293b;
+                padding: 8px 16px;
+            }
+            QLabel#user_email {
+                font-size: 12px;
+                color: #64748b;
+                padding: 0 16px 8px 16px;
+            }
+            QLabel#balance_item {
+                font-size: 12px;
+                color: #64748b;
+                padding: 4px 8px;
+                background-color: #f1f5f9;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QLabel#bid_credits {
+                font-size: 12px;
+                font-weight: 600;
+                color: #f59e0b;
+                padding: 8px 16px;
+                background-color: #fef3c7;
+                border-radius: 6px;
+                margin: 8px 16px;
+            }
+        """
         self.sidebar.setStyleSheet(sidebar_style)
         
-        # Create sidebar layout and store it as instance variable
+        # Create sidebar layout
         self.sidebar_layout = QVBoxLayout()
-        self.sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        self.sidebar_layout.setSpacing(0)
+        self.sidebar_layout.setContentsMargins(0, 16, 0, 16)
+        self.sidebar_layout.setSpacing(8)
         self.sidebar.setLayout(self.sidebar_layout)
         
-        # Add logo
-        logo_label = QLabel("Sapphire Exchange")
-        logo_label.setAlignment(Qt.AlignCenter)
-        logo_label.setStyleSheet(
-            "QLabel {"
-            "    color: #ecf0f1;"
-            "    font-size: 16px;"
-            "    font-weight: bold;"
-            "    padding: 20px 10px 15px 10px;"
-            "    border-bottom: 1px solid #34495e;"
-            "}"
-        )
-        self.sidebar_layout.addWidget(logo_label)
+        # User profile section
+        self.user_profile_section = QWidget()
+        user_profile_layout = QVBoxLayout()
+        user_profile_layout.setContentsMargins(0, 0, 0, 16)
+        user_profile_layout.setSpacing(4)
         
-        # User info section (initially hidden)
-        self.user_section = QWidget()
-        self.user_section.setVisible(False)
-        user_section_layout = QVBoxLayout()
-        user_section_layout.setContentsMargins(8, 8, 8, 8)
-        user_section_layout.setSpacing(4)
+        # User avatar (placeholder)
+        avatar_container = QWidget()
+        avatar_layout = QHBoxLayout()
+        avatar_layout.setContentsMargins(16, 0, 16, 0)
+        avatar_container.setLayout(avatar_layout)
         
-        # Username
-        self.username_label = QLabel("Not logged in")
-        self.username_label.setAlignment(Qt.AlignCenter)
-        self.username_label.setStyleSheet("QLabel { color: #ecf0f1; font-size: 14px; font-weight: bold; padding: 4px; }")
-        user_section_layout.addWidget(self.username_label)
+        self.user_avatar = QLabel("👤")
+        self.user_avatar.setFixedSize(40, 40)
+        self.user_avatar.setAlignment(Qt.AlignCenter)
+        self.user_avatar.setStyleSheet("""
+            QLabel {
+                background-color: #e2e8f0;
+                border-radius: 20px;
+                font-size: 20px;
+                padding: 0;
+            }
+        """)
+        avatar_layout.addWidget(self.user_avatar)
+        avatar_layout.addStretch(1)
         
-        # Wallet balances container
+        user_profile_layout.addWidget(avatar_container)
+        
+        # User name
+        self.username_label = QLabel("User Name")
+        self.username_label.setObjectName("user_name")
+        user_profile_layout.addWidget(self.username_label)
+        
+        # User email
+        self.user_email_label = QLabel("user@example.com")
+        self.user_email_label.setObjectName("user_email")
+        user_profile_layout.addWidget(self.user_email_label)
+        
+        # Wallet balances
         balances_container = QWidget()
-        balances_layout = QHBoxLayout()
-        balances_layout.setContentsMargins(0, 0, 0, 0)
-        balances_layout.setSpacing(8)
+        balances_layout = QVBoxLayout()
+        balances_layout.setContentsMargins(16, 8, 16, 8)
+        balances_layout.setSpacing(4)
+        
+        balances_title = QLabel("Wallet Balances")
+        balances_title.setStyleSheet("font-size: 12px; font-weight: 600; color: #374151; padding: 0 0 4px 0;")
+        balances_layout.addWidget(balances_title)
+        
+        # Balance items in a grid
+        balance_grid = QWidget()
+        balance_grid_layout = QGridLayout()
+        balance_grid_layout.setContentsMargins(0, 0, 0, 0)
+        balance_grid_layout.setSpacing(4)
         
         # NANO balance
-        self.nano_balance_label = QLabel("NANO: --")
+        self.nano_balance_label = QLabel("NANO: $0.00")
         self.nano_balance_label.setObjectName("balance_item")
-        balances_layout.addWidget(self.nano_balance_label)
+        balance_grid_layout.addWidget(self.nano_balance_label, 0, 0)
         
         # DOGE balance
-        self.doge_balance_label = QLabel("DOGE: --")
+        self.doge_balance_label = QLabel("DOGE: 0.00")
         self.doge_balance_label.setObjectName("balance_item")
-        balances_layout.addWidget(self.doge_balance_label)
+        balance_grid_layout.addWidget(self.doge_balance_label, 0, 1)
         
-        # AR balance (if needed)
-        self.ar_balance_label = QLabel("AR: --")
+        # AR balance
+        self.ar_balance_label = QLabel("AR: 0.00")
         self.ar_balance_label.setObjectName("balance_item")
-        balances_layout.addWidget(self.ar_balance_label)
+        balance_grid_layout.addWidget(self.ar_balance_label, 1, 0)
+        
+        balance_grid.setLayout(balance_grid_layout)
+        balances_layout.addWidget(balance_grid)
         
         balances_container.setLayout(balances_layout)
-        user_section_layout.addWidget(balances_container)
+        user_profile_layout.addWidget(balances_container)
         
         # Bid credits
-        self.bid_credits_label = QLabel("Bid Credits: 0.00")
+        self.bid_credits_label = QLabel("Available Bid Credits: $0.00")
         self.bid_credits_label.setObjectName("bid_credits")
-        self.bid_credits_label.setAlignment(Qt.AlignCenter)
-        user_section_layout.addWidget(self.bid_credits_label)
+        user_profile_layout.addWidget(self.bid_credits_label)
         
         # Add separator
         separator = QLabel()
         separator.setFixedHeight(1)
-        separator.setStyleSheet("QLabel { background-color: #34495e; margin: 8px 0; }")
-        user_section_layout.addWidget(separator)
+        separator.setStyleSheet("QLabel { background-color: #e2e8f0; margin: 16px; padding: 0; }")
+        user_profile_layout.addWidget(separator)
         
-        self.user_section.setLayout(user_section_layout)
-        self.sidebar_layout.addWidget(self.user_section)
+        self.user_profile_section.setLayout(user_profile_layout)
+        self.sidebar_layout.addWidget(self.user_profile_section)
         
-        # Navigation buttons with proper visibility states
+        # Navigation section
+        nav_title = QLabel("Navigation")
+        nav_title.setStyleSheet("font-size: 12px; font-weight: 600; color: #374151; padding: 0 16px 8px 16px;")
+        self.sidebar_layout.addWidget(nav_title)
+        
+        # Navigation buttons based on ui_information.json
         self.nav_buttons = {
             "marketplace_btn": {
-                "text": "🏠  Marketplace",
-                "page_id": 0,  # Changed to match our tab structure
-                "visible": True,  # Always visible
-                "requires_auth": False
-            },
-            "wallet_btn": {
-                "text": "💰  Wallet",
-                "page_id": 1,  # Wallet page
-                "visible": False,  # Requires auth
-                "requires_auth": True
-            },
-            "sell_item_btn": {
-                "text": "🛍️  Sell Item",
-                "page_id": 2,  # New page for item creation
-                "visible": False,  # Requires auth
-                "requires_auth": True
+                "text": "⚖️  Marketplace",
+                "page_id": 0,
+                "icon": "Gavel"
             },
             "my_items_btn": {
-                "text": "📦  My Items",
-                "page_id": 3,  # New page for user's items
-                "visible": False,  # Requires auth
-                "requires_auth": True
+                "text": "📦  My Items", 
+                "page_id": 1,
+                "icon": "Package"
             },
-            "settings_btn": {
-                "text": "⚙️  Settings",
-                "page_id": 4,  # New page for settings
-                "visible": False,  # Requires auth
-                "requires_auth": True
+            "dashboard_btn": {
+                "text": "📊  Dashboard",
+                "page_id": 2,
+                "icon": "LayoutDashboard"
+            },
+            "activity_btn": {
+                "text": "📈  Activity",
+                "page_id": 3,
+                "icon": "Activity"
+            },
+            "leaderboard_btn": {
+                "text": "🏆  Leaderboard",
+                "page_id": 4,
+                "icon": "Trophy"
             }
         }
         
@@ -1013,8 +1379,6 @@ class MainWindow(QMainWindow):
         for btn_name, btn_data in self.nav_buttons.items():
             btn = QPushButton(btn_data["text"])
             btn.setCheckable(True)
-            btn.setVisible(btn_data["visible"])
-            btn.setProperty("requires_auth", btn_data["requires_auth"])
             btn.clicked.connect(lambda checked, p=btn_data["page_id"]: self.switch_tab(p))
             self.nav_button_group.addButton(btn, btn_data["page_id"])
             setattr(self, btn_name, btn)  # Store reference to button
@@ -1023,77 +1387,107 @@ class MainWindow(QMainWindow):
         # Add spacer
         self.sidebar_layout.addStretch(1)
         
-        # Add logout button (initially hidden)
-        self.logout_btn = QPushButton("Logout")
-        self.logout_btn.setStyleSheet("QPushButton { background-color: #e74c3c; color: white; border: none; padding: 10px; margin: 10px; border-radius: 4px; } QPushButton:hover { background-color: #c0392b; }")
-        self.logout_btn.setVisible(False)
+        # User actions section
+        user_actions_title = QLabel("Account")
+        user_actions_title.setStyleSheet("font-size: 12px; font-weight: 600; color: #374151; padding: 0 16px 8px 16px;")
+        self.sidebar_layout.addWidget(user_actions_title)
+        
+        # Logout button
+        self.logout_btn = QPushButton("🚪  Logout")
+        self.logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ef4444;
+                border: none;
+                padding: 12px 16px;
+                text-align: left;
+                font-size: 14px;
+                font-weight: 500;
+                border-radius: 6px;
+                margin: 2px 8px;
+            }
+            QPushButton:hover {
+                background-color: #fef2f2;
+                color: #dc2626;
+            }
+        """)
         self.logout_btn.clicked.connect(self.logout)
         self.sidebar_layout.addWidget(self.logout_btn)
         
         parent_layout.addWidget(self.sidebar)
     
     def create_main_content(self, parent_layout):
-        """Create the main content area."""
+        """Create the main content area based on ui_information.json specifications."""
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(10, 10, 10, 10)  # Add proper margins
-        content_layout.setSpacing(10)  # Add proper spacing
         
-        # Main content with stacked widget (no tabs)
+        # Apply responsive padding based on authentication state
+        # For now, start with unauthenticated padding (will be updated on login)
+        content_layout.setContentsMargins(0, 0, 0, 48)  # pb-12 = 48px bottom padding for status bar
+        content_layout.setSpacing(0)
+        
+        # Main content with stacked widget
         self.content_stack = QStackedWidget()
-        # Make the stacked widget expand to fill available space
         self.content_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # Marketplace page (index 0)
-        self.auctions_widget = AuctionListWidget()
-        self.content_stack.addWidget(self.auctions_widget)
+        # Marketplace page (index 0) - UnifiedAuction component
+        self.marketplace_widget = AuctionListWidget(active_section="marketplace")
+        self.content_stack.addWidget(self.marketplace_widget)
         
-        # Wallet page (index 1)
-        self.wallet_widget = WalletWidget()
-        self.content_stack.addWidget(self.wallet_widget)
+        # My Items page (index 1) - UnifiedAuction component
+        self.my_items_widget = AuctionListWidget(active_section="my-items")
+        self.content_stack.addWidget(self.my_items_widget)
         
-        # Sell Item page (index 2)
-        # TODO: Implement item creation widget
-        sell_item_widget = QWidget()
-        sell_item_layout = QVBoxLayout(sell_item_widget)
-        sell_item_label = QLabel("Sell Item - Under Construction")
-        sell_item_label.setAlignment(Qt.AlignCenter)
-        sell_item_layout.addWidget(sell_item_label)
-        self.content_stack.addWidget(sell_item_widget)
+        # Dashboard page (index 2) - UserDashboard component
+        self.dashboard_widget = QWidget()
+        dashboard_layout = QVBoxLayout(self.dashboard_widget)
+        dashboard_layout.setContentsMargins(24, 24, 24, 24)
+        dashboard_title = QLabel("Dashboard")
+        dashboard_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
+        dashboard_layout.addWidget(dashboard_title)
         
-        # My Items page (index 3)
-        # TODO: Implement user items widget
-        my_items_widget = QWidget()
-        my_items_layout = QVBoxLayout(my_items_widget)
-        my_items_label = QLabel("My Items - Under Construction")
-        my_items_label.setAlignment(Qt.AlignCenter)
-        my_items_layout.addWidget(my_items_label)
-        self.content_stack.addWidget(my_items_widget)
+        # Dashboard content placeholder
+        dashboard_content = QLabel("Dashboard overview and statistics will appear here")
+        dashboard_content.setStyleSheet("color: #64748b; font-size: 16px;")
+        dashboard_content.setAlignment(Qt.AlignCenter)
+        dashboard_layout.addWidget(dashboard_content, 1)
+        self.content_stack.addWidget(self.dashboard_widget)
         
-        # Settings page (index 4)
-        # TODO: Implement settings widget
-        settings_widget = QWidget()
-        settings_layout = QVBoxLayout(settings_widget)
-        settings_label = QLabel("Settings - Under Construction")
-        settings_label.setAlignment(Qt.AlignCenter)
-        settings_layout.addWidget(settings_label)
-        self.content_stack.addWidget(settings_widget)
+        # Activity page (index 3) - ActivityLeaderboard component
+        self.activity_widget = QWidget()
+        activity_layout = QVBoxLayout(self.activity_widget)
+        activity_layout.setContentsMargins(24, 24, 24, 24)
+        activity_title = QLabel("Activity & Leaderboard")
+        activity_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
+        activity_layout.addWidget(activity_title)
+        
+        # Activity content placeholder
+        activity_content = QLabel("Activity feed and leaderboard will appear here")
+        activity_content.setStyleSheet("color: #64748b; font-size: 16px;")
+        activity_content.setAlignment(Qt.AlignCenter)
+        activity_layout.addWidget(activity_content, 1)
+        self.content_stack.addWidget(self.activity_widget)
+        
+        # Leaderboard page (index 4)
+        self.leaderboard_widget = QWidget()
+        leaderboard_layout = QVBoxLayout(self.leaderboard_widget)
+        leaderboard_layout.setContentsMargins(24, 24, 24, 24)
+        leaderboard_title = QLabel("Leaderboard")
+        leaderboard_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
+        leaderboard_layout.addWidget(leaderboard_title)
+        
+        # Leaderboard content placeholder
+        leaderboard_content = QLabel("Top bidders and sellers will appear here")
+        leaderboard_content.setStyleSheet("color: #64748b; font-size: 16px;")
+        leaderboard_content.setAlignment(Qt.AlignCenter)
+        leaderboard_layout.addWidget(leaderboard_content, 1)
+        self.content_stack.addWidget(self.leaderboard_widget)
         
         content_layout.addWidget(self.content_stack)
         
         # Set size policy for content widget to expand properly
         content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         parent_layout.addWidget(content_widget, 1)  # Give it stretch factor of 1
-        
-        # Create activity feed overlay
-        self.create_activity_feed()
-        
-        # Initialize connection status
-        self.update_connection_status("arweave", False)
-        self.update_connection_status("nano", False)
-        self.update_connection_status("doge", False)
-        self.update_main_status_indicator()
-        self.update_timestamp()
     
     def switch_tab(self, index):
         """Switch between pages."""
@@ -1116,35 +1510,57 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.login_screen)
     
     def on_login_success(self, user):
-        """Handle successful login."""
+        """Handle successful login based on ui_information.json specifications."""
         if user:
-            # Update user section in sidebar
-            self.username_label.setText(user.username)
-            self.bid_credits_label.setText(f"Bid Credits: {user.bid_credits:.2f}")
-            self.user_section.setVisible(True)
-            self.logout_btn.setVisible(True)
+            # Update user profile section in sidebar
+            self.username_label.setText(user.username or "User")
+            # Extract email from username if it contains @, otherwise show "Premium Member"
+            if hasattr(user, 'email') and user.email:
+                self.user_email_label.setText(user.email)
+            elif '@' in (user.username or ''):
+                self.user_email_label.setText(user.username)
+            else:
+                self.user_email_label.setText("Premium Member")
             
-            # Show navigation buttons that require authentication
-            if hasattr(self, 'nav_buttons'):
-                for btn_name, btn_data in self.nav_buttons.items():
-                    if btn_data.get("requires_auth", False):
-                        btn = getattr(self, btn_name, None)
-                        if btn:
-                            btn.setVisible(True)
+            self.bid_credits_label.setText(f"Available Bid Credits: ${user.bid_credits:.2f}")
+            
+            # Show sidebar for authenticated users
+            self.sidebar.setVisible(True)
+            
+            # Hide header navigation for authenticated users (sidebar takes over)
+            self.nav_container.setVisible(False)
+            
+            # Update auth action button to show user menu or hide it
+            self.auth_action_btn.setText("Account")
+            self.auth_action_btn.disconnect()  # Remove old connection
+            # For now, just hide it since we have sidebar
+            self.auth_action_btn.setVisible(False)
             
             # Switch to main interface
             self.stacked_widget.setCurrentIndex(1)  # Main widget is at index 1
             
+            # Update main content padding for authenticated state (with sidebar)
+            # pl-64 = 256px left padding for sidebar
+            if hasattr(self, 'content_stack'):
+                parent = self.content_stack.parent()
+                if parent:
+                    layout = parent.layout()
+                    if layout:
+                        layout.setContentsMargins(0, 0, 0, 48)  # Remove left padding, keep bottom for status bar
+            
             # Load wallet balances for sidebar
             self.load_sidebar_balances()
             
-            # Refresh wallet
-            if hasattr(self, 'wallet_widget'):
-                self.wallet_widget.load_balances()
+            # Refresh marketplace
+            if hasattr(self, 'marketplace_widget'):
+                self.marketplace_widget.load_auctions()
             
-            # Refresh auctions
-            if hasattr(self, 'auctions_widget'):
-                self.auctions_widget.load_auctions()
+            # Refresh my items
+            if hasattr(self, 'my_items_widget'):
+                self.my_items_widget.load_auctions()
+            
+            # Set default page to marketplace
+            self.switch_tab(0)
     
     def load_sidebar_balances(self):
         """Load wallet balances for sidebar display."""
@@ -1195,27 +1611,38 @@ class MainWindow(QMainWindow):
         self.logout_worker = worker
     
     def on_logout_complete(self, success):
-        """Handle logout completion."""
+        """Handle logout completion based on ui_information.json specifications."""
         if success:
-            # Hide user section and reset values
-            self.user_section.setVisible(False)
-            self.username_label.setText("Not logged in")
-            self.bid_credits_label.setText("Bid Credits: 0.00")
-            self.nano_balance_label.setText("NANO: --")
-            self.doge_balance_label.setText("DOGE: --")
-            self.ar_balance_label.setText("AR: --")
-            self.logout_btn.setVisible(False)
+            # Hide sidebar for unauthenticated users
+            self.sidebar.setVisible(False)
             
-            # Hide navigation buttons that require authentication
-            if hasattr(self, 'nav_buttons'):
-                for btn_name, btn_data in self.nav_buttons.items():
-                    if btn_data.get("requires_auth", False):
-                        btn = getattr(self, btn_name, None)
-                        if btn:
-                            btn.setVisible(False)
+            # Show header navigation for unauthenticated users
+            self.nav_container.setVisible(True)
             
-            # Switch back to marketplace
-            self.switch_tab(0)
+            # Show auth action button
+            self.auth_action_btn.setText("Join Now")
+            self.auth_action_btn.setVisible(True)
+            self.auth_action_btn.disconnect()  # Remove old connections
+            self.auth_action_btn.clicked.connect(self.show_login)
+            
+            # Reset user profile values
+            self.username_label.setText("User Name")
+            self.user_email_label.setText("user@example.com")
+            self.bid_credits_label.setText("Available Bid Credits: $0.00")
+            self.nano_balance_label.setText("NANO: $0.00")
+            self.doge_balance_label.setText("DOGE: 0.00")
+            self.ar_balance_label.setText("AR: 0.00")
+            
+            # Update main content padding for unauthenticated state (no sidebar)
+            if hasattr(self, 'content_stack'):
+                parent = self.content_stack.parent()
+                if parent:
+                    layout = parent.layout()
+                    if layout:
+                        layout.setContentsMargins(0, 0, 0, 48)  # pt-12 = 48px top padding, pb-12 = 48px bottom
+            
+            # Switch back to login screen
+            self.show_login()
 
     def on_user_change(self, event, user):
         """Handle user changes."""
@@ -1585,14 +2012,19 @@ class MainWindow(QMainWindow):
     
     def toggle_activity_log_overlay(self):
         """Toggle the visibility of the activity log overlay."""
-        if not hasattr(self, 'activity_widget') or not self.activity_widget:
+        if not hasattr(self, 'activity_log_overlay') or not self.activity_log_overlay:
             return
-        is_visible = self.activity_widget.isVisible()
-        self.activity_widget.setVisible(not is_visible)
-        self.toggle_log_btn.setText("▲ Activity Log" if not is_visible else "▼ Activity Log")
+        is_visible = self.activity_log_overlay.isVisible()
+        self.activity_log_overlay.setVisible(not is_visible)
+        
+        # Update button text
+        if hasattr(self, 'activity_toggle_btn'):
+            self.activity_toggle_btn.setText("Hide Activity" if not is_visible else "Activity Log")
+        
         if not is_visible:
-            self._position_activity_overlay()
-            self.adjustSize()
+            # Position the overlay correctly
+            self.activity_log_overlay.setGeometry(0, self.height() - 176, self.width(), 128)
+            self.activity_log_overlay.raise_()  # Bring to front
     
     def on_status_clicked(self, event):
         """Handle status indicator click."""
@@ -1826,6 +2258,18 @@ class MainWindow(QMainWindow):
         self.auction_timer = QTimer()
         self.auction_timer.timeout.connect(self.refresh_auctions)
         self.auction_timer.start(30000)  # Refresh every 30 seconds
+
+    def resizeEvent(self, event):
+        """Handle window resize events to reposition overlays."""
+        super().resizeEvent(event)
+        
+        # Reposition activity log overlay
+        if hasattr(self, 'activity_log_overlay') and self.activity_log_overlay:
+            self.activity_log_overlay.setGeometry(0, self.height() - 176, self.width(), 128)
+        
+        # Reposition dev tools overlay
+        if hasattr(self, 'dev_tools_overlay') and self.dev_tools_overlay:
+            self.dev_tools_overlay.setGeometry(self.width() - 384, 0, 384, self.height())
 
     def closeEvent(self, event):
         """Handle window close event."""
