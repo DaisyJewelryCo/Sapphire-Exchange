@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QGridLayout, QSpacerItem, QSizePolicy, QButtonGroup, QTextBrowser
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QPixmap, QIcon
+from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption
 
 from services.application_service import app_service
 from models.models import User, Item, Bid
@@ -377,18 +377,24 @@ class LoginScreen(QWidget):
         
         self.seed_input = QTextEdit()
         self.seed_input.setPlaceholderText("Enter your seed phrase (12-24 words)")
-        # Remove height constraints to prevent text cutoff
-        self.seed_input.setMinimumHeight(80)
-        self.seed_input.setMaximumHeight(120)  # Increased from 80 to 120
+        # Set appropriate height to accommodate seed phrases without scroll bars
+        self.seed_input.setMinimumHeight(100)
+        self.seed_input.setMaximumHeight(150)  # Increased to accommodate longer seed phrases
+        # Disable scroll bars to prevent them from appearing
+        self.seed_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.seed_input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Enable word wrapping to fit text properly
+        self.seed_input.setWordWrapMode(QTextOption.WordWrap)
         self.seed_input.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #e0e0e0;
                 border-radius: 4px;
-                padding: 8px;
+                padding: 12px;
                 font-size: 14px;
-                min-height: 80px;
-                max-height: 120px;
+                min-height: 100px;
+                max-height: 150px;
                 font-family: 'Courier New', monospace;
+                line-height: 1.4;
             }
             QTextEdit:focus {
                 border: 1px solid #4a6ee0;
@@ -454,9 +460,29 @@ class LoginScreen(QWidget):
         self.form_title.setText("Welcome Back")
         self.form_title.setStyleSheet("")  # Reset to default styling
         self.seed_input.clear()
+        # Reset height to minimum when clearing
+        self.seed_input.setFixedHeight(100)
         self.is_new_user = False
         self.login_btn.setEnabled(True)
         self.login_btn.setText("Continue")
+    
+    def adjust_seed_input_height(self):
+        """Adjust the seed input field height to fit content without scroll bars."""
+        # Get the document height
+        doc = self.seed_input.document()
+        doc_height = doc.size().height()
+        
+        # Add some padding for better appearance
+        padding = 24  # Account for padding in stylesheet
+        ideal_height = int(doc_height + padding)
+        
+        # Ensure height is within reasonable bounds
+        min_height = 100
+        max_height = 150
+        
+        # Set the height to fit content
+        new_height = max(min_height, min(ideal_height, max_height))
+        self.seed_input.setFixedHeight(new_height)
     
     def handle_new_account(self):
         """Handle new account creation with seed phrase generation."""
@@ -497,6 +523,8 @@ class LoginScreen(QWidget):
             if result == QDialog.Accepted:
                 # Set the seed phrase in the input field
                 self.seed_input.setPlainText(seed_phrase)
+                # Adjust the text field height to fit the content properly
+                self.adjust_seed_input_height()
                 self.is_new_user = True
                 # Update form title to reflect new account creation
                 self.form_title.setText("New Account Created")
@@ -858,8 +886,8 @@ class MainWindow(QMainWindow):
         """Create the sidebar navigation."""
         self.sidebar = QWidget()
         # Remove fixed width to make it responsive, but set a reasonable minimum and maximum width
-        self.sidebar.setMinimumWidth(180)
-        self.sidebar.setMaximumWidth(250)
+        self.sidebar.setMinimumWidth(220)
+        self.sidebar.setMaximumWidth(280)
         sidebar_style = (
             "QWidget { background-color: #2c3e50; border-right: 1px solid #34495e; }"
             "QPushButton { background-color: transparent; color: #ecf0f1; border: none; padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 500; }"
@@ -868,7 +896,9 @@ class MainWindow(QMainWindow):
             "QPushButton:pressed { background-color: #16a085; }"
             "QLabel { color: #ecf0f1; padding: 8px; }"
             "QLabel#user_info { font-size: 12px; padding: 4px 8px; background-color: rgba(0, 0, 0, 0.2); border-radius: 4px; margin: 8px; }"
-            "QLabel#user_balance { font-size: 14px; font-weight: bold; color: #1abc9c; }"
+            "QLabel#user_balance { font-size: 12px; font-weight: bold; color: #1abc9c; }"
+            "QLabel#balance_item { font-size: 11px; color: #bdc3c7; padding: 2px 8px; }"
+            "QLabel#bid_credits { font-size: 12px; font-weight: bold; color: #f39c12; padding: 4px 8px; }"
         )
         self.sidebar.setStyleSheet(sidebar_style)
         
@@ -886,11 +916,63 @@ class MainWindow(QMainWindow):
             "    color: #ecf0f1;"
             "    font-size: 16px;"
             "    font-weight: bold;"
-            "    padding: 20px 10px;"
+            "    padding: 20px 10px 15px 10px;"
             "    border-bottom: 1px solid #34495e;"
             "}"
         )
         self.sidebar_layout.addWidget(logo_label)
+        
+        # User info section (initially hidden)
+        self.user_section = QWidget()
+        self.user_section.setVisible(False)
+        user_section_layout = QVBoxLayout()
+        user_section_layout.setContentsMargins(8, 8, 8, 8)
+        user_section_layout.setSpacing(4)
+        
+        # Username
+        self.username_label = QLabel("Not logged in")
+        self.username_label.setAlignment(Qt.AlignCenter)
+        self.username_label.setStyleSheet("QLabel { color: #ecf0f1; font-size: 14px; font-weight: bold; padding: 4px; }")
+        user_section_layout.addWidget(self.username_label)
+        
+        # Wallet balances container
+        balances_container = QWidget()
+        balances_layout = QHBoxLayout()
+        balances_layout.setContentsMargins(0, 0, 0, 0)
+        balances_layout.setSpacing(8)
+        
+        # NANO balance
+        self.nano_balance_label = QLabel("NANO: --")
+        self.nano_balance_label.setObjectName("balance_item")
+        balances_layout.addWidget(self.nano_balance_label)
+        
+        # DOGE balance
+        self.doge_balance_label = QLabel("DOGE: --")
+        self.doge_balance_label.setObjectName("balance_item")
+        balances_layout.addWidget(self.doge_balance_label)
+        
+        # AR balance (if needed)
+        self.ar_balance_label = QLabel("AR: --")
+        self.ar_balance_label.setObjectName("balance_item")
+        balances_layout.addWidget(self.ar_balance_label)
+        
+        balances_container.setLayout(balances_layout)
+        user_section_layout.addWidget(balances_container)
+        
+        # Bid credits
+        self.bid_credits_label = QLabel("Bid Credits: 0.00")
+        self.bid_credits_label.setObjectName("bid_credits")
+        self.bid_credits_label.setAlignment(Qt.AlignCenter)
+        user_section_layout.addWidget(self.bid_credits_label)
+        
+        # Add separator
+        separator = QLabel()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("QLabel { background-color: #34495e; margin: 8px 0; }")
+        user_section_layout.addWidget(separator)
+        
+        self.user_section.setLayout(user_section_layout)
+        self.sidebar_layout.addWidget(self.user_section)
         
         # Navigation buttons with proper visibility states
         self.nav_buttons = {
@@ -899,6 +981,12 @@ class MainWindow(QMainWindow):
                 "page_id": 0,  # Changed to match our tab structure
                 "visible": True,  # Always visible
                 "requires_auth": False
+            },
+            "wallet_btn": {
+                "text": "💰  Wallet",
+                "page_id": 1,  # Wallet page
+                "visible": False,  # Requires auth
+                "requires_auth": True
             },
             "sell_item_btn": {
                 "text": "🛍️  Sell Item",
@@ -935,13 +1023,6 @@ class MainWindow(QMainWindow):
         # Add spacer
         self.sidebar_layout.addStretch(1)
         
-        # Add user info (initially hidden)
-        self.user_info_widget = QLabel("Not logged in")
-        self.user_info_widget.setAlignment(Qt.AlignCenter)
-        self.user_info_widget.setStyleSheet("QLabel { color: #bdc3c7; font-size: 12px; padding: 10px; border-top: 1px solid #34495e; }")
-        self.user_info_widget.setVisible(False)
-        self.sidebar_layout.addWidget(self.user_info_widget)
-        
         # Add logout button (initially hidden)
         self.logout_btn = QPushButton("Logout")
         self.logout_btn.setStyleSheet("QPushButton { background-color: #e74c3c; color: white; border: none; padding: 10px; margin: 10px; border-radius: 4px; } QPushButton:hover { background-color: #c0392b; }")
@@ -958,47 +1039,47 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(10, 10, 10, 10)  # Add proper margins
         content_layout.setSpacing(10)  # Add proper spacing
         
-        # Main content with tabs
-        self.tab_widget = QTabWidget()
-        # Make the tab widget expand to fill available space
-        self.tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # Main content with stacked widget (no tabs)
+        self.content_stack = QStackedWidget()
+        # Make the stacked widget expand to fill available space
+        self.content_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # Marketplace tab (index 0)
+        # Marketplace page (index 0)
         self.auctions_widget = AuctionListWidget()
-        self.tab_widget.addTab(self.auctions_widget, "Marketplace")
+        self.content_stack.addWidget(self.auctions_widget)
         
-        # Wallet tab (index 1)
+        # Wallet page (index 1)
         self.wallet_widget = WalletWidget()
-        self.tab_widget.addTab(self.wallet_widget, "Wallet")
+        self.content_stack.addWidget(self.wallet_widget)
         
-        # Sell Item tab (index 2)
+        # Sell Item page (index 2)
         # TODO: Implement item creation widget
         sell_item_widget = QWidget()
         sell_item_layout = QVBoxLayout(sell_item_widget)
         sell_item_label = QLabel("Sell Item - Under Construction")
         sell_item_label.setAlignment(Qt.AlignCenter)
         sell_item_layout.addWidget(sell_item_label)
-        self.tab_widget.addTab(sell_item_widget, "Sell Item")
+        self.content_stack.addWidget(sell_item_widget)
         
-        # My Items tab (index 3)
+        # My Items page (index 3)
         # TODO: Implement user items widget
         my_items_widget = QWidget()
         my_items_layout = QVBoxLayout(my_items_widget)
         my_items_label = QLabel("My Items - Under Construction")
         my_items_label.setAlignment(Qt.AlignCenter)
         my_items_layout.addWidget(my_items_label)
-        self.tab_widget.addTab(my_items_widget, "My Items")
+        self.content_stack.addWidget(my_items_widget)
         
-        # Settings tab (index 4)
+        # Settings page (index 4)
         # TODO: Implement settings widget
         settings_widget = QWidget()
         settings_layout = QVBoxLayout(settings_widget)
         settings_label = QLabel("Settings - Under Construction")
         settings_label.setAlignment(Qt.AlignCenter)
         settings_layout.addWidget(settings_label)
-        self.tab_widget.addTab(settings_widget, "Settings")
+        self.content_stack.addWidget(settings_widget)
         
-        content_layout.addWidget(self.tab_widget)
+        content_layout.addWidget(self.content_stack)
         
         # Set size policy for content widget to expand properly
         content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1015,8 +1096,8 @@ class MainWindow(QMainWindow):
         self.update_timestamp()
     
     def switch_tab(self, index):
-        """Switch between tabs."""
-        self.tab_widget.setCurrentIndex(index)
+        """Switch between pages."""
+        self.content_stack.setCurrentIndex(index)
         
         # Update sidebar button states if using button group
         if hasattr(self, 'nav_button_group'):
@@ -1025,7 +1106,7 @@ class MainWindow(QMainWindow):
                 button.setChecked(True)
         else:
             # Fallback to individual button handling
-            buttons = [self.marketplace_btn, self.sell_item_btn, self.my_items_btn, self.settings_btn]
+            buttons = [self.marketplace_btn, self.wallet_btn, self.sell_item_btn, self.my_items_btn, self.settings_btn]
             for i, btn in enumerate(buttons):
                 if btn:
                     btn.setChecked(i == index)
@@ -1037,7 +1118,10 @@ class MainWindow(QMainWindow):
     def on_login_success(self, user):
         """Handle successful login."""
         if user:
-            self.user_info_widget.setText(f"Logged in as: {user.username}")
+            # Update user section in sidebar
+            self.username_label.setText(user.username)
+            self.bid_credits_label.setText(f"Bid Credits: {user.bid_credits:.2f}")
+            self.user_section.setVisible(True)
             self.logout_btn.setVisible(True)
             
             # Show navigation buttons that require authentication
@@ -1051,6 +1135,9 @@ class MainWindow(QMainWindow):
             # Switch to main interface
             self.stacked_widget.setCurrentIndex(1)  # Main widget is at index 1
             
+            # Load wallet balances for sidebar
+            self.load_sidebar_balances()
+            
             # Refresh wallet
             if hasattr(self, 'wallet_widget'):
                 self.wallet_widget.load_balances()
@@ -1058,6 +1145,47 @@ class MainWindow(QMainWindow):
             # Refresh auctions
             if hasattr(self, 'auctions_widget'):
                 self.auctions_widget.load_auctions()
+    
+    def load_sidebar_balances(self):
+        """Load wallet balances for sidebar display."""
+        if not app_service.is_user_logged_in():
+            return
+        
+        worker = AsyncWorker(app_service.get_wallet_balances())
+        worker.finished.connect(self.on_sidebar_balances_loaded)
+        worker.error.connect(self.on_sidebar_balances_error)
+        worker.start()
+        self.sidebar_balance_worker = worker
+    
+    def on_sidebar_balances_loaded(self, balances):
+        """Handle loaded balances for sidebar."""
+        nano_balance = balances.get('nano', 0) or 0
+        doge_balance = balances.get('dogecoin', 0) or 0
+        ar_balance = balances.get('arweave', 0) or 0
+        
+        # Format balances for compact display
+        self.nano_balance_label.setText(f"NANO: {self.format_balance(nano_balance)}")
+        self.doge_balance_label.setText(f"DOGE: {self.format_balance(doge_balance)}")
+        self.ar_balance_label.setText(f"AR: {self.format_balance(ar_balance)}")
+    
+    def on_sidebar_balances_error(self, error):
+        """Handle balance loading errors for sidebar."""
+        self.nano_balance_label.setText("NANO: --")
+        self.doge_balance_label.setText("DOGE: --")
+        self.ar_balance_label.setText("AR: --")
+    
+    def format_balance(self, balance):
+        """Format balance for compact display."""
+        if balance == 0:
+            return "0"
+        elif balance < 0.01:
+            return f"{balance:.4f}"
+        elif balance < 1:
+            return f"{balance:.3f}"
+        elif balance < 100:
+            return f"{balance:.2f}"
+        else:
+            return f"{balance:.1f}"
     
     def logout(self):
         """Logout current user."""
@@ -1069,7 +1197,13 @@ class MainWindow(QMainWindow):
     def on_logout_complete(self, success):
         """Handle logout completion."""
         if success:
-            self.user_info_widget.setText("Not logged in")
+            # Hide user section and reset values
+            self.user_section.setVisible(False)
+            self.username_label.setText("Not logged in")
+            self.bid_credits_label.setText("Bid Credits: 0.00")
+            self.nano_balance_label.setText("NANO: --")
+            self.doge_balance_label.setText("DOGE: --")
+            self.ar_balance_label.setText("AR: --")
             self.logout_btn.setVisible(False)
             
             # Hide navigation buttons that require authentication
@@ -1079,13 +1213,22 @@ class MainWindow(QMainWindow):
                         btn = getattr(self, btn_name, None)
                         if btn:
                             btn.setVisible(False)
+            
+            # Switch back to marketplace
+            self.switch_tab(0)
 
     def on_user_change(self, event, user):
         """Handle user changes."""
         if event == 'login':
             self.on_login_success(user)
         elif event == 'logout':
-            self.user_info_widget.setText("Not logged in")
+            # Hide user section and reset values
+            self.user_section.setVisible(False)
+            self.username_label.setText("Not logged in")
+            self.bid_credits_label.setText("Bid Credits: 0.00")
+            self.nano_balance_label.setText("NANO: --")
+            self.doge_balance_label.setText("DOGE: --")
+            self.ar_balance_label.setText("AR: --")
             self.logout_btn.setVisible(False)
             
             # Hide navigation buttons that require authentication
@@ -1095,6 +1238,9 @@ class MainWindow(QMainWindow):
                         btn = getattr(self, btn_name, None)
                         if btn:
                             btn.setVisible(False)
+            
+            # Switch back to marketplace
+            self.switch_tab(0)
     
     def on_auction_update(self, event, data):
         """Handle auction updates."""

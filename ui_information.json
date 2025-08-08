@@ -1,0 +1,716 @@
+{
+  "ui": {
+    "layout": {
+      "type": "responsive",
+      "breakpoints": {
+        "mobile": "< 768px",
+        "tablet": "768px - 1024px",
+        "desktop": "> 1024px"
+      }
+    },
+    "header": {
+      "component": "Navbar",
+      "position": "fixed top-0",
+      "sticky": true,
+      "zIndex": 50,
+      "content": {
+        "logo": {
+          "type": "text-with-icon",
+          "text": "SapphireX",
+          "icon": "Gavel",
+          "link": "/"
+        },
+        "navigation": {
+          "unauthenticated": [
+            {
+              "label": "Marketplace",
+              "path": "/marketplace"
+            },
+            {
+              "label": "Auctions",
+              "path": "#auctions"
+            }
+          ],
+          "authenticated": []
+        },
+        "authAction": {
+          "label": "Join Now",
+          "action": "openLoginModal"
+        }
+      }
+    },
+    "sidebar": {
+      "component": "Sidebar",
+      "visibility": "authenticated-only",
+      "position": "fixed left-0 top-0 bottom-12",
+      "width": "w-64",
+      "sections": [
+        {
+          "type": "user-profile",
+          "content": {
+            "avatar": {
+              "type": "image",
+              "fallback": "User icon"
+            },
+            "userInfo": {
+              "name": "User's name or email prefix",
+              "email": "User's email or 'Premium Member'"
+            },
+            "walletBalances": [
+              {
+                "currency": "NANO",
+                "balance": "$0.00"
+              },
+              {
+                "currency": "DOGE",
+                "balance": "0.00"
+              },
+              {
+                "currency": "AR",
+                "balance": "0.00"
+              }
+            ],
+            "bidCredits": {
+              "label": "Available Bid Credits",
+              "amount": "$0.00",
+              "status": "Active"
+            }
+          }
+        },
+        {
+          "type": "navigation",
+          "items": [
+            {
+              "label": "Marketplace",
+              "icon": "Gavel",
+              "path": "/auctions"
+            },
+            {
+              "label": "My Items",
+              "icon": "Package",
+              "path": "/my-items"
+            },
+            {
+              "label": "Dashboard",
+              "icon": "LayoutDashboard",
+              "path": "/dashboard"
+            },
+            {
+              "label": "Activity",
+              "icon": "Activity",
+              "path": "/activity"
+            },
+            {
+              "label": "Leaderboard",
+              "icon": "Trophy",
+              "path": "/leaderboard"
+            }
+          ]
+        },
+        {
+          "type": "user-actions",
+          "items": [
+            {
+              "label": "Logout",
+              "icon": "LogOut",
+              "action": "logout"
+            }
+          ]
+        }
+      ]
+    },
+    "mainContent": {
+      "padding": {
+        "authenticated": {
+          "left": "pl-64",
+          "top": "pt-0"
+        },
+        "unauthenticated": {
+          "left": "pl-0",
+          "top": "pt-12"
+        },
+        "bottom": "pb-12"
+      },
+      "sections": {
+        "home": {
+          "path": "/",
+          "components": ["HeroSection", "FeaturesSection", "LiveAuctionsSection"]
+        },
+        "marketplace": {
+          "path": "/marketplace",
+          "components": ["MarketplaceSection"]
+        },
+        "auctions": {
+          "path": "/auctions",
+          "components": ["UnifiedAuction"]
+        },
+        "my-items": {
+          "path": "/my-items",
+          "components": ["UnifiedAuction"]
+        },
+        "dashboard": {
+          "path": "/dashboard",
+          "components": ["UserDashboard"]
+        },
+        "activity": {
+          "path": "/activity",
+          "components": ["ActivityLeaderboard"]
+        }
+      }
+    },
+    "footer": {
+      "component": "Footer",
+      "visibility": "hidden",
+      "content": {
+        "links": [],
+        "copyright": "© 2023 SapphireX. All rights reserved."
+      },
+      "position": "fixed bottom-0 left-0 right-0"
+    },
+    "statusBar": {
+      "component": "StatusBar",
+      "position": "fixed bottom-0 left-0 right-0",
+      "height": "h-12",
+      "content": {
+        "networkStatus": {
+          "type": "indicator",
+          "states": ["online", "offline", "syncing"]
+        },
+        "connectionStatus": {
+          "type": "indicator",
+          "states": ["connected", "disconnected", "reconnecting"]
+        },
+        "lastUpdated": "timestamp"
+      }
+    },
+    "activityLog": {
+      "component": "ActivityLog",
+      "visibility": "toggleable",
+      "position": "fixed bottom-12 left-0 right-0",
+      "maxHeight": "h-32",
+      "content": {
+        "type": "list",
+        "items": ["auction-updates", "bids", "notifications"]
+      }
+    },
+    "devTools": {
+      "component": "DevTools",
+      "visibility": "toggleable",
+      "position": "fixed right-0 top-0 h-full",
+      "width": "w-96",
+      "content": {
+        "sections": ["blockchain", "state", "api", "logs"]
+      }
+    },
+    "modals": {
+      "login": {
+        "component": "LoginModal",
+        "trigger": "Join Now button",
+        "fields": ["email", "password"],
+        "actions": ["login", "cancel"]
+      },
+      "bid": {
+        "component": "BidModal",
+        "trigger": "Bid button",
+        "fields": ["amount", "confirmation"],
+        "actions": ["submit", "cancel"]
+      },
+      "settings": {
+        "component": "SettingsModal",
+        "trigger": "User menu",
+        "sections": ["profile", "notifications", "security"],
+        "actions": ["save", "cancel"]
+      }
+    },
+    "theming": {
+      "colors": {
+        "primary": "#000000",
+        "secondary": "#64748b",
+        "accent": "#3b82f6",
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "error": "#ef4444",
+        "background": "#ffffff",
+        "foreground": "#1e293b",
+        "muted": "#f1f5f9"
+      },
+      "typography": {
+        "fontFamily": "Inter, system-ui, sans-serif",
+        "fontSizes": {
+          "xs": "0.75rem",
+          "sm": "0.875rem",
+          "base": "1rem",
+          "lg": "1.125rem",
+          "xl": "1.25rem",
+          "2xl": "1.5rem",
+          "3xl": "1.875rem"
+        },
+        "fontWeights": {
+          "normal": "400",
+          "medium": "500",
+          "semibold": "600",
+          "bold": "700"
+        }
+      },
+      "spacing": {
+        "xs": "0.25rem",
+        "sm": "0.5rem",
+        "md": "1rem",
+        "lg": "1.5rem",
+        "xl": "2rem"
+      },
+      "borderRadius": {
+        "sm": "0.125rem",
+        "md": "0.375rem",
+        "lg": "0.5rem",
+        "xl": "0.75rem",
+        "full": "9999px"
+      },
+      "shadows": {
+        "sm": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "md": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        "lg": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        "xl": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)"
+      }
+    },
+    "responsiveBehavior": {
+      "mobile": {
+        "sidebar": {
+          "visibility": "hidden",
+          "position": "off-canvas",
+          "trigger": "hamburger menu"
+        },
+        "header": {
+          "height": "h-14",
+          "navigation": {
+            "visibility": "hidden",
+            "trigger": "hamburger menu"
+          }
+        },
+        "mainContent": {
+          "padding": {
+            "top": "pt-14",
+            "bottom": "pb-12"
+          }
+        }
+      },
+      "tablet": {
+        "sidebar": {
+          "visibility": "visible",
+          "width": "w-56"
+        },
+        "mainContent": {
+          "padding": {
+            "left": "pl-56"
+          }
+        }
+      },
+      "desktop": {
+        "sidebar": {
+          "width": "w-64"
+        },
+        "mainContent": {
+          "padding": {
+            "left": "pl-64"
+          }
+        }
+      }
+    },
+    "accessibility": {
+      "keyboardNavigation": true,
+      "focusManagement": true,
+      "ariaLabels": true,
+      "colorContrast": {
+        "minimumRatio": "4.5:1",
+        "compliance": "WCAG AA"
+      }
+    },
+    "animations": {
+      "duration": {
+        "fast": "150ms",
+        "normal": "300ms",
+        "slow": "500ms"
+      },
+      "easing": {
+        "inOut": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "out": "cubic-bezier(0, 0, 0.2, 1)",
+        "in": "cubic-bezier(0.4, 0, 1, 1)"
+      }
+    },
+    "version": "1.0.0",
+    "lastUpdated": "2025-08-08T19:30:22Z"
+  },
+  "auctionItemTile": {
+    "component": "AuctionCard",
+    "sections": [
+      {
+        "type": "image-section",
+        "position": "top",
+        "aspectRatio": "aspect-[4/3]",
+        "features": [
+          "responsive-image",
+          "fallback-on-error",
+          "status-badges"
+        ],
+        "statusBadges": [
+          {
+            "type": "active",
+            "label": "Live",
+            "icon": {
+              "type": "dot",
+              "color": "bg-blue-500",
+              "size": "w-1.5 h-1.5"
+            },
+            "styling": "bg-white/90 backdrop-blur text-[10px] text-gray-800"
+          },
+          {
+            "type": "sold",
+            "label": "Sold",
+            "styling": "bg-green-100 text-green-800 text-[10px]"
+          },
+          {
+            "type": "expired",
+            "label": "Expired",
+            "styling": "bg-gray-100 text-gray-800 text-[10px]"
+          }
+        ]
+      },
+      {
+        "type": "header-section",
+        "content": {
+          "title": {
+            "type": "text",
+            "styling": "text-base font-medium",
+            "fallback": "Item #{number}"
+          },
+          "authentication": {
+            "type": "status-dot",
+            "states": [
+              {
+                "status": "verified",
+                "color": "bg-green-500",
+                "hoverColor": "hover:bg-green-600",
+                "tooltip": "Authentication Status",
+                "dropdown": {
+                  "title": "Authentication Status",
+                  "sections": [
+                    {
+                      "type": "verification-status",
+                      "items": [
+                        {"label": "Item Verified", "status": true},
+                        {"label": "Seller Verified", "status": true},
+                        {"label": "Blockchain Secured", "status": true}
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "description-section",
+        "styling": "text-xs text-muted-foreground",
+        "fallback": "No description available"
+      },
+      {
+        "type": "price-section",
+        "layout": "flex items-center justify-between",
+        "components": [
+          {
+            "type": "price-display",
+            "price": {
+              "styling": "text-xl font-bold text-primary",
+              "fallback": "$0"
+            },
+            "label": {
+              "styling": "text-xs text-muted-foreground",
+              "dynamicText": {
+                "sold": "Sold for",
+                "active": "Current bid",
+                "default": "Final price"
+              }
+            }
+          },
+          {
+            "type": "timer",
+            "visibleWhen": "status === 'active'",
+            "time": {
+              "styling": "text-sm font-medium",
+              "format": "relative|absolute"
+            },
+            "label": {
+              "text": "Ends",
+              "styling": "text-xs text-muted-foreground"
+            }
+          }
+        ]
+      },
+      {
+        "type": "buyer-info",
+        "visibleWhen": "status === 'sold' && buyer",
+        "styling": "text-xs text-muted-foreground mb-2",
+        "prefix": "To: "
+      },
+      {
+        "type": "action-buttons",
+        "visibleWhen": "activeSection === 'marketplace' && status === 'active'",
+        "components": [
+          {
+            "type": "primary-button",
+            "label": "Place Bid",
+            "action": "placeBid",
+            "styling": "w-full h-9 text-sm flex items-center justify-between px-3 py-2",
+            "rightContent": {
+              "type": "next-minimum-bid",
+              "styling": "text-xs font-medium text-foreground/80"
+            }
+          },
+          {
+            "type": "secondary-button",
+            "label": "View Bid History",
+            "icon": {
+              "name": "History",
+              "size": "w-3 h-3 mr-1"
+            },
+            "action": "toggleBidHistory",
+            "styling": "w-full text-xs h-7 flex items-center justify-center",
+            "dropdown": {
+              "maxHeight": "300px",
+              "sections": [
+                {
+                  "type": "header",
+                  "title": "Bid History",
+                  "styling": "p-2 border-b border-gray-100 bg-gray-50"
+                },
+                {
+                  "type": "bid-list",
+                  "emptyState": {
+                    "text": "No bid history yet",
+                    "styling": "p-4 text-center text-sm text-gray-500"
+                  },
+                  "item": {
+                    "layout": "flex justify-between items-start p-2 hover:bg-gray-50",
+                    "components": [
+                      {
+                        "type": "bidder-info",
+                        "components": [
+                          {
+                            "type": "bidder-name",
+                            "styling": "text-sm font-medium text-gray-900"
+                          },
+                          {
+                            "type": "bid-time",
+                            "styling": "text-xs text-gray-500"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "bid-amount",
+                        "styling": "text-sm font-medium text-primary"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "bottomBar": {
+    "component": "StatusBar",
+    "position": "fixed bottom-0 left-0 right-0 z-30",
+    "styling": "border-t bg-white shadow-sm h-12",
+    "sections": [
+      {
+        "type": "status-indicator",
+        "position": "left",
+        "interactive": true,
+        "elements": [
+          {
+            "type": "status-dot",
+            "size": "w-3 h-3",
+            "statusColors": {
+              "connected": "bg-green-500",
+              "warning": "bg-yellow-500",
+              "error": "bg-red-500"
+            },
+            "tooltip": "System Status"
+          },
+          {
+            "type": "status-text",
+            "styling": "px-2 py-1 rounded-full text-xs",
+            "statusTexts": {
+              "connected": "All systems operational",
+              "warning": "System warnings",
+              "error": "Connection issues"
+            },
+            "statusColors": {
+              "connected": "bg-green-100 text-green-800",
+              "warning": "bg-yellow-100 text-yellow-800",
+              "error": "bg-red-100 text-red-800"
+            }
+          },
+          {
+            "type": "dropdown-chevron",
+            "icon": "ChevronUp",
+            "styling": "h-4 w-4 text-gray-500 transition-transform",
+            "rotatedClass": "rotate-180"
+          }
+        ],
+        "dropdown": {
+          "type": "status-dropdown",
+          "position": "fixed bottom-12 left-0 z-40",
+          "styling": "border border-gray-200 rounded-lg shadow-lg w-64 bg-white",
+          "sections": [
+            {
+              "type": "header",
+              "styling": "px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg flex items-center justify-between",
+              "content": [
+                {
+                  "type": "title",
+                  "icon": "CheckCircle2",
+                  "text": "Wallet Status"
+                },
+                {
+                  "type": "close-button",
+                  "icon": "XCircle",
+                  "styling": "h-6 w-6 p-0 text-gray-500 hover:text-gray-900"
+                }
+              ]
+            },
+            {
+              "type": "status-grid",
+              "styling": "p-4 space-y-3",
+              "items": [
+                {
+                  "type": "wallet-status",
+                  "name": "Arweave",
+                  "statuses": [
+                    {"value": "connected", "label": "Connected", "color": "bg-green-500"},
+                    {"value": "disconnected", "label": "Disconnected", "color": "bg-red-500"},
+                    {"value": "signature_error", "label": "Signature Error", "color": "bg-yellow-500"}
+                  ]
+                },
+                {
+                  "type": "wallet-status",
+                  "name": "Nano",
+                  "statuses": [
+                    {"value": "connected", "label": "RPC Connected", "color": "bg-green-500"},
+                    {"value": "rpc_error", "label": "RPC Error", "color": "bg-red-500"},
+                    {"value": "low_confirmation", "label": "Low Confirmation", "color": "bg-yellow-500"}
+                  ]
+                },
+                {
+                  "type": "wallet-status",
+                  "name": "DOGE",
+                  "statuses": [
+                    {"value": "unlocked", "label": "Seed Unlocked", "color": "bg-green-500"},
+                    {"value": "locked", "label": "Locked", "color": "bg-red-500"},
+                    {"value": "not_found", "label": "Not Found", "color": "bg-yellow-500"}
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "activity-preview",
+        "position": "center",
+        "component": "FadingText",
+        "styling": "text-gray-800 text-xs",
+        "duration": 5000,
+        "tags": {
+          "bid_placed": {"label": "BID", "color": "bg-blue-100 text-blue-800"},
+          "error": {"label": "ERROR", "color": "bg-red-100 text-red-800"},
+          "wallet_connected": {"label": "WALLET", "color": "bg-green-100 text-green-800"},
+          "system": {"label": "SYSTEM", "color": "bg-purple-100 text-purple-800"},
+          "default": {"label": "INFO", "color": "bg-gray-100 text-gray-800"}
+        },
+        "statusColors": {
+          "success": "text-green-600",
+          "error": "text-red-500",
+          "warning": "text-yellow-600",
+          "info": "text-blue-500"
+        }
+      },
+      {
+        "type": "activity-button",
+        "position": "right",
+        "styling": "flex items-center text-xs text-gray-700 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-50 transition-colors",
+        "icon": {
+          "component": "Activity",
+          "styling": "h-3.5 w-3.5 mr-1.5 text-gray-500"
+        },
+        "label": "Activity",
+        "counter": {
+          "styling": "ml-1.5 bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+        },
+        "activityLog": {
+          "type": "activity-log",
+          "position": "fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-2xl",
+          "styling": "bg-white shadow-lg rounded-t-lg overflow-hidden border-t border-gray-200",
+          "header": {
+            "styling": "px-3 py-1.5 bg-white border-b border-gray-100 flex items-center justify-between",
+            "title": {
+              "styling": "flex items-center space-x-1.5",
+              "icon": "Activity",
+              "text": "Activity",
+              "counter": {
+                "styling": "bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              }
+            },
+            "closeButton": {
+              "icon": "XCircle",
+              "styling": "p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-500 transition-colors h-3.5 w-3.5"
+            }
+          },
+          "content": {
+            "styling": "h-40",
+            "emptyState": {
+              "styling": "text-center py-4 text-gray-400 text-xs",
+              "text": "No activity to display"
+            },
+            "entry": {
+              "styling": "py-1 px-1.5 rounded hover:bg-gray-50 group",
+              "timestamp": {
+                "styling": "text-gray-400 text-[11px] w-12 flex-shrink-0"
+              },
+              "tag": {
+                "styling": "text-[10px] font-medium px-1.5 py-0.5 rounded mr-2"
+              },
+              "message": {
+                "styling": "text-xs"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "features": [
+      "real-time-status-indicators",
+      "interactive-dropdowns",
+      "activity-log-preview",
+      "expandable-activity-log",
+      "status-notifications"
+    ],
+    "accessibility": {
+      "keyboardNavigation": true,
+      "ariaLabels": {
+        "statusIndicator": "System status indicator",
+        "activityButton": "Toggle activity log",
+        "closeButton": "Close panel"
+      }
+    },
+    "animations": {
+      "statusDropdown": "fade-in-up",
+      "activityLog": "slide-up",
+      "statusChevron": "rotate-180",
+      "messageFade": "crossfade"
+    }
+  }
+}

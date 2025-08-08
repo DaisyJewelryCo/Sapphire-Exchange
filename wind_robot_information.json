@@ -1,0 +1,392 @@
+{
+  "UI_Components": {
+    "Main_Layout": {
+      "purpose": "Primary application layout container",
+      "structure": {
+        "type": "Vertical split with sidebar",
+        "main_areas": ["Sidebar", "Content_Area", "Bottom_Bar"],
+        "responsive_behavior": [
+          "Sidebar collapses to hamburger menu on small screens",
+          "Content area resizes fluidly",
+          "Bottom bar remains fixed at bottom"
+        ]
+      }
+    },
+    "Sidebar": {
+      "purpose": "Primary navigation panel providing access to main application sections",
+      "layout": {
+        "orientation": "Vertical",
+        "width": {
+          "min": "180px",
+          "max": "250px",
+          "behavior": "Responsive within constraints"
+        },
+        "sections": [
+          "Logo/Header",
+          "Navigation Buttons",
+          "User Info",
+          "Logout Button"
+        ]
+      },
+      "styling": {
+        "background": "#2c3e50",
+        "border": "1px solid #34495e (right)",
+        "text_color": "#ecf0f1",
+        "hover_effect": "Background color change to #34495e",
+        "active_selection": "Background color #1abc9c",
+        "pressed_state": "Background color #16a085"
+      },
+      "navigation_buttons": {
+        "marketplace_btn": {
+          "text": "🏠  Marketplace",
+          "page_id": 0,
+          "visibility": "Always visible",
+          "requires_auth": false
+        },
+        "sell_item_btn": {
+          "text": "🛍️  Sell Item",
+          "page_id": 2,
+          "visibility": "Authenticated users only",
+          "requires_auth": true
+        },
+        "my_items_btn": {
+          "text": "📦  My Items",
+          "page_id": 3,
+          "visibility": "Authenticated users only",
+          "requires_auth": true
+        },
+        "settings_btn": {
+          "text": "⚙️  Settings",
+          "page_id": 4,
+          "visibility": "Authenticated users only",
+          "requires_auth": true
+        }
+      },
+      "user_section": {
+        "user_info_widget": {
+          "purpose": "Displays current user information",
+          "default_text": "Not logged in",
+          "visibility_control": "Shown when user is authenticated"
+        },
+        "logout_button": {
+          "style": {
+            "background": "#e74c3c",
+            "hover_background": "#c0392b",
+            "text_color": "white",
+            "border_radius": "4px"
+          },
+          "visibility_control": "Shown when user is authenticated"
+        }
+      },
+      "interactions": {
+        "button_click": "Switches to corresponding tab in main content area",
+        "state_management": "Maintains active button state",
+        "responsive_behavior": "Collapses on small screens (implied by min-width)",
+        "authentication_aware": "Shows/hides elements based on auth state"
+      },
+      "data_flow": {
+        "initialization": [
+          "Loads navigation configuration",
+          "Sets up button group for single-selection behavior",
+          "Configures initial visibility based on auth state"
+        ],
+        "authentication_changes": [
+          "Shows/hides auth-required buttons",
+          "Updates user info section",
+          "Toggles logout button visibility"
+        ],
+        "navigation": [
+          "Button click triggers tab switch",
+          "Updates active button state",
+          "Main content area updates accordingly"
+        ]
+      }
+    },
+    "Bottom_Bar": {
+      "purpose": "Status bar at the bottom of the main window displaying connection status and activity log",
+      "components": [
+        "Connection status indicators (Arweave, Nano, Doge)",
+        "Wallet status indicator",
+        "Activity log toggle button",
+        "Timestamp"
+      ],
+      "interactions": {
+        "connection_indicators": {
+          "purpose": "Display status of blockchain connections",
+          "states": [
+            "Green (Connected)",
+            "Red (Disconnected)",
+            "Orange (Partial connection)"
+          ],
+          "tooltips": "Shows detailed connection status on hover"
+        },
+        "wallet_indicator": {
+          "purpose": "Show wallet connection status",
+          "states": [
+            "Green (Connected)",
+            "Red (Disconnected)"
+          ]
+        },
+        "activity_toggle": {
+          "purpose": "Show/hide activity log",
+          "states": [
+            "▼ Activity Log (hidden)",
+            "▲ Activity Log (visible)"
+          ]
+        }
+      },
+      "data_flow": {
+        "updates": [
+          "Connection status changes trigger indicator updates",
+          "Wallet status changes update wallet indicator",
+          "New messages trigger activity indicator"
+        ],
+        "refresh_rate": "5 seconds for status updates"
+      }
+    },
+    "Content_Area": {
+      "purpose": "Main content display area that changes based on navigation",
+      "sections": {
+        "Marketplace_View": {
+          "purpose": "Displays available auctions and items for sale",
+          "components": [
+            "Search and filter bar",
+            "Auction grid/cards",
+            "Pagination controls",
+            "Sorting options"
+          ]
+        },
+        "Sell_Item_View": {
+          "purpose": "Form for creating new item listings",
+          "components": [
+            "Item details form",
+            "Image upload",
+            "Pricing options",
+            "Auction duration settings"
+          ]
+        },
+        "My_Items_View": {
+          "purpose": "Shows user's listed and purchased items",
+          "components": [
+            "Active listings",
+            "Purchase history",
+            "Bidding activity",
+            "Item management controls"
+          ]
+        },
+        "Settings_View": {
+          "purpose": "User preferences and account settings",
+          "components": [
+            "Profile settings",
+            "Notification preferences",
+            "Wallet management",
+            "Security settings"
+          ]
+        }
+      },
+      "styling": {
+        "background": "#ffffff",
+        "padding": "20px",
+        "border_radius": "8px",
+        "box_shadow": "0 2px 10px rgba(0,0,0,0.1)",
+        "transition": "all 0.3s ease"
+      }
+    },
+    "Activity_Log": {
+      "purpose": "Overlay panel showing system and user activity",
+      "components": [
+        "Message log display",
+        "Scrollable content area",
+        "Timestamp for each message"
+      ],
+      "features": {
+        "message_types": ["info", "warning", "error", "success"],
+        "data_quality_indicators": ["verified", "pending", "failed", "unknown"],
+        "message_limit": 100,
+        "auto_scroll": true
+      },
+      "interactions": {
+        "visibility": "Toggled by clicking activity log button",
+        "positioning": "Anchored to bottom of window",
+        "resizing": "Automatically adjusts height based on content"
+      },
+      "data_flow": {
+        "message_handling": [
+          "System events generate messages",
+          "Messages are timestamped and categorized",
+          "Messages are added to the log in real-time"
+        ],
+        "performance": [
+          "Limited message history to prevent memory issues",
+          "Asynchronous updates to prevent UI freezing"
+        ]
+      }
+    }
+  },
+  "UI_Layer": {
+    "LoginScreen": {
+      "purpose": "Handles user authentication and account creation",
+      "components": [
+        "Seed phrase input",
+        "New account creation",
+        "Login form",
+        "Error handling"
+      ],
+      "data_flow": {
+        "input": ["seed_phrase", "username", "password"],
+        "output": ["user_object", "authentication_status"],
+        "events": ["login_success", "login_failure", "new_account_created"]
+      }
+    },
+    "MainWindow": {
+      "purpose": "Main application window and navigation hub",
+      "components": [
+        "Navigation sidebar",
+        "Status bar",
+        "Activity feed",
+        "Connection indicators"
+      ],
+      "data_flow": {
+        "input": ["user_session", "auction_updates", "wallet_balance"],
+        "output": ["navigation_events", "refresh_requests"],
+        "events": ["tab_changed", "refresh_triggered", "activity_updated"]
+      }
+    },
+    "AuctionListWidget": {
+      "purpose": "Displays and manages auction listings",
+      "components": [
+        "Auction grid",
+        "Search and filter",
+        "Sorting controls",
+        "Pagination"
+      ],
+      "data_flow": {
+        "input": ["auction_data", "user_preferences", "search_queries"],
+        "output": ["auction_selection", "filter_changes", "sort_preferences"],
+        "events": ["auction_clicked", "filter_applied", "sort_changed"]
+      }
+    },
+    "WalletWidget": {
+      "purpose": "Manages and displays wallet information",
+      "components": [
+        "Balance display",
+        "Transaction history",
+        "Send/Receive interface",
+        "Address book"
+      ],
+      "data_flow": {
+        "input": ["wallet_balance", "transaction_history", "network_status"],
+        "output": ["send_transaction", "receive_address"],
+        "events": ["transaction_initiated", "address_copied", "balance_updated"]
+      }
+    }
+  },
+  "Data_Layer": {
+    "Models": {
+      "User": {
+        "purpose": "Stores user account information and preferences",
+        "key_fields": ["id", "username", "public_key", "nano_address", "doge_address"],
+        "relationships": ["inventory", "bids", "auctions"]
+      },
+      "Item": {
+        "purpose": "Represents items listed for auction",
+        "key_fields": ["id", "seller_id", "title", "starting_price", "status"],
+        "relationships": ["bids", "seller"]
+      },
+      "Bid": {
+        "purpose": "Tracks bids on auction items",
+        "key_fields": ["id", "item_id", "bidder_id", "amount", "status"],
+        "relationships": ["item", "bidder"]
+      },
+      "Auction": {
+        "purpose": "Manages auction state and lifecycle",
+        "key_fields": ["auction_id", "item_id", "seller_public_key", "end_time", "status"],
+        "relationships": ["item", "bids", "winner"]
+      }
+    },
+    "Services": {
+      "ApplicationService": {
+        "purpose": "Orchestrates all application components",
+        "dependencies": ["UserService", "AuctionService", "WalletService"],
+        "key_methods": ["initialize", "register_user", "authenticate_user"]
+      },
+      "UserService": {
+        "purpose": "Handles user-related operations",
+        "dependencies": ["UserRepository", "SecurityManager"],
+        "key_methods": ["create_user", "authenticate", "update_profile"]
+      },
+      "AuctionService": {
+        "purpose": "Manages auction operations",
+        "dependencies": ["ItemRepository", "BidRepository", "BlockchainManager"],
+        "key_methods": ["create_auction", "place_bid", "end_auction"]
+      },
+      "WalletService": {
+        "purpose": "Handles cryptocurrency operations",
+        "dependencies": ["BlockchainManager", "SecurityManager"],
+        "key_methods": ["get_balance", "send_transaction", "generate_address"]
+      }
+    },
+    "Repositories": {
+      "UserRepository": {
+        "purpose": "Manages user data persistence",
+        "operations": ["create", "read", "update", "delete"],
+        "data_store": "Database/Blockchain"
+      },
+      "ItemRepository": {
+        "purpose": "Manages item data persistence",
+        "operations": ["create", "read", "update", "delete"],
+        "data_store": "Database/Blockchain"
+      },
+      "BidRepository": {
+        "purpose": "Manages bid data persistence",
+        "operations": ["create", "read", "list_by_auction", "list_by_bidder"],
+        "data_store": "Database/Blockchain"
+      }
+    },
+    "Blockchain_Integration": {
+      "Nano_Network": {
+        "purpose": "Handles Nano cryptocurrency transactions",
+        "operations": ["send", "receive", "account_info"],
+        "events": ["block_confirmed", "pending_transactions"]
+      },
+      "Arweave_Network": {
+        "purpose": "Stores permanent data and metadata",
+        "operations": ["store_data", "retrieve_data", "verify_data"],
+        "events": ["data_stored", "data_retrieved"]
+      },
+      "DOGE_Network": {
+        "purpose": "Handles Dogecoin transactions",
+        "operations": ["send", "receive", "get_balance"],
+        "events": ["transaction_confirmed", "new_deposit"]
+      }
+    },
+    "Data_Flow": {
+      "User_Authentication": {
+        "1": "User enters credentials in LoginScreen",
+        "2": "Credentials passed to UserService",
+        "3": "UserService verifies credentials with UserRepository",
+        "4": "On success, session is created and user data is loaded"
+      },
+      "Auction_Creation": {
+        "1": "User fills auction details in UI",
+        "2": "Data sent to AuctionService",
+        "3": "AuctionService validates and creates Item record",
+        "4": "Auction is published to blockchain",
+        "5": "UI is updated with new auction"
+      },
+      "Bid_Placement": {
+        "1": "User places bid through UI",
+        "2": "BidService verifies funds and creates bid",
+        "3": "Bid is recorded on blockchain",
+        "4": "Auction state is updated",
+        "5": "All participants are notified"
+      },
+      "Wallet_Operations": {
+        "1": "User initiates transaction in WalletWidget",
+        "2": "WalletService processes the transaction",
+        "3": "Transaction is broadcast to appropriate blockchain",
+        "4": "Transaction status is updated in UI"
+      }
+    }
+  }
+}
