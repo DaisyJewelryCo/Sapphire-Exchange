@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QGridLayout, QSpacerItem, QSizePolicy, QButtonGroup, QTextBrowser
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption
+from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption, QColor
 
 from services.application_service import app_service
 from models.models import User, Item, Bid
@@ -712,6 +712,9 @@ class MainWindow(QMainWindow):
     
     def init_app_service(self):
         """Initialize the application service."""
+        # Store reference to app service
+        self.app_service = app_service
+        
         # Setup callbacks
         app_service.add_status_change_callback(self.on_status_change)
         app_service.add_user_change_callback(self.on_user_change)
@@ -1084,6 +1087,516 @@ class MainWindow(QMainWindow):
         
         dev_layout.addStretch(1)
     
+    def create_dev_tools_content(self):
+        """Create the dev tools content area with wallet information and user creation."""
+        dev_tools_widget = QWidget()
+        dev_tools_layout = QVBoxLayout(dev_tools_widget)
+        dev_tools_layout.setContentsMargins(24, 24, 24, 24)
+        dev_tools_layout.setSpacing(16)
+        
+        # Title
+        title = QLabel("Developer Tools")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
+        dev_tools_layout.addWidget(title)
+        
+        # Create horizontal layout for main content
+        main_content_layout = QHBoxLayout()
+        main_content_layout.setSpacing(16)
+        
+        # Left column - Wallet Information and Activity
+        left_column = QVBoxLayout()
+        left_column.setSpacing(16)
+        
+        # Wallet Information Widget
+        wallet_info_widget = self.create_wallet_info_widget()
+        left_column.addWidget(wallet_info_widget)
+        
+        # Wallet Activity Widget
+        wallet_activity_widget = self.create_wallet_activity_widget()
+        left_column.addWidget(wallet_activity_widget)
+        
+        # Right column - User Creation
+        right_column = QVBoxLayout()
+        right_column.setSpacing(16)
+        
+        # Create User Widget
+        create_user_widget = self.create_user_creation_widget()
+        right_column.addWidget(create_user_widget)
+        
+        # Add columns to main layout
+        left_container = QWidget()
+        left_container.setLayout(left_column)
+        left_container.setFixedWidth(400)
+        
+        right_container = QWidget()
+        right_container.setLayout(right_column)
+        right_container.setFixedWidth(350)
+        
+        main_content_layout.addWidget(left_container)
+        main_content_layout.addWidget(right_container)
+        main_content_layout.addStretch(1)
+        
+        dev_tools_layout.addLayout(main_content_layout)
+        dev_tools_layout.addStretch(1)
+        
+        return dev_tools_widget
+    
+    def create_wallet_info_widget(self):
+        """Create wallet information widget showing all wallets organized by brand."""
+        widget = QWidget()
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 16px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        
+        # Title
+        title = QLabel("Wallet Information")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # Wallet list
+        self.wallet_list = QListWidget()
+        self.wallet_list.setStyleSheet("""
+            QListWidget {
+                background-color: white;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #f3f4f6;
+            }
+            QListWidget::item:selected {
+                background-color: #3b82f6;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #f3f4f6;
+            }
+        """)
+        self.wallet_list.itemClicked.connect(self.on_wallet_selected)
+        layout.addWidget(self.wallet_list)
+        
+        # Refresh button
+        refresh_btn = QPushButton("Refresh Wallets")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #2563eb;
+            }
+            QPushButton:pressed {
+                background-color: #1d4ed8;
+            }
+        """)
+        refresh_btn.clicked.connect(lambda: asyncio.create_task(self.refresh_wallet_list()))
+        layout.addWidget(refresh_btn)
+        
+        return widget
+    
+    def create_wallet_activity_widget(self):
+        """Create wallet activity widget showing selected wallet details."""
+        widget = QWidget()
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 16px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        
+        # Title
+        title = QLabel("Wallet Activity")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # Selected wallet info
+        self.selected_wallet_label = QLabel("Select a wallet to view details")
+        self.selected_wallet_label.setStyleSheet("color: #64748b; font-style: italic;")
+        layout.addWidget(self.selected_wallet_label)
+        
+        # Wallet details area
+        self.wallet_details_area = QTextEdit()
+        self.wallet_details_area.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+            }
+        """)
+        self.wallet_details_area.setReadOnly(True)
+        self.wallet_details_area.setPlainText("No wallet selected")
+        layout.addWidget(self.wallet_details_area)
+        
+        return widget
+    
+    def create_user_creation_widget(self):
+        """Create user creation widget for testing purposes."""
+        widget = QWidget()
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 16px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        
+        # Title
+        title = QLabel("Create Test User")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # Username input
+        username_label = QLabel("Username:")
+        username_label.setStyleSheet("font-weight: 500; color: #374151;")
+        layout.addWidget(username_label)
+        
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Enter username for test user")
+        self.username_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #3b82f6;
+                outline: none;
+            }
+        """)
+        layout.addWidget(self.username_input)
+        
+        # Email input
+        email_label = QLabel("Email:")
+        email_label.setStyleSheet("font-weight: 500; color: #374151;")
+        layout.addWidget(email_label)
+        
+        self.email_input = QLineEdit()
+        self.email_input.setPlaceholderText("Enter email for test user")
+        self.email_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #3b82f6;
+                outline: none;
+            }
+        """)
+        layout.addWidget(self.email_input)
+        
+        # Create user button
+        create_user_btn = QPushButton("Create Test User")
+        create_user_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                border: none;
+                padding: 12px 16px;
+                border-radius: 4px;
+                font-weight: 500;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+        """)
+        create_user_btn.clicked.connect(lambda: asyncio.create_task(self.create_test_user()))
+        layout.addWidget(create_user_btn)
+        
+        # Status area
+        self.user_creation_status = QTextEdit()
+        self.user_creation_status.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                max-height: 150px;
+            }
+        """)
+        self.user_creation_status.setReadOnly(True)
+        self.user_creation_status.setPlainText("Ready to create test users...")
+        layout.addWidget(self.user_creation_status)
+        
+        return widget
+    
+    async def refresh_wallet_list(self):
+        """Refresh the wallet list with all users and their wallets."""
+        try:
+            self.wallet_list.clear()
+            
+            if not hasattr(self, 'app_service') or not self.app_service:
+                self.wallet_list.addItem("App service not available")
+                return
+            
+            # Get all users from repository
+            users = await self.app_service.user_repo.list(limit=100)
+            
+            if not users:
+                self.wallet_list.addItem("No users found")
+                return
+            
+            # Group wallets by brand
+            wallet_groups = {
+                'Arweave': [],
+                'Nano': [],
+                'Dogecoin': []
+            }
+            
+            for user in users:
+                # Add Arweave wallet
+                if user.arweave_address:
+                    wallet_groups['Arweave'].append({
+                        'user': user,
+                        'address': user.arweave_address,
+                        'type': 'Arweave'
+                    })
+                
+                # Add Nano wallet
+                if user.nano_address:
+                    wallet_groups['Nano'].append({
+                        'user': user,
+                        'address': user.nano_address,
+                        'type': 'Nano'
+                    })
+                
+                # Add Dogecoin wallet
+                if user.doge_address:
+                    wallet_groups['Dogecoin'].append({
+                        'user': user,
+                        'address': user.doge_address,
+                        'type': 'Dogecoin'
+                    })
+            
+            # Add grouped wallets to list
+            for brand, wallets in wallet_groups.items():
+                if wallets:
+                    # Add brand header
+                    brand_item = QListWidgetItem(f"═══ {brand} ({len(wallets)}) ═══")
+                    brand_item.setData(Qt.UserRole, {'type': 'header', 'brand': brand})
+                    font = brand_item.font()
+                    font.setBold(True)
+                    brand_item.setFont(font)
+                    brand_item.setBackground(QColor("#e5e7eb"))
+                    self.wallet_list.addItem(brand_item)
+                    
+                    # Add individual wallets
+                    for wallet in wallets:
+                        display_text = f"  {wallet['user'].username} - {wallet['address'][:20]}..."
+                        wallet_item = QListWidgetItem(display_text)
+                        wallet_item.setData(Qt.UserRole, wallet)
+                        self.wallet_list.addItem(wallet_item)
+            
+            if not any(wallet_groups.values()):
+                self.wallet_list.addItem("No wallets found")
+                
+        except Exception as e:
+            self.wallet_list.clear()
+            self.wallet_list.addItem(f"Error loading wallets: {str(e)}")
+    
+    def on_wallet_selected(self, item):
+        """Handle wallet selection to show details."""
+        try:
+            wallet_data = item.data(Qt.UserRole)
+            
+            if not wallet_data or wallet_data.get('type') == 'header':
+                return
+            
+            user = wallet_data['user']
+            wallet_type = wallet_data['type']
+            address = wallet_data['address']
+            
+            self.selected_wallet_label.setText(f"Selected: {user.username} - {wallet_type}")
+            
+            # Build detailed wallet information
+            details = []
+            details.append(f"=== {wallet_type} Wallet Details ===")
+            details.append(f"User: {user.username}")
+            details.append(f"User ID: {user.id}")
+            details.append(f"Address: {address}")
+            details.append("")
+            
+            if wallet_type == "Arweave":
+                details.append("Arweave Metadata:")
+                details.append(f"  Public Key: {user.public_key}")
+                details.append(f"  Profile URI: {user.arweave_profile_uri}")
+                details.append(f"  Created: {user.created_at}")
+                
+            elif wallet_type == "Nano":
+                details.append("Nano Metadata:")
+                details.append(f"  Public Key: {user.public_key}")
+                details.append(f"  Address: {user.nano_address}")
+                # Add balance if available
+                asyncio.create_task(self.load_nano_balance(user.nano_address))
+                
+            elif wallet_type == "Dogecoin":
+                details.append("Dogecoin Metadata:")
+                details.append(f"  Address: {user.doge_address}")
+                details.append(f"  Mnemonic Hash: {user.doge_mnemonic_hash}")
+                details.append(f"  Private Key Encrypted: {'Yes' if user.doge_private_key_encrypted else 'No'}")
+                # Add balance if available
+                asyncio.create_task(self.load_doge_balance(user.doge_address))
+            
+            details.append("")
+            details.append("User Statistics:")
+            details.append(f"  Reputation: {user.reputation_score}")
+            details.append(f"  Total Sales: {user.total_sales}")
+            details.append(f"  Total Purchases: {user.total_purchases}")
+            details.append(f"  Bid Credits: {user.bid_credits}")
+            details.append(f"  Active: {'Yes' if user.is_active else 'No'}")
+            details.append(f"  Last Login: {user.last_login or 'Never'}")
+            
+            self.wallet_details_area.setPlainText("\n".join(details))
+            
+        except Exception as e:
+            self.wallet_details_area.setPlainText(f"Error loading wallet details: {str(e)}")
+    
+    async def load_nano_balance(self, address):
+        """Load Nano balance for display."""
+        try:
+            if hasattr(self, 'app_service') and self.app_service:
+                balance_data = await self.app_service.wallet_service.blockchain.get_nano_balance(address)
+                if balance_data:
+                    raw_balance = balance_data.get('balance', '0')
+                    nano_balance = self.app_service.wallet_service.blockchain.nano_client.raw_to_nano(raw_balance)
+                    
+                    current_text = self.wallet_details_area.toPlainText()
+                    updated_text = current_text + f"\n  Balance: {nano_balance:.6f} NANO"
+                    self.wallet_details_area.setPlainText(updated_text)
+        except Exception as e:
+            print(f"Error loading Nano balance: {e}")
+    
+    async def load_doge_balance(self, address):
+        """Load Dogecoin balance for display."""
+        try:
+            if hasattr(self, 'app_service') and self.app_service:
+                balance = await self.app_service.wallet_service.blockchain.get_doge_balance(address)
+                if balance is not None:
+                    current_text = self.wallet_details_area.toPlainText()
+                    updated_text = current_text + f"\n  Balance: {balance:.8f} DOGE"
+                    self.wallet_details_area.setPlainText(updated_text)
+        except Exception as e:
+            print(f"Error loading DOGE balance: {e}")
+    
+    async def create_test_user(self):
+        """Create a test user with all required wallets."""
+        try:
+            username = self.username_input.text().strip()
+            email = self.email_input.text().strip()
+            
+            if not username:
+                self.user_creation_status.setPlainText("Error: Username is required")
+                return
+            
+            if not email:
+                self.user_creation_status.setPlainText("Error: Email is required")
+                return
+            
+            self.user_creation_status.setPlainText("Creating test user...")
+            
+            if not hasattr(self, 'app_service') or not self.app_service:
+                self.user_creation_status.setPlainText("Error: App service not available")
+                return
+            
+            # Import User model
+            from models.models import User
+            import uuid
+            from datetime import datetime, timezone
+            
+            # Create new user
+            user = User()
+            user.id = str(uuid.uuid4())
+            user.username = username
+            user.email = email
+            user.created_at = datetime.now(timezone.utc).isoformat()
+            user.is_active = True
+            user.reputation_score = 100.0  # Start with good reputation for testing
+            user.bid_credits = 1000.0  # Give some bid credits for testing
+            
+            status_lines = [f"Creating user: {username}"]
+            
+            # Create wallets using wallet service
+            wallet_created = await self.app_service.wallet_service.create_wallet(user)
+            if wallet_created:
+                status_lines.append("✓ Wallets created successfully")
+                status_lines.append(f"  Nano Address: {user.nano_address}")
+                status_lines.append(f"  DOGE Address: {user.doge_address}")
+            else:
+                status_lines.append("✗ Failed to create wallets")
+            
+            # Create user in repository
+            created_user = await self.app_service.user_repo.create(user)
+            if created_user:
+                status_lines.append("✓ User stored in repository")
+                status_lines.append(f"  User ID: {created_user.id}")
+                status_lines.append(f"  Arweave Profile URI: {created_user.arweave_profile_uri}")
+            else:
+                status_lines.append("✗ Failed to store user in repository")
+            
+            status_lines.append("")
+            status_lines.append("=== User Details ===")
+            status_lines.append(f"Username: {user.username}")
+            status_lines.append(f"Email: {user.email}")
+            status_lines.append(f"ID: {user.id}")
+            status_lines.append(f"Nano Address: {user.nano_address}")
+            status_lines.append(f"DOGE Address: {user.doge_address}")
+            status_lines.append(f"Public Key: {user.public_key}")
+            status_lines.append(f"Reputation: {user.reputation_score}")
+            status_lines.append(f"Bid Credits: {user.bid_credits}")
+            status_lines.append("")
+            status_lines.append("User created successfully! Refresh wallet list to see it.")
+            
+            self.user_creation_status.setPlainText("\n".join(status_lines))
+            
+            # Clear input fields
+            self.username_input.clear()
+            self.email_input.clear()
+            
+            # Refresh wallet list
+            await self.refresh_wallet_list()
+            
+        except Exception as e:
+            error_msg = f"Error creating test user: {str(e)}"
+            self.user_creation_status.setPlainText(error_msg)
+            print(error_msg)
+    
     def create_sidebar(self, parent_layout):
         """Create the sidebar navigation based on ui_information.json specifications."""
         self.sidebar = QWidget()
@@ -1375,20 +1888,9 @@ class MainWindow(QMainWindow):
         activity_layout.addWidget(activity_content, 1)
         self.content_stack.addWidget(self.activity_widget)
         
-        # Leaderboard page (index 4)
-        self.leaderboard_widget = QWidget()
-        leaderboard_layout = QVBoxLayout(self.leaderboard_widget)
-        leaderboard_layout.setContentsMargins(24, 24, 24, 24)
-        leaderboard_title = QLabel("Leaderboard")
-        leaderboard_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
-        leaderboard_layout.addWidget(leaderboard_title)
-        
-        # Leaderboard content placeholder
-        leaderboard_content = QLabel("Top bidders and sellers will appear here")
-        leaderboard_content.setStyleSheet("color: #64748b; font-size: 16px;")
-        leaderboard_content.setAlignment(Qt.AlignCenter)
-        leaderboard_layout.addWidget(leaderboard_content, 1)
-        self.content_stack.addWidget(self.leaderboard_widget)
+        # Dev Tools page (index 4)
+        self.dev_tools_widget = self.create_dev_tools_content()
+        self.content_stack.addWidget(self.dev_tools_widget)
         
         content_layout.addWidget(self.content_stack)
         
@@ -1457,6 +1959,10 @@ class MainWindow(QMainWindow):
             
             # Load wallet balances for sidebar
             self.load_sidebar_balances()
+            
+            # Initialize dev tools if they exist
+            if hasattr(self, 'wallet_list'):
+                asyncio.create_task(self.refresh_wallet_list())
             
             # Refresh marketplace
             if hasattr(self, 'marketplace_widget'):
