@@ -610,100 +610,7 @@ class LoginScreen(QWidget):
         QMessageBox.critical(self, "Login Error", f"An error occurred during login: {error_message}")
 
 
-class AuctionListWidget(QWidget):
-    """Widget for displaying auction listings."""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setup_ui()
-        self.load_auctions()
-    
-    def setup_ui(self):
-        layout = QVBoxLayout()
-        
-        # Header
-        header = QLabel("Active Auctions")
-        header.setFont(QFont("Arial", 16, QFont.Bold))
-        layout.addWidget(header)
-        
-        # Search
-        search_layout = QHBoxLayout()
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search auctions...")
-        self.search_button = QPushButton("Search")
-        self.search_button.clicked.connect(self.search_auctions)
-        search_layout.addWidget(self.search_edit)
-        search_layout.addWidget(self.search_button)
-        layout.addLayout(search_layout)
-        
-        # Auction list
-        self.auction_list = QListWidget()
-        self.auction_list.itemDoubleClicked.connect(self.view_auction_details)
-        # Make the auction list expand to fill available space
-        self.auction_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self.auction_list)
-        
-        # Refresh button
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.clicked.connect(self.load_auctions)
-        layout.addWidget(self.refresh_button)
-        
-        self.setLayout(layout)
-    
-    def load_auctions(self):
-        """Load active auctions."""
-        worker = AsyncWorker(app_service.get_active_auctions(limit=50))
-        worker.finished.connect(self.on_auctions_loaded)
-        worker.error.connect(self.on_error)
-        worker.start()
-        self.worker = worker
-    
-    def search_auctions(self):
-        """Search auctions."""
-        query = self.search_edit.text().strip()
-        if not query:
-            self.load_auctions()
-            return
-        
-        worker = AsyncWorker(app_service.search_auctions(query, limit=50))
-        worker.finished.connect(self.on_auctions_loaded)
-        worker.error.connect(self.on_error)
-        worker.start()
-        self.worker = worker
-    
-    def on_auctions_loaded(self, auctions):
-        """Handle loaded auctions."""
-        self.auction_list.clear()
-        
-        for item in auctions:
-            # Create list item
-            list_item = QListWidgetItem()
-            
-            # Create display text
-            current_bid = float(item.current_bid_doge or item.starting_price_doge or "0")
-            time_remaining = format_time_remaining(item.auction_end)
-            
-            text = f"{item.title}\n"
-            text += f"Current Bid: {format_currency(current_bid, 'DOGE')}\n"
-            text += f"Time Remaining: {time_remaining}"
-            
-            list_item.setText(text)
-            list_item.setData(Qt.UserRole, item)
-            
-            self.auction_list.addItem(list_item)
-    
-    def view_auction_details(self, item):
-        """View auction details."""
-        auction_item = item.data(Qt.UserRole)
-        if auction_item:
-            # Get parent window and show auction details
-            main_window = self.window()
-            if hasattr(main_window, 'show_auction_details'):
-                main_window.show_auction_details(auction_item.id)
-    
-    def on_error(self, error):
-        """Handle errors."""
-        QMessageBox.warning(self, "Error", f"Failed to load auctions: {error}")
+from ui.auction_widget import AuctionListWidget
 
 
 class WalletWidget(QWidget):
@@ -1341,14 +1248,14 @@ class MainWindow(QMainWindow):
         self.sidebar_layout.addWidget(self.user_profile_section)
         
         # Navigation section
-        nav_title = QLabel("Navigation")
-        nav_title.setStyleSheet("font-size: 12px; font-weight: 600; color: #374151; padding: 0 16px 8px 16px;")
-        self.sidebar_layout.addWidget(nav_title)
+        #nav_title = QLabel("Navigation")
+        #nav_title.setStyleSheet("font-size: 12px; font-weight: 600; color: #374151; padding: 0 16px 8px 16px;")
+        #self.sidebar_layout.addWidget(nav_title)
         
         # Navigation buttons based on ui_information.json
         self.nav_buttons = {
             "marketplace_btn": {
-                "text": "⚖️  Marketplace",
+                "text": "🛍️  Marketplace",
                 "page_id": 0,
                 "icon": "Gavel"
             },
@@ -1368,9 +1275,9 @@ class MainWindow(QMainWindow):
                 "icon": "Activity"
             },
             "leaderboard_btn": {
-                "text": "🏆  Leaderboard",
+                "text": "🔧  Dev Tools",
                 "page_id": 4,
-                "icon": "Trophy"
+                "icon": "Settings"
             }
         }
         
