@@ -219,6 +219,31 @@ class ApplicationService:
             print(f"Logout error: {e}")
             return False
     
+    async def update_username(self, new_username: str) -> bool:
+        """Update the current user's username."""
+        try:
+            if not self.current_user:
+                return False
+            
+            # Validate username
+            if not new_username or len(new_username) < 3 or len(new_username) > 32:
+                return False
+            
+            # Update the user object
+            self.current_user.username = new_username
+            
+            # Save to database
+            success = await self.user_repo.update(self.current_user)
+            if success:
+                # Notify callbacks about user change
+                self._notify_user_change('profile_updated', self.current_user)
+                return True
+            
+            return False
+        except Exception as e:
+            print(f"Error updating username: {e}")
+            return False
+    
     def get_current_user(self) -> Optional[User]:
         """Get the currently logged in user."""
         return self.current_user

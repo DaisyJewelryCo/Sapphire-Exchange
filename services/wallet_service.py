@@ -26,29 +26,51 @@ class WalletService:
     async def create_wallet(self, user: User, mnemonic: Optional[str] = None) -> bool:
         """Create multi-currency wallet for user."""
         try:
-            # Generate DOGE wallet
-            doge_wallet = await self.blockchain.dogecoin_client.create_wallet(mnemonic)
-            if not doge_wallet:
-                return False
+            print(f"Creating wallet for user {user.username}")
+            print(f"User addresses - Nano: {user.nano_address}, DOGE: {user.doge_address}, Arweave: {user.arweave_address}")
             
-            # Update user with DOGE wallet info
-            user.doge_address = doge_wallet.address
-            user.doge_private_key_encrypted = doge_wallet.private_key_encrypted
-            user.doge_mnemonic_hash = doge_wallet.mnemonic_hash
+            # If addresses are already set, we just need to ensure wallet structures exist
+            # For DOGE, create wallet structure if needed
+            if user.doge_address and not hasattr(user, 'doge_private_key_encrypted'):
+                try:
+                    doge_wallet = await self.blockchain.dogecoin_client.create_wallet(mnemonic)
+                    if doge_wallet:
+                        # Only update if we don't have an address or if the new wallet has the same address
+                        if not user.doge_address or user.doge_address == doge_wallet.address:
+                            user.doge_address = doge_wallet.address
+                            user.doge_private_key_encrypted = doge_wallet.private_key_encrypted
+                            user.doge_mnemonic_hash = doge_wallet.mnemonic_hash
+                            print(f"DOGE wallet created with address: {user.doge_address}")
+                        else:
+                            print(f"DOGE wallet address mismatch, keeping existing: {user.doge_address}")
+                    else:
+                        print("Failed to create DOGE wallet, but continuing with existing address")
+                except Exception as e:
+                    print(f"Error creating DOGE wallet: {e}, continuing with existing address")
             
-            # Generate Nano address (simplified - would use proper key derivation)
-            if not user.nano_address:
-                # Generate Nano address from the same seed
-                seed = self.blockchain.nano_client.generate_seed()
-                private_key = self.blockchain.nano_client.seed_to_private_key(seed, 0)
-                public_key = self.blockchain.nano_client.private_key_to_public_key(private_key)
-                user.nano_address = self.blockchain.nano_client.public_key_to_address(public_key)
-                user.public_key = public_key.hex()
+            # For Nano, ensure we have the public key if we have an address
+            if user.nano_address and not hasattr(user, 'public_key'):
+                try:
+                    # Generate Nano key pair (simplified - in real implementation would derive from seed)
+                    seed = self.blockchain.nano_client.generate_seed()
+                    private_key = self.blockchain.nano_client.seed_to_private_key(seed, 0)
+                    public_key = self.blockchain.nano_client.private_key_to_public_key(private_key)
+                    
+                    # Verify the generated address matches the existing one
+                    generated_address = self.blockchain.nano_client.public_key_to_address(public_key)
+                    if generated_address == user.nano_address:
+                        user.public_key = public_key.hex()
+                        print(f"Nano public key generated for address: {user.nano_address}")
+                    else:
+                        print(f"Nano address mismatch, keeping existing: {user.nano_address}")
+                except Exception as e:
+                    print(f"Error generating Nano public key: {e}, continuing with existing address")
             
-            # Store user data
+            # Store updated user data
             if self.database:
                 await self.database.store_user(user)
             
+            print(f"Wallet creation completed for user {user.username}")
             return True
         except Exception as e:
             print(f"Error creating wallet: {e}")

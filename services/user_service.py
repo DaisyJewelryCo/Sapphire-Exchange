@@ -53,6 +53,8 @@ class UserService:
                 print("Failed to generate blockchain addresses")
                 return None
             
+            print(f"Generated addresses - Nano: {nano_address}, Arweave: {arweave_address}, DOGE: {doge_address}")
+            
             # Hash password
             password_hash = self.security.hash_password(password)
             
@@ -93,6 +95,17 @@ class UserService:
                 # Store in database
                 if self.database:
                     await self.database.store_user(user)
+                
+                # Create wallet structures for the user
+                try:
+                    from services.wallet_service import wallet_service
+                    wallet_created = await wallet_service.create_wallet(user)
+                    if wallet_created:
+                        print(f"Wallet created successfully for user {user.username}")
+                    else:
+                        print(f"Warning: Failed to create wallet for user {user.username}")
+                except Exception as e:
+                    print(f"Error creating wallet for user {user.username}: {e}")
                 
                 # Notify callbacks
                 self._notify_user_created(user)
