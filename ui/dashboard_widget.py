@@ -6,7 +6,7 @@ Contains user profile management and wallet overview with transaction history.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QFrame, QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QGroupBox, QSizePolicy, QSpacerItem
+    QMessageBox, QGroupBox, QSizePolicy, QSpacerItem, QApplication
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette
@@ -14,6 +14,149 @@ from PyQt5.QtGui import QFont, QPalette
 from services.application_service import app_service
 from utils.async_worker import AsyncWorker
 from ui.logo_component import HeaderWithLogo
+
+
+class ConnectionStatusWidget(QWidget):
+    """Widget for displaying connection status of all services."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+        self.setup_timer()
+        self.update_connection_status()
+    
+    def setup_ui(self):
+        """Setup the connection status UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        
+        # Connection status labels
+        self.status_labels = {}
+        
+        # Blockchain connections
+        blockchain_services = [
+            ('nano', 'Nano Network'),
+            ('arweave', 'Arweave Network'),
+            ('dogecoin', 'Dogecoin Network')
+        ]
+        
+        for service_key, service_name in blockchain_services:
+            status_layout = QHBoxLayout()
+            
+            # Service name
+            name_label = QLabel(f"{service_name}:")
+            name_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+            name_label.setFixedWidth(120)
+            status_layout.addWidget(name_label)
+            
+            # Status indicator
+            status_label = QLabel("Checking...")
+            status_label.setStyleSheet("color: #6b7280; font-size: 12px;")
+            status_layout.addWidget(status_label)
+            
+            status_layout.addStretch()
+            layout.addLayout(status_layout)
+            
+            self.status_labels[service_key] = status_label
+        
+        # Database connection
+        db_layout = QHBoxLayout()
+        db_name_label = QLabel("Database:")
+        db_name_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        db_name_label.setFixedWidth(120)
+        db_layout.addWidget(db_name_label)
+        
+        db_status_label = QLabel("Connected")
+        db_status_label.setStyleSheet("color: #059669; font-size: 12px;")
+        db_layout.addWidget(db_status_label)
+        db_layout.addStretch()
+        layout.addLayout(db_layout)
+        
+        self.status_labels['database'] = db_status_label
+        
+        # Price API connection
+        price_layout = QHBoxLayout()
+        price_name_label = QLabel("Price API:")
+        price_name_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        price_name_label.setFixedWidth(120)
+        price_layout.addWidget(price_name_label)
+        
+        price_status_label = QLabel("Checking...")
+        price_status_label.setStyleSheet("color: #6b7280; font-size: 12px;")
+        price_layout.addWidget(price_status_label)
+        price_layout.addStretch()
+        layout.addLayout(price_layout)
+        
+        self.status_labels['price_api'] = price_status_label
+        
+        # Application Service
+        app_layout = QHBoxLayout()
+        app_name_label = QLabel("App Service:")
+        app_name_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        app_name_label.setFixedWidth(120)
+        app_layout.addWidget(app_name_label)
+        
+        app_status_label = QLabel("Checking...")
+        app_status_label.setStyleSheet("color: #6b7280; font-size: 12px;")
+        app_layout.addWidget(app_status_label)
+        app_layout.addStretch()
+        layout.addLayout(app_layout)
+        
+        self.status_labels['app_service'] = app_status_label
+    
+    def setup_timer(self):
+        """Setup timer for periodic status updates."""
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_connection_status)
+        self.update_timer.start(5000)  # Update every 5 seconds
+    
+    def update_connection_status(self):
+        """Update the connection status for all services."""
+        try:
+            # Check blockchain connections
+            if hasattr(app_service, 'blockchain') and app_service.blockchain:
+                blockchain_status = app_service.blockchain.connection_status
+                
+                for service_key in ['nano', 'arweave', 'dogecoin']:
+                    if service_key in blockchain_status:
+                        status = blockchain_status[service_key]
+                        if status.is_healthy():
+                            self.status_labels[service_key].setText("Connected")
+                            self.status_labels[service_key].setStyleSheet("color: #059669; font-size: 12px;")
+                        else:
+                            self.status_labels[service_key].setText(f"Error: {status.status.value}")
+                            self.status_labels[service_key].setStyleSheet("color: #dc2626; font-size: 12px;")
+                    else:
+                        self.status_labels[service_key].setText("Not Available")
+                        self.status_labels[service_key].setStyleSheet("color: #6b7280; font-size: 12px;")
+            
+            # Check database connection (always connected in current implementation)
+            self.status_labels['database'].setText("Connected")
+            self.status_labels['database'].setStyleSheet("color: #059669; font-size: 12px;")
+            
+            # Check price API (simplified check)
+            if hasattr(app_service, 'price_service') and app_service.price_service:
+                self.status_labels['price_api'].setText("Available")
+                self.status_labels['price_api'].setStyleSheet("color: #059669; font-size: 12px;")
+            else:
+                self.status_labels['price_api'].setText("Not Available")
+                self.status_labels['price_api'].setStyleSheet("color: #dc2626; font-size: 12px;")
+            
+            # Check application service
+            if app_service.is_initialized:
+                self.status_labels['app_service'].setText("Initialized")
+                self.status_labels['app_service'].setStyleSheet("color: #059669; font-size: 12px;")
+            else:
+                self.status_labels['app_service'].setText("Not Initialized")
+                self.status_labels['app_service'].setStyleSheet("color: #dc2626; font-size: 12px;")
+                
+        except Exception as e:
+            print(f"Error updating connection status: {e}")
+            # Set all to error state
+            for label in self.status_labels.values():
+                label.setText("Error")
+                label.setStyleSheet("color: #dc2626; font-size: 12px;")
 
 
 class UserProfileWidget(QWidget):
@@ -139,18 +282,49 @@ class UserProfileWidget(QWidget):
         
         layout.addWidget(stats_group)
         
+        # Connection Information section
+        connection_group = QGroupBox("Connection Information")
+        connection_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #e2e8f0;
+                border-radius: 8px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
+        connection_layout = QVBoxLayout(connection_group)
+        
+        # Create connection status widget
+        self.connection_widget = ConnectionStatusWidget()
+        connection_layout.addWidget(self.connection_widget)
+        
+        layout.addWidget(connection_group)
+        
         # Add stretch to push content to top
         layout.addStretch()
     
     def load_user_info(self):
         """Load current user information."""
+        print(f"[DEBUG] DashboardWidget.load_user_info called")
         if app_service.is_user_logged_in():
             user = app_service.get_current_user()
             if user:
+                print(f"[DEBUG] Dashboard updating username display to: {user.username}")
                 self.current_username_label.setText(f"Current: {user.username}")
                 self.reputation_label.setText(f"Reputation: {user.reputation_score:.1f}/100")
                 self.sales_label.setText(f"Total Sales: {user.total_sales}")
                 self.purchases_label.setText(f"Total Purchases: {user.total_purchases}")
+                print(f"[DEBUG] Dashboard user info update completed")
+                
+                # Refresh connection status
+                if hasattr(self, 'connection_widget'):
+                    self.connection_widget.update_connection_status()
     
     def update_username(self):
         """Update the username."""
@@ -240,34 +414,100 @@ class WalletOverviewWidget(QWidget):
         """)
         wallets_layout = QVBoxLayout(wallets_group)
         
-        # Wallet buttons
+        # Wallet sections with addresses
         self.wallet_buttons = {}
+        self.wallet_addresses = {}
+        self.copy_buttons = {}
         currencies = ['NANO', 'DOGE', 'ARWEAVE']
         
         for currency in currencies:
+            # Create wallet container
+            wallet_container = QFrame()
+            wallet_container.setStyleSheet("""
+                QFrame {
+                    background-color: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    margin: 2px;
+                    padding: 8px;
+                }
+            """)
+            wallet_layout = QVBoxLayout(wallet_container)
+            wallet_layout.setContentsMargins(8, 8, 8, 8)
+            wallet_layout.setSpacing(6)
+            
+            # Wallet balance button
             btn = QPushButton(f"{currency} - Loading...")
             btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #f8fafc;
+                    background-color: transparent;
                     color: #1e293b;
-                    border: 1px solid #e2e8f0;
-                    padding: 12px;
-                    border-radius: 8px;
+                    border: none;
+                    padding: 8px;
+                    border-radius: 4px;
                     font-size: 14px;
+                    font-weight: bold;
                     text-align: left;
-                    margin: 2px;
                 }
                 QPushButton:hover {
-                    background-color: #f1f5f9;
-                    border-color: #cbd5e1;
+                    background-color: #e2e8f0;
                 }
                 QPushButton:pressed {
-                    background-color: #e2e8f0;
+                    background-color: #cbd5e1;
                 }
             """)
             btn.clicked.connect(lambda checked, c=currency: self.show_wallet_details(c))
             self.wallet_buttons[currency] = btn
-            wallets_layout.addWidget(btn)
+            wallet_layout.addWidget(btn)
+            
+            # Address section
+            address_container = QHBoxLayout()
+            address_container.setContentsMargins(0, 0, 0, 0)
+            address_container.setSpacing(8)
+            
+            # Address label
+            address_label = QLabel("Loading address...")
+            address_label.setStyleSheet("""
+                QLabel {
+                    color: #64748b;
+                    font-size: 11px;
+                    font-family: monospace;
+                    background-color: #f1f5f9;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    border: 1px solid #e2e8f0;
+                }
+            """)
+            address_label.setWordWrap(True)
+            self.wallet_addresses[currency] = address_label
+            address_container.addWidget(address_label, 1)
+            
+            # Copy button
+            copy_btn = QPushButton("📋")
+            copy_btn.setFixedSize(28, 28)
+            copy_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3b82f6;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #2563eb;
+                }
+                QPushButton:pressed {
+                    background-color: #1d4ed8;
+                }
+            """)
+            copy_btn.setToolTip(f"Copy {currency} address")
+            copy_btn.clicked.connect(lambda checked, c=currency: self.copy_address(c))
+            self.copy_buttons[currency] = copy_btn
+            address_container.addWidget(copy_btn)
+            
+            wallet_layout.addLayout(address_container)
+            wallets_layout.addWidget(wallet_container)
         
         layout.addWidget(wallets_group)
         
@@ -338,16 +578,82 @@ class WalletOverviewWidget(QWidget):
         
         layout.addWidget(history_group)
     
+    def copy_address(self, currency):
+        """Copy wallet address to clipboard."""
+        try:
+            addresses = app_service.get_wallet_addresses()
+            if currency in addresses:
+                address = addresses[currency]
+                clipboard = QApplication.clipboard()
+                clipboard.setText(address)
+                
+                # Show confirmation message
+                QMessageBox.information(
+                    self,
+                    "Address Copied",
+                    f"{currency} address copied to clipboard:\n{address}"
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Address Not Available",
+                    f"No {currency} address found for current user."
+                )
+        except Exception as e:
+            print(f"Error copying address: {e}")
+            QMessageBox.critical(
+                self,
+                "Copy Error",
+                f"Failed to copy {currency} address: {str(e)}"
+            )
+    
     def load_wallet_data(self):
-        """Load wallet balance data."""
+        """Load wallet balance data and addresses."""
         if not app_service.is_user_logged_in():
             return
         
+        # Load wallet addresses first
+        self.load_wallet_addresses()
+        
+        # Load wallet balances
         worker = AsyncWorker(app_service.get_wallet_balances())
         worker.finished.connect(self.on_balances_loaded)
         worker.error.connect(self.on_balances_error)
         worker.start()
         self.balance_worker = worker
+    
+    def load_wallet_addresses(self):
+        """Load and display wallet addresses."""
+        try:
+            addresses = app_service.get_wallet_addresses()
+            
+            for currency in ['NANO', 'DOGE', 'ARWEAVE']:
+                if currency in self.wallet_addresses:
+                    if currency in addresses and addresses[currency]:
+                        address = addresses[currency]
+                        # Truncate long addresses for display
+                        if len(address) > 20:
+                            display_address = f"{address[:10]}...{address[-10:]}"
+                        else:
+                            display_address = address
+                        self.wallet_addresses[currency].setText(display_address)
+                        self.wallet_addresses[currency].setToolTip(f"Full address: {address}")
+                        # Enable copy button
+                        if currency in self.copy_buttons:
+                            self.copy_buttons[currency].setEnabled(True)
+                    else:
+                        self.wallet_addresses[currency].setText("No address available")
+                        self.wallet_addresses[currency].setToolTip("No address available")
+                        # Disable copy button
+                        if currency in self.copy_buttons:
+                            self.copy_buttons[currency].setEnabled(False)
+        except Exception as e:
+            print(f"Error loading wallet addresses: {e}")
+            for currency in ['NANO', 'DOGE', 'ARWEAVE']:
+                if currency in self.wallet_addresses:
+                    self.wallet_addresses[currency].setText("Error loading address")
+                    if currency in self.copy_buttons:
+                        self.copy_buttons[currency].setEnabled(False)
     
     def on_balances_loaded(self, balances):
         """Handle loaded wallet balances."""
@@ -377,7 +683,16 @@ class WalletOverviewWidget(QWidget):
                     
                     btn.setText(f"{currency} - {display_balance}")
                 else:
-                    btn.setText(f"{currency} - {balance}")
+                    # Handle case where balance_data is not a dict (e.g., direct value)
+                    try:
+                        if currency == 'NANO':
+                            balance_nano = float(balance_data) / (10**30)
+                            display_balance = f"{balance_nano:.6f}"
+                        else:
+                            display_balance = f"{float(balance_data):,.2f}"
+                        btn.setText(f"{currency} - {display_balance}")
+                    except:
+                        btn.setText(f"{currency} - {balance_data}")
             else:
                 btn.setText(f"{currency} - Not available")
     

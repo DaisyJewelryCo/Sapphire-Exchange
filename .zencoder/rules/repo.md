@@ -6,18 +6,18 @@ alwaysApply: true
 # Sapphire Exchange Information
 
 ## Summary
-Sapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.
+Sapphire Exchange is a decentralized auction platform built on Arweave, Nano, and Dogecoin blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.
 
 ## Structure
-- **app.py**: Main application entry point
-- **main_window.py**: PyQt5-based UI implementation
-- **models.py**: Data models for users, items, and auctions
-- **database.py**: Database module using Arweave for storage
-- **arweave_utils.py**: Handles interactions with Arweave blockchain
-- **nano_utils.py**: Manages Nano wallet and transaction functionality
-- **decentralized_client.py**: Client for interacting with blockchain networks
-- **mock_servers.py**: Mock implementations for testing without real blockchain
-- **test_marketplace.py**: Test script for verifying marketplace functionality
+- **app.py**: Main application entry point with PyQt5 GUI initialization
+- **ui/**: PyQt5-based user interface components and dialogs
+- **models/**: Data models for users, items, and auctions
+- **services/**: Business logic services for users, auctions, wallets, etc.
+- **blockchain/**: Blockchain client implementations for Arweave, Nano, and Dogecoin
+- **repositories/**: Data access layer for persistent storage
+- **utils/**: Utility functions for validation, conversion, and async operations
+- **security/**: Security and performance management components
+- **config/**: Application and blockchain configuration
 
 ## Language & Runtime
 **Language**: Python
@@ -27,20 +27,23 @@ Sapphire Exchange is a decentralized auction platform built on Arweave and Nano 
 
 ## Dependencies
 **Main Dependencies**:
-- PyArweave==0.6.0: Arweave blockchain integration
-- python-dotenv>=0.19.2: Environment variable management
-- requests>=2.28.0: HTTP requests
-- base58>=2.1.1: Base58 encoding/decoding
-- cryptography>=3.4.7: Cryptographic operations
-- ed25519-blake2b==1.4.1: Digital signatures
-- pynacl>=1.4.0: Cryptographic library
-- pycryptodome>=3.20.0: Cryptographic primitives
 - PyQt5>=5.15.9: GUI framework
+- qasync>=0.23.0: Async support for PyQt5
+- PyArweave>=0.6.0: Arweave blockchain integration
+- cryptography>=3.4.7: Cryptographic operations
+- ed25519-blake2b>=1.4.1: Digital signatures
+- pynacl>=1.4.0: Cryptographic library
+- mnemonic>=0.20: BIP39 wallet support
+- hdwallet>=2.2.1: Hierarchical deterministic wallet
+- python-dotenv>=0.19.2: Environment variable management
 - qrcode>=7.4.2: QR code generation
-- Pillow>=9.5.0: Image processing
 
 **Development Dependencies**:
-- Not explicitly specified in requirements.txt
+- pytest>=7.0.0: Testing framework
+- pytest-asyncio>=0.21.0: Async testing support
+- pytest-mock>=3.10.0: Mocking for tests
+- black>=22.0.0: Code formatting
+- flake8>=5.0.0: Code linting
 
 ## Build & Installation
 ```bash
@@ -66,18 +69,23 @@ python app.py
 ```
 
 ## Testing
-**Framework**: Custom testing with mock implementations
-**Test Location**: test_marketplace.py
-**Mock Implementation**: mock_servers.py provides simulated blockchain environments
+**Framework**: pytest with unittest
+**Test Files**: 
+- test_unified_system.py: Comprehensive test suite for all components
+- test_dev_tools.py: Development tools testing
+- test_refactoring.py: Tests for refactored components
+- test_seed_dialog.py: Tests for seed phrase dialog
+
 **Run Command**:
 ```bash
-python test_marketplace.py
+pytest
 ```
 
 ## Features
 - **Decentralized Storage**: Item data stored on Arweave blockchain
-- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing
-- **Secure Wallet Management**: Built-in wallet generation and management
+- **Multi-Blockchain Support**: Integration with Arweave, Nano, and Dogecoin
+- **Secure Wallet Management**: BIP39 seed phrase generation and HD wallet support
 - **Auction System**: Support for timed auctions with automatic finalization
-- **Mock Mode**: Testing environment that simulates blockchain operations
-- **PyQt5 GUI**: Desktop application interface for user interaction
+- **Asynchronous Architecture**: Non-blocking UI with asyncio and qasync
+- **Security**: Encryption, hashing, and secure key management
+- **Performance Optimization**: Caching and performance monitoring

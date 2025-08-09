@@ -222,21 +222,32 @@ class ApplicationService:
     async def update_username(self, new_username: str) -> bool:
         """Update the current user's username."""
         try:
+            print(f"[DEBUG] update_username called with: {new_username}")
             if not self.current_user:
+                print(f"[DEBUG] No current user found")
                 return False
+            
+            old_username = self.current_user.username
+            print(f"[DEBUG] Current username: {old_username}")
             
             # Validate username
             if not new_username or len(new_username) < 3 or len(new_username) > 32:
+                print(f"[DEBUG] Username validation failed")
                 return False
             
             # Update the user object
             self.current_user.username = new_username
+            print(f"[DEBUG] Updated user object username to: {self.current_user.username}")
             
             # Save to database
             success = await self.user_repo.update(self.current_user)
+            print(f"[DEBUG] Database update success: {success}")
+            
             if success:
                 # Notify callbacks about user change
+                print(f"[DEBUG] Notifying callbacks about profile update")
                 self._notify_user_change('profile_updated', self.current_user)
+                print(f"[DEBUG] Username successfully updated from {old_username} to {new_username}")
                 return True
             
             return False
@@ -403,6 +414,25 @@ class ApplicationService:
             print(f"Error getting wallet transactions: {e}")
             return []
     
+    def get_wallet_addresses(self) -> Dict[str, str]:
+        """Get wallet addresses for current user."""
+        try:
+            if not self.current_user:
+                return {}
+            
+            addresses = {}
+            if self.current_user.nano_address:
+                addresses['NANO'] = self.current_user.nano_address
+            if self.current_user.doge_address:
+                addresses['DOGE'] = self.current_user.doge_address
+            if self.current_user.arweave_address:
+                addresses['ARWEAVE'] = self.current_user.arweave_address
+            
+            return addresses
+        except Exception as e:
+            print(f"Error getting wallet addresses: {e}")
+            return {}
+    
     # Price Information
     async def get_current_prices(self, currencies: List[str] = None) -> Dict[str, Any]:
         """Get current cryptocurrency prices."""
@@ -514,6 +544,18 @@ class ApplicationService:
                 callback('logout', user)
             except Exception as e:
                 print(f"Error in user change callback: {e}")
+    
+    def _notify_user_change(self, event_type: str, user: User):
+        """Notify callbacks about user changes."""
+        print(f"[DEBUG] _notify_user_change called with event: {event_type}, user: {user.username if user else None}")
+        print(f"[DEBUG] Number of callbacks registered: {len(self.user_change_callbacks)}")
+        for i, callback in enumerate(self.user_change_callbacks):
+            try:
+                print(f"[DEBUG] Calling callback {i}: {callback}")
+                callback(event_type, user)
+                print(f"[DEBUG] Callback {i} completed successfully")
+            except Exception as e:
+                print(f"Error in user change callback {i}: {e}")
     
     def _on_bid_placed(self, item: Item, bid: Bid):
         """Handle bid placed."""

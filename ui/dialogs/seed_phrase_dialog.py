@@ -78,38 +78,7 @@ class SeedPhraseDialog(QDialog):
         header_layout.addWidget(title)
         header_layout.addWidget(subtitle)
         
-        # Warning section
-        warning_frame = QFrame()
-        warning_frame.setStyleSheet("""
-            QFrame {
-                background-color: #fff3cd;
-                border: 1px solid #ffeaa7;
-                border-radius: 6px;
-            }
-        """)
-        
-        warning_layout = QVBoxLayout(warning_frame)
-        warning_layout.setContentsMargins(12, 10, 12, 10)
-        warning_layout.setSpacing(5)
-        
-        warning_title = QLabel("⚠️ IMPORTANT SECURITY NOTICE")
-        warning_title.setFont(QFont('Arial', 11, QFont.Bold))
-        warning_title.setStyleSheet("color: #856404; background: transparent;")
-        
-        warning_text = QLabel(
-            "• Write down these words in the exact order shown\n"
-            "• Store them in a safe, offline location\n"
-            "• Never share your seed phrase with anyone\n"
-            "• This is the ONLY way to recover your account"
-        )
-        warning_text.setFont(QFont('Arial', 9))
-        warning_text.setStyleSheet("color: #856404; background: transparent;")
-        warning_text.setWordWrap(True)
-        
-        warning_layout.addWidget(warning_title)
-        warning_layout.addWidget(warning_text)
-        
-        # Seed phrase display
+        # Seed phrase display (moved to where warning was)
         seed_frame = QFrame()
         seed_frame.setStyleSheet("""
             QFrame {
@@ -127,67 +96,62 @@ class SeedPhraseDialog(QDialog):
         seed_title.setFont(QFont('Arial', 11, QFont.Bold))
         seed_title.setStyleSheet("color: #495057; background: transparent;")
         
-        # Create a container widget for the words grid
-        words_container = QWidget()
-        words_container.setStyleSheet("background: transparent;")
-        words_grid = QGridLayout(words_container)
-        words_grid.setSpacing(8)
-        words_grid.setContentsMargins(5, 5, 5, 5)
-        
-        # Split seed phrase into words
-        words = self.seed_phrase.split()
-        
-        # Calculate grid dimensions (prefer 3 columns)
-        cols = 3
-        rows = (len(words) + cols - 1) // cols
-        
-        for i, word in enumerate(words):
-            word_frame = QFrame()
-            word_frame.setFixedHeight(35)
-            word_frame.setMinimumWidth(80)
-            word_frame.setStyleSheet("""
-                QFrame {
-                    background-color: white;
-                    border: 1px solid #dee2e6;
-                    border-radius: 4px;
-                }
-            """)
-            
-            word_layout = QHBoxLayout(word_frame)
-            word_layout.setContentsMargins(8, 5, 8, 5)
-            word_layout.setSpacing(5)
-            
-            # Word number
-            number_label = QLabel(f"{i+1}.")
-            number_label.setFont(QFont('Arial', 9, QFont.Bold))
-            number_label.setStyleSheet("color: #6c757d; background: transparent;")
-            number_label.setFixedWidth(18)
-            
-            # Word text
-            word_label = QLabel(word)
-            word_label.setFont(QFont('Courier New', 10, QFont.Bold))
-            word_label.setStyleSheet("color: #212529; background: transparent;")
-            
-            word_layout.addWidget(number_label)
-            word_layout.addWidget(word_label)
-            word_layout.addStretch()
-            
-            # Add to grid
-            row = i // cols
-            col = i % cols
-            words_grid.addWidget(word_frame, row, col)
-        
-        # Ensure grid columns have equal stretch
-        for col in range(cols):
-            words_grid.setColumnStretch(col, 1)
+        # Display seed phrase as plain text
+        seed_text = QTextEdit()
+        seed_text.setPlainText(self.seed_phrase)
+        seed_text.setReadOnly(True)
+        seed_text.setFont(QFont('Courier New', 12, QFont.Bold))
+        seed_text.setFixedHeight(80)
+        seed_text.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 10px;
+                color: #212529;
+                selection-background-color: #007bff;
+                selection-color: white;
+            }
+        """)
         
         seed_layout.addWidget(seed_title)
-        seed_layout.addWidget(words_container)
+        seed_layout.addWidget(seed_text)
+        
+        # Warning section (moved to after seed phrase)
+        warning_frame = QFrame()
+        warning_frame.setStyleSheet("""
+            QFrame {
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 6px;
+            }
+        """)
+        
+        warning_layout = QVBoxLayout(warning_frame)
+        warning_layout.setContentsMargins(12, 10, 12, 10)
+        warning_layout.setSpacing(5)
+        
+        warning_title = QLabel("⚠ IMPORTANT SECURITY NOTICE")
+        warning_title.setFont(QFont('Arial', 11, QFont.Bold))
+        warning_title.setStyleSheet("color: #856404; background: transparent;")
+        
+        warning_text = QLabel(
+            "• Write down these words in the exact order shown\n"
+            "• Store them in a safe, offline location\n"
+            "• Never share your seed phrase with anyone\n"
+            "• This is the ONLY way to recover your account"
+        )
+        warning_text.setFont(QFont('Arial', 9))
+        warning_text.setStyleSheet("color: #856404; background: transparent;")
+        warning_text.setWordWrap(True)
+        
+        warning_layout.addWidget(warning_title)
+        warning_layout.addWidget(warning_text)
         
         # Copy button section
         copy_layout = QHBoxLayout()
         copy_layout.setContentsMargins(0, 5, 0, 5)
-        
+
         self.copy_button = QPushButton("📋 Copy to Clipboard")
         self.copy_button.setFixedHeight(32)
         self.copy_button.setStyleSheet("""
@@ -208,7 +172,7 @@ class SeedPhraseDialog(QDialog):
             }
         """)
         self.copy_button.clicked.connect(self.copy_to_clipboard)
-        
+
         copy_layout.addStretch()
         copy_layout.addWidget(self.copy_button)
         copy_layout.addStretch()
@@ -245,8 +209,8 @@ class SeedPhraseDialog(QDialog):
         
         # Add all sections to main layout
         main_layout.addWidget(header_frame)
-        main_layout.addWidget(warning_frame)
         main_layout.addWidget(seed_frame, 1)  # Give seed frame most space
+        main_layout.addWidget(warning_frame)
         main_layout.addLayout(copy_layout)
         main_layout.addLayout(button_layout)
         

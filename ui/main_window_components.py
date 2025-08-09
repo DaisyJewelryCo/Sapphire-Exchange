@@ -337,18 +337,7 @@ class UserProfileSection(QWidget):
         """)
         user_details_layout.addWidget(self.username_label)
         
-        # User email
-        self.user_email_label = QLabel("user@example.com")
-        self.user_email_label.setStyleSheet("""
-            QLabel {
-                font-size: 12px;
-                color: #64748b;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        user_details_layout.addWidget(self.user_email_label)
+
         
         user_row_layout.addWidget(user_details, 1)
         user_info_layout.addWidget(user_row)
@@ -398,77 +387,149 @@ class UserProfileSection(QWidget):
         """)
         balances_layout.addWidget(balances_title)
         
-        # Balance items in a vertical layout for better readability
-        # NANO balance
-        self.nano_balance_label = QLabel("NANO: $0.00")
+        # Balance items in horizontal layout with wallet type headers and values underneath
+        balances_horizontal_layout = QHBoxLayout()
+        balances_horizontal_layout.setSpacing(0)
+        
+        # NANO wallet section
+        nano_container = QWidget()
+        nano_layout = QVBoxLayout(nano_container)
+        nano_layout.setContentsMargins(8, 4, 8, 4)
+        nano_layout.setSpacing(2)
+        
+        nano_header = QLabel("NANO")
+        nano_header.setAlignment(Qt.AlignCenter)
+        nano_header.setStyleSheet("""
+            QLabel {
+                font-size: 11px;
+                font-weight: 600;
+                color: #374151;
+                background-color: transparent;
+                border: none;
+                padding: 0;
+            }
+        """)
+        nano_layout.addWidget(nano_header)
+        
+        self.nano_balance_label = QLabel("$0.00")
+        self.nano_balance_label.setAlignment(Qt.AlignCenter)
         self.nano_balance_label.setStyleSheet("""
             QLabel {
-                font-size: 12px;
+                font-size: 10px;
                 color: #1e293b;
-                background-color: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 4px;
-                padding: 4px 8px;
-                margin: 1px 0;
+                background-color: transparent;
+                border: none;
+                padding: 0;
             }
         """)
-        balances_layout.addWidget(self.nano_balance_label)
+        nano_layout.addWidget(self.nano_balance_label)
         
-        # DOGE balance
-        self.doge_balance_label = QLabel("DOGE: 0.00")
+        balances_horizontal_layout.addWidget(nano_container)
+        
+        # DOGE wallet section
+        doge_container = QWidget()
+        doge_layout = QVBoxLayout(doge_container)
+        doge_layout.setContentsMargins(8, 4, 8, 4)
+        doge_layout.setSpacing(2)
+        
+        doge_header = QLabel("DOGE")
+        doge_header.setAlignment(Qt.AlignCenter)
+        doge_header.setStyleSheet("""
+            QLabel {
+                font-size: 11px;
+                font-weight: 600;
+                color: #374151;
+                background-color: transparent;
+                border: none;
+                padding: 0;
+            }
+        """)
+        doge_layout.addWidget(doge_header)
+        
+        self.doge_balance_label = QLabel("0.00")
+        self.doge_balance_label.setAlignment(Qt.AlignCenter)
         self.doge_balance_label.setStyleSheet("""
             QLabel {
-                font-size: 12px;
+                font-size: 10px;
                 color: #1e293b;
-                background-color: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 4px;
-                padding: 4px 8px;
-                margin: 1px 0;
+                background-color: transparent;
+                border: none;
+                padding: 0;
             }
         """)
-        balances_layout.addWidget(self.doge_balance_label)
+        doge_layout.addWidget(self.doge_balance_label)
         
-        # AR balance
-        self.ar_balance_label = QLabel("AR: 0.00")
+        balances_horizontal_layout.addWidget(doge_container)
+        
+        # AR wallet section
+        ar_container = QWidget()
+        ar_layout = QVBoxLayout(ar_container)
+        ar_layout.setContentsMargins(8, 4, 8, 4)
+        ar_layout.setSpacing(2)
+        
+        ar_header = QLabel("AR")
+        ar_header.setAlignment(Qt.AlignCenter)
+        ar_header.setStyleSheet("""
+            QLabel {
+                font-size: 11px;
+                font-weight: 600;
+                color: #374151;
+                background-color: transparent;
+                border: none;
+                padding: 0;
+            }
+        """)
+        ar_layout.addWidget(ar_header)
+        
+        self.ar_balance_label = QLabel("0.00")
+        self.ar_balance_label.setAlignment(Qt.AlignCenter)
         self.ar_balance_label.setStyleSheet("""
             QLabel {
-                font-size: 12px;
+                font-size: 10px;
                 color: #1e293b;
-                background-color: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 4px;
-                padding: 4px 8px;
-                margin: 1px 0;
+                background-color: transparent;
+                border: none;
+                padding: 0;
             }
         """)
-        balances_layout.addWidget(self.ar_balance_label)
+        ar_layout.addWidget(self.ar_balance_label)
+        
+        balances_horizontal_layout.addWidget(ar_container)
+        
+        balances_layout.addLayout(balances_horizontal_layout)
         
         layout.addWidget(balances_container)
     
     def update_user_info(self, user):
         """Update user information display."""
+        print(f"[DEBUG] UserProfileSection.update_user_info called with user: {user.username if user else None}")
         if user:
+            print(f"[DEBUG] Updating username label to: {user.username}")
             self.username_label.setText(user.username or "User")
-            if hasattr(user, 'email') and user.email:
-                self.user_email_label.setText(user.email)
-            elif '@' in (user.username or ''):
-                self.user_email_label.setText(user.username)
-            else:
-                self.user_email_label.setText("Premium Member")
             
             self.bid_credits_label.setText(f"Available Bid Credits: ${user.bid_credits:.2f}")
+            
+            # Force UI refresh
+            self.username_label.repaint()
+            self.bid_credits_label.repaint()
+            self.update()
+            print(f"[DEBUG] UserProfileSection update completed")
     
     def update_balances(self, balances):
         """Update balance display."""
+        print(f"[DEBUG] UserProfileSection.update_balances called with: {balances}")
         nano_balance = balances.get('nano', 0) or 0
         doge_balance = balances.get('dogecoin', 0) or 0
         ar_balance = balances.get('arweave', 0) or 0
         
-        # Format balances for compact display
-        self.nano_balance_label.setText(f"NANO: {self.format_balance(nano_balance)}")
-        self.doge_balance_label.setText(f"DOGE: {self.format_balance(doge_balance)}")
-        self.ar_balance_label.setText(f"AR: {self.format_balance(ar_balance)}")
+        print(f"[DEBUG] Parsed balances - NANO: {nano_balance}, DOGE: {doge_balance}, AR: {ar_balance}")
+        
+        # Format balances for inline display (values only, no currency prefix)
+        self.nano_balance_label.setText(f"${self.format_balance(nano_balance)}")
+        self.doge_balance_label.setText(self.format_balance(doge_balance))
+        self.ar_balance_label.setText(self.format_balance(ar_balance))
+        
+        print(f"[DEBUG] Balance labels updated")
     
     def format_balance(self, balance):
         """Format balance for compact display."""

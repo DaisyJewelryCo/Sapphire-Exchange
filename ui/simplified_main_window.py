@@ -289,15 +289,26 @@ class SimplifiedMainWindow(QMainWindow):
             # Load wallet balances
             self.load_wallet_balances()
             
+            # Refresh dashboard widget with user info
+            if hasattr(self, 'dashboard_widget') and hasattr(self.dashboard_widget, 'user_profile_widget'):
+                self.dashboard_widget.user_profile_widget.load_user_info()
+            
+            # Refresh wallet overview in dashboard
+            if hasattr(self, 'dashboard_widget') and hasattr(self.dashboard_widget, 'wallet_overview_widget'):
+                self.dashboard_widget.wallet_overview_widget.load_wallet_data()
+            
             # Set default page to marketplace
             self.sidebar.set_active_page(0)
             self.content_stack.setCurrentIndex(0)
     
     def load_wallet_balances(self):
         """Load wallet balances for sidebar display."""
+        print(f"[DEBUG] load_wallet_balances called")
         if not app_service.is_user_logged_in():
+            print(f"[DEBUG] User not logged in, skipping balance load")
             return
         
+        print(f"[DEBUG] Starting wallet balance worker")
         worker = AsyncWorker(app_service.get_wallet_balances())
         worker.finished.connect(self.on_balances_loaded)
         worker.error.connect(self.on_balances_error)
@@ -306,10 +317,12 @@ class SimplifiedMainWindow(QMainWindow):
     
     def on_balances_loaded(self, balances):
         """Handle loaded balances."""
+        print(f"[DEBUG] on_balances_loaded called with balances: {balances}")
         self.sidebar.user_profile_section.update_balances(balances)
     
     def on_balances_error(self, error):
         """Handle balance loading errors."""
+        print(f"[DEBUG] on_balances_error called with error: {error}")
         print(f"Error loading balances: {error}")
     
     def logout(self):
@@ -411,10 +424,43 @@ class SimplifiedMainWindow(QMainWindow):
     
     def on_user_change(self, event, user):
         """Handle user changes."""
+        print(f"[DEBUG] SimplifiedMainWindow.on_user_change called with event: {event}, user: {user.username if user else None}")
         if event == 'login':
             self.on_login_success(user)
         elif event == 'logout':
             self.on_logout_complete(True)
+        elif event == 'profile_updated':
+            # Refresh UI components that display user information
+            print(f"[DEBUG] Handling profile_updated event")
+            self.refresh_user_display(user)
+    
+    def refresh_user_display(self, user):
+        """Refresh UI components that display user information."""
+        try:
+            print(f"[DEBUG] refresh_user_display called with user: {user.username}")
+            
+            # Update sidebar user profile section
+            if hasattr(self, 'sidebar') and hasattr(self.sidebar, 'user_profile_section'):
+                print(f"[DEBUG] Updating sidebar user profile section")
+                self.sidebar.user_profile_section.update_user_info(user)
+            else:
+                print(f"[DEBUG] Sidebar or user_profile_section not found")
+            
+            # Update dashboard widget if it exists
+            if hasattr(self, 'dashboard_widget'):
+                print(f"[DEBUG] Updating dashboard widget")
+                if hasattr(self.dashboard_widget, 'user_profile_widget'):
+                    self.dashboard_widget.user_profile_widget.load_user_info()
+                else:
+                    print(f"[DEBUG] Dashboard user_profile_widget not found")
+            else:
+                print(f"[DEBUG] Dashboard widget not found")
+            
+            # Update any other components that display user info
+            print(f"[DEBUG] User profile refresh completed: {user.username}")
+            
+        except Exception as e:
+            print(f"Error refreshing user display: {e}")
     
     def on_auction_update(self, event, data):
         """Handle auction updates."""
