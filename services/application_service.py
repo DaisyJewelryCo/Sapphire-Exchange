@@ -121,11 +121,13 @@ class ApplicationService:
     async def register_user_with_seed(self, seed_phrase: str) -> Tuple[bool, str, Optional[User]]:
         """Register a new user with a seed phrase."""
         try:
+            print(f"[DEBUG] register_user_with_seed called with seed_phrase length: {len(seed_phrase) if seed_phrase else 0}")
             # For now, we'll create a simple username based on the seed phrase
             # In a real implementation, you would derive the user's identity from the seed
             # Ensure username meets requirements: 3-30 chars, alphanumeric with _ and - only
             username_hash = hash(seed_phrase) % 1000000
             username = f"user_{username_hash:06d}"
+            print(f"[DEBUG] Generated username for registration: {username}")
             
             # Generate a proper password that meets requirements
             # Using a combination of the seed phrase and some fixed characters
@@ -138,16 +140,24 @@ class ApplicationService:
             })
             
             if not validation['valid']:
+                print(f"[DEBUG] Validation failed: {validation['errors']}")
                 return False, '; '.join(validation['errors']), None
             
             # Create user
             user = await self.user_service.create_user(username, password)
             if user:
+                print(f"[DEBUG] User registered successfully: {user.username}")
+                # Automatically log in the newly registered user
+                self.current_user = user
+                # Note: We don't have a session token from registration, but we'll set the user
+                print(f"[DEBUG] Auto-login after registration, current_user set to: {self.current_user}")
                 return True, "User registered successfully", user
             else:
+                print(f"[DEBUG] Failed to create user account")
                 return False, "Failed to create user account", None
                 
         except Exception as e:
+            print(f"[DEBUG] Registration error: {str(e)}")
             return False, f"Registration error: {str(e)}", None
     
     async def login_user(self, username: str, password: str) -> Tuple[bool, str, Optional[User]]:
@@ -168,11 +178,13 @@ class ApplicationService:
     async def login_user_with_seed(self, seed_phrase: str) -> Tuple[bool, str, Optional[User]]:
         """Login a user with a seed phrase."""
         try:
+            print(f"[DEBUG] login_user_with_seed called with seed_phrase length: {len(seed_phrase) if seed_phrase else 0}")
             # For now, we'll try to authenticate using the seed as a password
             # In a real implementation, you would derive the user's identity from the seed
             # Use the same username generation as in registration
             username_hash = hash(seed_phrase) % 1000000
             username = f"user_{username_hash:06d}"
+            print(f"[DEBUG] Generated username: {username}")
             
             # Generate the same password that was used during registration
             password = f"Pw1@{seed_phrase[:20]}"  # Add uppercase, digit, special char prefix
@@ -182,11 +194,15 @@ class ApplicationService:
                 user, session_token = result
                 self.current_user = user
                 self.current_session = session_token
+                print(f"[DEBUG] Login successful, current_user set to: {self.current_user}")
+                print(f"[DEBUG] User ID: {user.id if user else None}, Username: {user.username if user else None}")
                 return True, "Login successful", user
             else:
+                print(f"[DEBUG] Authentication failed for username: {username}")
                 return False, "Invalid seed phrase", None
                 
         except Exception as e:
+            print(f"[DEBUG] Login error: {str(e)}")
             return False, f"Login error: {str(e)}", None
     
     async def logout_user(self) -> bool:
@@ -215,8 +231,20 @@ class ApplicationService:
     async def create_auction(self, item_data: Dict[str, Any]) -> Tuple[bool, str, Optional[Item]]:
         """Create a new auction."""
         try:
+            print(f"[DEBUG] create_auction called, current_user: {self.current_user}")
+            print(f"[DEBUG] is_user_logged_in(): {self.is_user_logged_in()}")
+            print(f"[DEBUG] item_data received: {item_data}")
             if not self.current_user:
+                print(f"[DEBUG] No current user found, returning error")
                 return False, "Must be logged in to create auction", None
+            
+            # Convert auction_duration_hours to auction_end if needed
+            if 'auction_duration_hours' in item_data and 'auction_end' not in item_data:
+                from datetime import datetime, timezone, timedelta
+                duration_hours = item_data.get('auction_duration_hours', 168)  # Default to 7 days
+                auction_end = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
+                item_data['auction_end'] = auction_end.isoformat()
+                print(f"[DEBUG] Converted duration {duration_hours}h to auction_end: {item_data['auction_end']}")
             
             # Validate item data
             validation = Validator.validate_item_data(item_data)
@@ -307,6 +335,17 @@ class ApplicationService:
             return await self.auction_service.search_auctions(query, category, tags)
         except Exception as e:
             print(f"Error searching auctions: {e}")
+            return []
+    
+    async def get_user_items(self, limit: int = 50, offset: int = 0) -> List[Item]:
+        """Get items belonging to the current user."""
+        try:
+            if not self.current_user:
+                return []
+            
+            return await self.item_repo.get_by_seller(self.current_user.id, limit=limit, offset=offset)
+        except Exception as e:
+            print(f"Error getting user items: {e}")
             return []
     
     # Wallet Management

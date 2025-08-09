@@ -635,6 +635,29 @@ class AuctionListWidget(QWidget):
         
         controls_layout.addStretch()
         
+        # Add Item button (only for my-items section)
+        if self.active_section == "my-items":
+            add_item_btn = QPushButton("➕ Add Item")
+            add_item_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #28a745;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #218838;
+                }
+                QPushButton:pressed {
+                    background-color: #1e7e34;
+                }
+            """)
+            add_item_btn.clicked.connect(self.show_add_item_dialog)
+            controls_layout.addWidget(add_item_btn)
+        
         # Refresh button
         refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.clicked.connect(self.refresh_auctions)
@@ -786,6 +809,202 @@ class AuctionListWidget(QWidget):
     def refresh_auctions(self):
         """Refresh auction data."""
         self.load_auctions()
+    
+    def show_add_item_dialog(self):
+        """Show dialog to add a new item."""
+        dialog = AddItemDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Refresh the items list after adding
+            self.refresh_auctions()
+
+
+class AddItemDialog(QDialog):
+    """Dialog for adding a new auction item."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add New Item")
+        self.setModal(True)
+        self.resize(500, 600)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup the add item dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Title
+        title = QLabel("Create New Auction")
+        title.setFont(QFont('Arial', 16, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("color: #2b7bba; margin-bottom: 10px;")
+        layout.addWidget(title)
+        
+        # Form
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+        
+        # Item name
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Enter item name...")
+        form_layout.addRow("Item Name*:", self.name_edit)
+        
+        # Description
+        self.description_edit = QTextEdit()
+        self.description_edit.setPlaceholderText("Describe your item...")
+        self.description_edit.setMaximumHeight(100)
+        form_layout.addRow("Description*:", self.description_edit)
+        
+        # Category
+        self.category_combo = QComboBox()
+        self.category_combo.addItems([
+            "Electronics", "Collectibles", "Art", "Books", "Clothing", 
+            "Home & Garden", "Sports", "Toys", "Other"
+        ])
+        form_layout.addRow("Category:", self.category_combo)
+        
+        # Starting price
+        price_layout = QHBoxLayout()
+        self.price_edit = QLineEdit()
+        self.price_edit.setPlaceholderText("0.00")
+        self.currency_combo = QComboBox()
+        self.currency_combo.addItems(["DOGE", "NANO"])
+        price_layout.addWidget(self.price_edit)
+        price_layout.addWidget(self.currency_combo)
+        form_layout.addRow("Starting Price*:", price_layout)
+        
+        # Auction duration
+        self.duration_combo = QComboBox()
+        self.duration_combo.addItems([
+            "1 hour", "3 hours", "6 hours", "12 hours", 
+            "1 day", "3 days", "7 days", "14 days"
+        ])
+        self.duration_combo.setCurrentText("7 days")
+        form_layout.addRow("Auction Duration:", self.duration_combo)
+        
+        # Tags
+        self.tags_edit = QLineEdit()
+        self.tags_edit.setPlaceholderText("tag1, tag2, tag3...")
+        form_layout.addRow("Tags:", self.tags_edit)
+        
+        layout.addLayout(form_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        self.create_btn = QPushButton("Create Auction")
+        self.create_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+        """)
+        self.create_btn.clicked.connect(self.create_auction)
+        button_layout.addWidget(self.create_btn)
+        
+        layout.addLayout(button_layout)
+    
+    def create_auction(self):
+        """Create the auction with the provided data."""
+        # Validate required fields
+        if not self.name_edit.text().strip():
+            QMessageBox.warning(self, "Validation Error", "Item name is required.")
+            return
+        
+        if not self.description_edit.toPlainText().strip():
+            QMessageBox.warning(self, "Validation Error", "Description is required.")
+            return
+        
+        if not self.price_edit.text().strip():
+            QMessageBox.warning(self, "Validation Error", "Starting price is required.")
+            return
+        
+        try:
+            price = float(self.price_edit.text())
+            if price <= 0:
+                raise ValueError("Price must be positive")
+        except ValueError:
+            QMessageBox.warning(self, "Validation Error", "Please enter a valid starting price.")
+            return
+        
+        # Parse duration
+        duration_text = self.duration_combo.currentText()
+        duration_hours = self.parse_duration(duration_text)
+        
+        # Parse tags
+        tags = [tag.strip() for tag in self.tags_edit.text().split(',') if tag.strip()]
+        
+        # Create item data
+        item_data = {
+            'title': self.name_edit.text().strip(),
+            'description': self.description_edit.toPlainText().strip(),
+            'category': self.category_combo.currentText(),
+            'starting_price_doge': price if self.currency_combo.currentText() == "DOGE" else None,
+            'starting_price_nano': price if self.currency_combo.currentText() == "NANO" else None,
+            'auction_duration_hours': duration_hours,
+            'tags': tags
+        }
+        
+        # Create auction using async worker
+        from services.application_service import app_service
+        
+        self.create_btn.setEnabled(False)
+        self.create_btn.setText("Creating...")
+        
+        worker = AsyncWorker(app_service.create_auction(item_data))
+        worker.finished.connect(self.on_auction_created)
+        worker.error.connect(self.on_creation_error)
+        worker.start()
+        self.worker = worker
+    
+    def parse_duration(self, duration_text):
+        """Parse duration text to hours."""
+        duration_map = {
+            "1 hour": 1,
+            "3 hours": 3,
+            "6 hours": 6,
+            "12 hours": 12,
+            "1 day": 24,
+            "3 days": 72,
+            "7 days": 168,
+            "14 days": 336
+        }
+        return duration_map.get(duration_text, 168)  # Default to 7 days
+    
+    def on_auction_created(self, result):
+        """Handle successful auction creation."""
+        success, message, item = result
+        
+        self.create_btn.setEnabled(True)
+        self.create_btn.setText("Create Auction")
+        
+        if success:
+            QMessageBox.information(self, "Success", f"Auction created successfully!\n\n{message}")
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Creation Failed", f"Failed to create auction:\n\n{message}")
+    
+    def on_creation_error(self, error):
+        """Handle auction creation error."""
+        self.create_btn.setEnabled(True)
+        self.create_btn.setText("Create Auction")
+        QMessageBox.critical(self, "Error", f"An error occurred while creating the auction:\n\n{str(error)}")
 
 
 class AuctionDetailsWidget(QWidget):

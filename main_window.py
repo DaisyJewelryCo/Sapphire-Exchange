@@ -709,6 +709,9 @@ class MainWindow(QMainWindow):
         
         # Setup timers
         self.setup_timers()
+        
+        # Add initial activities to demonstrate the system
+        self.add_initial_activities()
     
     def init_app_service(self):
         """Initialize the application service."""
@@ -735,7 +738,7 @@ class MainWindow(QMainWindow):
         # Create and configure status bar (bottom status bar from ui_information.json)
         self.setup_status_bar()
         
-        # Initialize connection status indicators
+        # Setup connection indicators in the status bar
         self.setup_connection_indicators()
         
         # Use stacked widget to switch between login and main interface
@@ -837,7 +840,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(global_style)
     
     def setup_status_bar(self):
-        """Setup the bottom status bar based on ui_information.json specifications."""
+        """Setup the bottom status bar with correct order: status dot -> loading info -> recent activity -> activity log button."""
         status_bar = self.statusBar()
         status_bar.setFixedHeight(48)  # h-12 = 48px
         status_bar.setStyleSheet("""
@@ -854,47 +857,255 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Network status indicator
-        self.network_status = QLabel("● Online")
-        self.network_status.setStyleSheet("color: #10b981; font-weight: 500;")
+        # 1. Overall status dot (clickable for popup)
+        self.overall_status_dot = QLabel("●")
+        self.overall_status_dot.setStyleSheet("font-size: 16px; color: #95a5a6; font-weight: bold;")
+        self.overall_status_dot.setCursor(Qt.PointingHandCursor)
+        self.overall_status_dot.setToolTip("Click to view detailed connection status")
+        self.overall_status_dot.mousePressEvent = self.show_status_popup
         
-        # Connection status indicator
-        self.connection_status_label = QLabel("● Connected")
-        self.connection_status_label.setStyleSheet("color: #10b981; font-weight: 500;")
+        # 2. Current application loading information
+        self.loading_info = QLabel("Ready")
+        self.loading_info.setStyleSheet("color: #64748b; font-size: 11px; margin-left: 8px;")
         
-        # Last updated timestamp
-        self.last_update = QLabel("Last updated: --:--:--")
-        self.last_update.setStyleSheet("color: #64748b;")
+        # Add stretch to center the recent activity
+        status_bar.addWidget(self.overall_status_dot)
+        status_bar.addWidget(self.loading_info)
+        status_bar.addWidget(QWidget(), 1)  # Stretch to push center content
         
-        # Activity log toggle button
+        # 3. Most recent activity log post (center)
+        self.recent_activity = QLabel("No recent activity")
+        self.recent_activity.setStyleSheet("""
+            color: #475569; 
+            font-size: 11px; 
+            padding: 4px 12px; 
+            background-color: #f8fafc; 
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        """)
+        self.recent_activity.setAlignment(Qt.AlignCenter)
+        status_bar.addWidget(self.recent_activity)
+        
+        status_bar.addWidget(QWidget(), 1)  # Stretch to push activity button to right
+        
+        # 4. Activity log popup button (right)
         self.activity_toggle_btn = QPushButton("Activity Log")
         self.activity_toggle_btn.setStyleSheet("""
             QPushButton {
-                background-color: transparent;
-                color: #64748b;
-                border: 1px solid #d1d5db;
-                padding: 4px 8px;
-                border-radius: 4px;
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 6px;
                 font-size: 11px;
+                font-weight: 500;
             }
             QPushButton:hover {
-                background-color: #f8fafc;
-                color: #1e293b;
+                background-color: #2563eb;
+            }
+            QPushButton:pressed {
+                background-color: #1d4ed8;
             }
         """)
         self.activity_toggle_btn.clicked.connect(self.toggle_activity_log_overlay)
-        
-        # Add widgets to status bar
-        status_bar.addWidget(self.network_status)
-        status_bar.addWidget(self.connection_status_label)
         status_bar.addPermanentWidget(self.activity_toggle_btn)
-        status_bar.addPermanentWidget(self.last_update)
+        
+        # Initialize activity log system
+        self.activity_history = []
+        self.max_activities = 100
+        
+        # Create status popup (initially hidden)
+        self.create_status_popup()
         
         # Create a timer to update the status bar periodically
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self.update_status)
         self.status_timer.start(5000)  # Update every 5 seconds
     
+    def add_initial_activities(self):
+        """Add some initial activities to demonstrate the system."""
+        import time
+        from datetime import datetime, timedelta
+        
+        # Add some sample activities with different timestamps
+        base_time = datetime.now()
+        
+        activities = [
+            (base_time - timedelta(minutes=5), "Application started", "info"),
+            (base_time - timedelta(minutes=4), "Connecting to Arweave network", "connecting"),
+            (base_time - timedelta(minutes=3), "Arweave connection established", "success"),
+            (base_time - timedelta(minutes=2), "Connecting to Nano network", "connecting"),
+            (base_time - timedelta(minutes=1), "Nano connection established", "success"),
+            (base_time - timedelta(seconds=30), "Wallet balance updated", "update"),
+            (base_time, "System ready", "success")
+        ]
+        
+        for timestamp, message, activity_type in activities:
+            self.add_activity(message, activity_type, timestamp)
+    
+    def create_status_popup(self):
+        """Create the status popup that shows detailed connection information."""
+        self.status_popup = QWidget(self)
+        self.status_popup.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.status_popup.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        
+        layout = QVBoxLayout(self.status_popup)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+        
+        # Title
+        title = QLabel("Connection Status")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #1e293b; margin-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # Individual wallet status indicators
+        self.wallet_status_indicators = {}
+        services = [
+            ("arweave", "Arweave"),
+            ("nano", "Nano"),
+            ("doge", "Dogecoin")
+        ]
+        
+        for service_id, service_name in services:
+            container = QWidget()
+            container_layout = QHBoxLayout(container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.setSpacing(8)
+            
+            # Status dot
+            dot = QLabel("●")
+            dot.setStyleSheet("font-size: 14px; color: #95a5a6;")
+            
+            # Service name
+            name_label = QLabel(service_name)
+            name_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+            
+            # Status text
+            status_label = QLabel("Disconnected")
+            status_label.setStyleSheet("color: #6b7280; font-size: 11px;")
+            
+            container_layout.addWidget(dot)
+            container_layout.addWidget(name_label)
+            container_layout.addStretch()
+            container_layout.addWidget(status_label)
+            
+            layout.addWidget(container)
+            
+            # Store references
+            self.wallet_status_indicators[service_id] = {
+                'dot': dot,
+                'status': status_label,
+                'container': container
+            }
+        
+        # Overall status
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setStyleSheet("color: #e5e7eb;")
+        layout.addWidget(separator)
+        
+        self.overall_status_label = QLabel("Overall Status: Checking...")
+        self.overall_status_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        layout.addWidget(self.overall_status_label)
+        
+        self.status_popup.setFixedSize(280, 160)
+        self.status_popup.hide()
+    
+    def show_status_popup(self, event):
+        """Show the status popup above the status dot."""
+        if not hasattr(self, 'status_popup'):
+            return
+            
+        # Position popup above the status dot
+        dot_pos = self.overall_status_dot.mapToGlobal(self.overall_status_dot.rect().bottomLeft())
+        popup_x = dot_pos.x()
+        popup_y = dot_pos.y() - self.status_popup.height() - 10
+        
+        self.status_popup.move(popup_x, popup_y)
+        self.status_popup.show()
+        self.status_popup.raise_()
+    
+    def update_loading_info(self, message):
+        """Update the loading information display."""
+        if hasattr(self, 'loading_info'):
+            self.loading_info.setText(message)
+    
+    def add_activity(self, message, activity_type="info", timestamp=None):
+        """Add an activity to the log with colored tags.
+        
+        Args:
+            message (str): The activity message
+            activity_type (str): Type of activity ('bid', 'connecting', 'update', 'error', 'success', 'info')
+            timestamp (datetime): Optional timestamp, uses current time if None
+        """
+        from datetime import datetime
+        
+        if timestamp is None:
+            timestamp = datetime.now()
+        
+        # Add to history
+        activity = {
+            'message': message,
+            'type': activity_type,
+            'timestamp': timestamp
+        }
+        
+        self.activity_history.append(activity)
+        
+        # Keep only the last max_activities
+        if len(self.activity_history) > self.max_activities:
+            self.activity_history = self.activity_history[-self.max_activities:]
+        
+        # Update recent activity display
+        self.update_recent_activity_display()
+        
+        # Update activity log if it's open
+        if hasattr(self, 'activity_log_content'):
+            self.update_activity_log_content()
+    
+    def update_recent_activity_display(self):
+        """Update the recent activity display in the status bar."""
+        if not hasattr(self, 'recent_activity') or not self.activity_history:
+            return
+        
+        latest = self.activity_history[-1]
+        
+        # Get tag color based on activity type
+        tag_colors = {
+            'bid': '#3b82f6',      # Blue
+            'connecting': '#f59e0b', # Amber
+            'update': '#10b981',    # Emerald
+            'error': '#ef4444',     # Red
+            'success': '#22c55e',   # Green
+            'info': '#6b7280'       # Gray
+        }
+        
+        color = tag_colors.get(latest['type'], '#6b7280')
+        tag = latest['type'].upper()
+        
+        # Format the display text (truncate if too long)
+        display_text = latest['message']
+        if len(display_text) > 40:
+            display_text = display_text[:37] + "..."
+        
+        self.recent_activity.setText(f"[{tag}] {display_text}")
+        self.recent_activity.setStyleSheet(f"""
+            color: {color}; 
+            font-size: 11px; 
+            padding: 4px 12px; 
+            background-color: #f8fafc; 
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            font-weight: 500;
+        """)
+
     def create_header(self, parent_layout):
         """Create the header/navbar based on ui_information.json specifications."""
         self.header = QWidget()
@@ -1974,6 +2185,9 @@ class MainWindow(QMainWindow):
             
             # Set default page to marketplace
             self.switch_tab(0)
+            
+            # Update wallet connection status to show connected
+            self.update_wallet_status(is_connected=True)
     
     def load_sidebar_balances(self):
         """Load wallet balances for sidebar display."""
@@ -2086,7 +2300,10 @@ class MainWindow(QMainWindow):
         """Handle auction updates."""
         if event in ['bid_placed', 'auction_ended']:
             # Refresh auction list
-            self.auctions_widget.load_auctions()
+            if hasattr(self, 'marketplace_widget'):
+                self.marketplace_widget.load_auctions()
+            if hasattr(self, 'my_items_widget'):
+                self.my_items_widget.load_auctions()
 
     def setup_connection_indicators(self):
         """Setup connection status indicators in the status bar."""
@@ -2095,17 +2312,17 @@ class MainWindow(QMainWindow):
         # Create a container widget for connection indicators
         self.indicators_widget = QWidget()
         self.indicators_layout = QHBoxLayout(self.indicators_widget)
-        self.indicators_layout.setContentsMargins(0, 0, 10, 0)
+        self.indicators_layout.setContentsMargins(0, 0, 15, 0)
         self.indicators_layout.setSpacing(15)
         
         # Add connection indicators for each service
         self.connection_indicators = {}
         
         # Create main wallet status indicator (collapsed by default)
-        self.main_wallet_indicator = QLabel("●")
-        self.main_wallet_indicator.setStyleSheet("font-size: 16px; color: #95a5a6;")
+        self.main_wallet_indicator = QLabel("⚙")
+        self.main_wallet_indicator.setStyleSheet("font-size: 14px; color: #64748b; font-weight: bold;")
         self.main_wallet_indicator.setCursor(Qt.PointingHandCursor)
-        self.main_wallet_indicator.setToolTip("Click to expand service status")
+        self.main_wallet_indicator.setToolTip("Click to expand/collapse service status details")
         self.main_wallet_indicator.mousePressEvent = self.toggle_service_indicators
         
         # Create service indicators container (hidden by default)
@@ -2148,7 +2365,7 @@ class MainWindow(QMainWindow):
             self.connection_indicators[service_id] = container
             self.service_indicators_layout.addWidget(container)
         
-        # Add wallet status indicator
+        # Add wallet status indicator (always visible)
         self.wallet_container = QWidget()
         self.wallet_container.setObjectName("wallet_indicator")
         wallet_layout = QHBoxLayout(self.wallet_container)
@@ -2158,45 +2375,27 @@ class MainWindow(QMainWindow):
         # Wallet dot indicator
         self.wallet_dot = QLabel("●")
         self.wallet_dot.setObjectName("wallet_dot")
-        self.wallet_dot.setStyleSheet("font-size: 16px; color: #95a5a6;")  # Default gray
+        self.wallet_dot.setStyleSheet("font-size: 16px; color: #e74c3c; font-weight: bold;")  # Red by default (disconnected)
         
         # Wallet label
         wallet_label = QLabel("WALLET")
-        wallet_label.setStyleSheet("color: #95a5a6; font-size: 10px; font-weight: bold;")
+        wallet_label.setStyleSheet("color: #64748b; font-size: 10px; font-weight: bold;")
         
         wallet_layout.addWidget(self.wallet_dot)
         wallet_layout.addWidget(wallet_label)
+        
+        # Add wallet indicator to main layout first (always visible)
         self.indicators_layout.addWidget(self.wallet_container)
         
-        # Add indicators to layout (main wallet indicator first, then service indicators)
+        # Add main wallet indicator (for expanding/collapsing service details)
         self.indicators_layout.addWidget(self.main_wallet_indicator)
+        
+        # Add service indicators container (hidden by default)
         self.indicators_layout.addWidget(self.service_indicators_container)
         
-        # Add to status bar
-        status_bar.addPermanentWidget(self.indicators_widget)
-        
-        # Add stretch to push indicators to the left
-        status_bar.addPermanentWidget(QWidget(), 1)
-        
-        # Create activity log toggle button on the far right
-        self.toggle_log_btn = QPushButton("▼ Activity Log")
-        self.toggle_log_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #34495e;
-                color: #ecf0f1;
-                border: none;
-                padding: 2px 8px;
-                border-radius: 3px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2c3e50;
-            }
-        """)
-        self.toggle_log_btn.setCursor(Qt.PointingHandCursor)
-        self.toggle_log_btn.clicked.connect(self.toggle_activity_log_overlay)
-        status_bar.addPermanentWidget(self.toggle_log_btn)
+        # Insert the connection indicators at the beginning of the status bar (left side)
+        # This will place them before the existing status dot and loading info
+        status_bar.insertWidget(0, self.indicators_widget)
         
     def toggle_service_indicators(self, event):
         """Toggle visibility of individual service indicators."""
@@ -2242,6 +2441,37 @@ class MainWindow(QMainWindow):
         tooltip = f"Click to expand service status\n\nStatus: {status_text}\nConnected: {connected}/{total_services} services"
         self.main_wallet_indicator.setToolTip(tooltip)
     
+    def update_overall_status_dot(self):
+        """Update the overall status dot color based on all connection states."""
+        if not hasattr(self, 'overall_status_dot') or not hasattr(self, 'wallet_status_indicators'):
+            return
+        
+        connected_count = 0
+        total_services = len(self.wallet_status_indicators)
+        
+        for service_id, indicators in self.wallet_status_indicators.items():
+            dot_style = indicators['dot'].styleSheet()
+            if "#22c55e" in dot_style:  # Green color indicates connected
+                connected_count += 1
+        
+        # Update overall status dot color
+        if connected_count == total_services:
+            color = "#22c55e"  # Green - all connected
+            status_text = "All services connected"
+        elif connected_count > 0:
+            color = "#f59e0b"  # Amber - partially connected
+            status_text = f"{connected_count}/{total_services} services connected"
+        else:
+            color = "#ef4444"  # Red - none connected
+            status_text = "No services connected"
+        
+        self.overall_status_dot.setStyleSheet(f"font-size: 16px; color: {color}; font-weight: bold;")
+        self.overall_status_dot.setToolTip(f"Click to view details\n{status_text}")
+        
+        # Update overall status in popup
+        if hasattr(self, 'overall_status_label'):
+            self.overall_status_label.setText(f"Overall Status: {status_text}")
+    
     def update_connection_status(self, service, is_connected, error_msg=None, status_detail=None):
         """Update the connection status for a service.
         
@@ -2251,38 +2481,55 @@ class MainWindow(QMainWindow):
             error_msg (str, optional): Error message if connection failed
             status_detail (str, optional): Detailed status information
         """
-        if service not in self.connection_indicators:
-            return
+        # Update status popup indicators
+        if hasattr(self, 'wallet_status_indicators') and service in self.wallet_status_indicators:
+            indicators = self.wallet_status_indicators[service]
             
-        widget = self.connection_indicators[service]
-        dot = widget.findChild(QLabel, f"{service}_dot")
-        label = widget.findChild(QLabel, f"{service}_label")
-        
-        if not dot or not label:
-            return
+            if is_connected:
+                color = "#22c55e"  # Green
+                status_text = "Connected"
+                activity_type = "success"
+                activity_msg = f"{service.title()} connected successfully"
+            else:
+                color = "#ef4444"  # Red
+                status_text = "Disconnected"
+                activity_type = "error"
+                activity_msg = f"{service.title()} connection failed"
+                if error_msg:
+                    activity_msg += f": {error_msg}"
             
-        # Update color and tooltip based on connection status
-        if is_connected:
-            color = "#2ecc71"  # Green
-            status_text = f"Connected to {service.title()}"
-            if status_detail:
-                status_text += f"\n{status_detail}"
-        else:
-            color = "#e74c3c"  # Red
-            status_text = f"Failed to connect to {service.title()}"
-            if error_msg:
-                status_text += f"\nError: {error_msg}"
-                # Add error to message log
-                self.add_message(f"{service.title()} connection failed: {error_msg}", "error", "failed")
+            # Update dot color
+            indicators['dot'].setStyleSheet(f"font-size: 14px; color: {color};")
+            
+            # Update status text
+            indicators['status'].setText(status_text)
+            indicators['status'].setStyleSheet(f"color: {color}; font-size: 11px;")
+            
+            # Add activity log entry
+            self.add_activity(activity_msg, activity_type)
+            
+            # Update loading info
+            if is_connected:
+                self.update_loading_info(f"{service.title()} ready")
+            else:
+                self.update_loading_info(f"{service.title()} connection failed")
         
-        dot.setStyleSheet(f"font-size: 16px; color: {color};")
-        widget.setToolTip(status_text)
+        # Update overall status dot
+        self.update_overall_status_dot()
         
-        # Update main status indicator
-        self.update_main_status_indicator()
-        
-        # Update timestamp
-        self.update_timestamp()
+        # Update old system if it exists (for backward compatibility)
+        if hasattr(self, 'connection_indicators') and service in self.connection_indicators:
+            widget = self.connection_indicators[service]
+            dot = widget.findChild(QLabel, f"{service}_dot")
+            
+            if dot:
+                color = "#2ecc71" if is_connected else "#e74c3c"
+                dot.setStyleSheet(f"font-size: 16px; color: {color};")
+                
+                status_text = f"Connected to {service.title()}" if is_connected else f"Failed to connect to {service.title()}"
+                if error_msg and not is_connected:
+                    status_text += f"\nError: {error_msg}"
+                widget.setToolTip(status_text)
     
     def update_wallet_status(self, is_connected=True, error_msg=None):
         """Update the wallet status indicator.
@@ -2358,86 +2605,216 @@ class MainWindow(QMainWindow):
             self.last_updated.setText(datetime.now().strftime("%H:%M:%S"))
     
     def create_activity_feed(self):
-        """Create the activity feed widget."""
-        # Create activity widget
-        self.activity_widget = QWidget(self)
-        self.activity_widget.setObjectName('activityFeed')
-        self.activity_widget.setStyleSheet("""
-            QWidget#activityFeed {
-                background-color: rgba(44, 62, 80, 0.95);
-                border: 1px solid #34495e;
-                border-radius: 8px;
-                padding: 10px;
+        """Create the modern activity log overlay."""
+        # Create activity log overlay
+        self.activity_log_overlay = QWidget(self)
+        self.activity_log_overlay.setObjectName('activityLogOverlay')
+        self.activity_log_overlay.setStyleSheet("""
+            QWidget#activityLogOverlay {
+                background-color: rgba(255, 255, 255, 0.98);
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                backdrop-filter: blur(10px);
             }
         """)
         
-        layout = QVBoxLayout(self.activity_widget)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout = QVBoxLayout(self.activity_log_overlay)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         
-        # Title
-        title = QLabel("Activity Feed")
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #ecf0f1; margin-bottom: 10px;")
-        layout.addWidget(title)
+        # Header with title and close button
+        header_layout = QHBoxLayout()
         
-        # Message log
-        self.message_log = QTextBrowser()
-        # Increase height to prevent text cutoff
-        self.message_log.setMinimumHeight(120)
-        self.message_log.setMaximumHeight(200)  # Increased from 150 to 200
-        self.message_log.setStyleSheet("""
-            QTextBrowser {
-                background-color: #ffffff;
-                border: 1px solid #ddd;
+        title = QLabel("Activity Log")
+        title.setStyleSheet("""
+            font-weight: 600; 
+            font-size: 16px; 
+            color: #1e293b; 
+            margin: 0;
+        """)
+        
+        close_btn = QPushButton("✕")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: none;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 4px;
                 border-radius: 4px;
-                padding: 8px;
-                font-family: 'Courier New', monospace;
-                font-size: 11px;
+                width: 24px;
+                height: 24px;
+            }
+            QPushButton:hover {
+                background-color: #f1f5f9;
+                color: #1e293b;
             }
         """)
-        layout.addWidget(self.message_log)
+        close_btn.clicked.connect(self.toggle_activity_log_overlay)
         
-        # Initially hide the activity widget
-        self.activity_widget.setVisible(False)
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
         
-        # Position the activity widget
+        # Activity log content area
+        self.activity_log_content = QScrollArea()
+        self.activity_log_content.setStyleSheet("""
+            QScrollArea {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 0;
+            }
+            QScrollBar:vertical {
+                background-color: #f1f5f9;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #cbd5e1;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #94a3b8;
+            }
+        """)
+        self.activity_log_content.setWidgetResizable(True)
+        self.activity_log_content.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.activity_log_content.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        # Content widget for activities
+        self.activity_content_widget = QWidget()
+        self.activity_content_layout = QVBoxLayout(self.activity_content_widget)
+        self.activity_content_layout.setContentsMargins(12, 12, 12, 12)
+        self.activity_content_layout.setSpacing(8)
+        self.activity_content_layout.addStretch()  # Push content to top
+        
+        self.activity_log_content.setWidget(self.activity_content_widget)
+        layout.addWidget(self.activity_log_content)
+        
+        # Initially hide the overlay
+        self.activity_log_overlay.setVisible(False)
+        
+        # Position the overlay
         self._position_activity_overlay()
         
-        # Initialize message history
-        self.message_history = []
-        self.max_messages = 100  # Maximum number of messages to keep in history
-        
-        return self.activity_widget
+        return self.activity_log_overlay
     
     def _position_activity_overlay(self):
-        """Position the activity overlay at the bottom of the window."""
-        if not hasattr(self, 'activity_widget') or not self.activity_widget:
+        """Position the activity overlay at the bottom-right of the window."""
+        if not hasattr(self, 'activity_log_overlay') or not self.activity_log_overlay:
             return
             
-        # Position at bottom of window
+        # Position at bottom-right of window with some margin
         parent_rect = self.rect()
-        widget_rect = self.activity_widget.rect()
+        overlay_width = 400
+        overlay_height = 300
         
-        x = parent_rect.left() + 20
-        y = parent_rect.bottom() - widget_rect.height() - 20
+        x = parent_rect.right() - overlay_width - 20
+        y = parent_rect.bottom() - overlay_height - 60  # Account for status bar
         
-        self.activity_widget.move(x, y)
-        self.activity_widget.setFixedWidth(parent_rect.width() - 40)
+        self.activity_log_overlay.setGeometry(x, y, overlay_width, overlay_height)
     
     def toggle_activity_log_overlay(self):
         """Toggle the visibility of the activity log overlay."""
-        if not hasattr(self, 'activity_log_overlay') or not self.activity_log_overlay:
-            return
+        if not hasattr(self, 'activity_log_overlay'):
+            # Create the overlay if it doesn't exist
+            self.create_activity_feed()
+            
         is_visible = self.activity_log_overlay.isVisible()
-        self.activity_log_overlay.setVisible(not is_visible)
+        
+        if not is_visible:
+            # Update content before showing
+            self.update_activity_log_content()
+            # Position the overlay correctly
+            self._position_activity_overlay()
+            self.activity_log_overlay.show()
+            self.activity_log_overlay.raise_()  # Bring to front
+        else:
+            self.activity_log_overlay.hide()
         
         # Update button text
         if hasattr(self, 'activity_toggle_btn'):
             self.activity_toggle_btn.setText("Hide Activity" if not is_visible else "Activity Log")
+    
+    def update_activity_log_content(self):
+        """Update the activity log content with colored tags."""
+        if not hasattr(self, 'activity_content_layout') or not hasattr(self, 'activity_history'):
+            return
         
-        if not is_visible:
-            # Position the overlay correctly
-            self.activity_log_overlay.setGeometry(0, self.height() - 176, self.width(), 128)
-            self.activity_log_overlay.raise_()  # Bring to front
+        # Clear existing content (except stretch)
+        while self.activity_content_layout.count() > 1:
+            child = self.activity_content_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Add activities in reverse order (newest first)
+        for activity in reversed(self.activity_history[-20:]):  # Show last 20 activities
+            activity_widget = self.create_activity_item(activity)
+            self.activity_content_layout.insertWidget(0, activity_widget)
+    
+    def create_activity_item(self, activity):
+        """Create a single activity item widget with colored tag."""
+        item_widget = QWidget()
+        item_widget.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 8px;
+                margin: 2px 0;
+            }
+            QWidget:hover {
+                background-color: #f8fafc;
+                border-color: #cbd5e1;
+            }
+        """)
+        
+        layout = QHBoxLayout(item_widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+        
+        # Activity type tag
+        tag_colors = {
+            'bid': ('#3b82f6', '#eff6ff'),      # Blue
+            'connecting': ('#f59e0b', '#fffbeb'), # Amber
+            'update': ('#10b981', '#ecfdf5'),    # Emerald
+            'error': ('#ef4444', '#fef2f2'),     # Red
+            'success': ('#22c55e', '#f0fdf4'),   # Green
+            'info': ('#6b7280', '#f9fafb')       # Gray
+        }
+        
+        text_color, bg_color = tag_colors.get(activity['type'], ('#6b7280', '#f9fafb'))
+        
+        tag_label = QLabel(f"[{activity['type'].upper()}]")
+        tag_label.setStyleSheet(f"""
+            background-color: {bg_color};
+            color: {text_color};
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 60px;
+        """)
+        tag_label.setAlignment(Qt.AlignCenter)
+        
+        # Timestamp
+        timestamp_label = QLabel(activity['timestamp'].strftime("%H:%M:%S"))
+        timestamp_label.setStyleSheet("color: #9ca3af; font-size: 10px; font-family: monospace;")
+        
+        # Message
+        message_label = QLabel(activity['message'])
+        message_label.setStyleSheet("color: #374151; font-size: 11px;")
+        message_label.setWordWrap(True)
+        
+        layout.addWidget(tag_label)
+        layout.addWidget(timestamp_label)
+        layout.addWidget(message_label, 1)  # Give message more space
+        
+        return item_widget
     
     def on_status_clicked(self, event):
         """Handle status indicator click."""
@@ -2456,9 +2833,27 @@ class MainWindow(QMainWindow):
             data_quality (str): Data quality status ('verified', 'pending', 'failed', 'unknown')
         """
         try:
-            # Add timestamp
+            # Map old level names to new activity types
+            level_mapping = {
+                'info': 'info',
+                'warning': 'update',
+                'error': 'error',
+                'success': 'success'
+            }
+            
+            activity_type = level_mapping.get(level, 'info')
+            
+            # Add to new activity system
+            self.add_activity(message, activity_type)
+            
+            # Keep old system for backward compatibility
             from datetime import datetime
             timestamp = datetime.now().strftime("%H:%M:%S")
+            
+            if not hasattr(self, 'message_history'):
+                self.message_history = []
+                self.max_messages = 100
+                
             self.message_history.append((timestamp, message, level, data_quality))
             
             # Keep only the last max_messages
@@ -2468,13 +2863,6 @@ class MainWindow(QMainWindow):
             # Update the message log if it exists
             if hasattr(self, 'message_log') and self.message_log is not None:
                 self.update_message_log()
-                
-            # Show error messages in status bar if available
-            if level == "error" and hasattr(self, 'status_text') and self.status_text is not None:
-                error_msg = f"Error: {message[:50]}..." if len(message) > 50 else f"Error: {message}"
-                self.status_text.setText(error_msg)
-                # Clear the error message after 5 seconds
-                QTimer.singleShot(5000, lambda: self.status_text.setText("") if hasattr(self, 'status_text') else None)
                 
             # Print to console for debugging
             print(f"[{timestamp}] [{level.upper()}] {message}")
@@ -2565,7 +2953,10 @@ class MainWindow(QMainWindow):
     def refresh_auctions(self):
         """Refresh auction listings."""
         if app_service.is_user_logged_in():
-            self.auctions_widget.load_auctions()
+            if hasattr(self, 'marketplace_widget'):
+                self.marketplace_widget.load_auctions()
+            if hasattr(self, 'my_items_widget'):
+                self.my_items_widget.load_auctions()
 
     def show_auction_details(self, item_id: str):
         """Show auction details dialog."""
@@ -2639,7 +3030,11 @@ class MainWindow(QMainWindow):
         if success:
             QMessageBox.information(self, "Success", "Bid placed successfully!")
             parent_dialog.accept()
-            self.auctions_widget.load_auctions()  # Refresh auctions
+            # Refresh auctions
+            if hasattr(self, 'marketplace_widget'):
+                self.marketplace_widget.load_auctions()
+            if hasattr(self, 'my_items_widget'):
+                self.my_items_widget.load_auctions()
         else:
             QMessageBox.warning(self, "Error", f"Failed to place bid: {message}")
 
