@@ -19,6 +19,9 @@ import io
 
 from security.security_manager import SecurityManager
 from security.performance_manager import PerformanceManager
+from services.application_service import app_service
+from utils.conversion_utils import format_currency
+from utils.async_worker import AsyncWorker
 
 
 class StatusDotsWidget(QWidget):
@@ -713,3 +716,81 @@ class WalletExportDialog(QDialog):
                                       f"Wallet exported successfully to:\n{file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Failed to export wallet: {str(e)}")
+
+
+class SimpleWalletWidget(QWidget):
+    """Simple wallet widget for basic balance display."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+        self.load_balances()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        
+        # Header
+        header = QLabel("Wallet")
+        header.setFont(QFont("Arial", 16, QFont.Bold))
+        layout.addWidget(header)
+        
+        # Balances
+        self.balances_group = QGroupBox("Balances")
+        balances_layout = QVBoxLayout()
+        
+        self.nano_balance_label = QLabel("NANO: Loading...")
+        self.doge_balance_label = QLabel("DOGE: Loading...")
+        
+        balances_layout.addWidget(self.nano_balance_label)
+        balances_layout.addWidget(self.doge_balance_label)
+        
+        self.balances_group.setLayout(balances_layout)
+        layout.addWidget(self.balances_group)
+        
+        # Addresses
+        self.addresses_group = QGroupBox("Addresses")
+        addresses_layout = QVBoxLayout()
+        
+        user = app_service.get_current_user()
+        if user:
+            self.nano_address_label = QLabel(f"NANO: {user.nano_address}")
+            self.doge_address_label = QLabel(f"DOGE: {user.doge_address}")
+            
+            addresses_layout.addWidget(self.nano_address_label)
+            addresses_layout.addWidget(self.doge_address_label)
+        
+        self.addresses_group.setLayout(addresses_layout)
+        layout.addWidget(self.addresses_group)
+        
+        # Refresh button
+        self.refresh_button = QPushButton("Refresh Balances")
+        self.refresh_button.clicked.connect(self.load_balances)
+        layout.addWidget(self.refresh_button)
+        
+        # Add stretch to push content to the top but allow expansion
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def load_balances(self):
+        """Load wallet balances."""
+        if not app_service.is_user_logged_in():
+            return
+        
+        worker = AsyncWorker(app_service.get_wallet_balances())
+        worker.finished.connect(self.on_balances_loaded)
+        worker.error.connect(self.on_error)
+        worker.start()
+        self.worker = worker
+    
+    def on_balances_loaded(self, balances):
+        """Handle loaded balances."""
+        nano_balance = balances.get('nano', 0) or 0
+        doge_balance = balances.get('dogecoin', 0) or 0
+        
+        self.nano_balance_label.setText(f"NANO: {format_currency(nano_balance, 'NANO')}")
+        self.doge_balance_label.setText(f"DOGE: {format_currency(doge_balance, 'DOGE')}")
+    
+    def on_error(self, error):
+        """Handle errors."""
+        self.nano_balance_label.setText("NANO: Error loading")
+        self.doge_balance_label.setText("DOGE: Error loading")

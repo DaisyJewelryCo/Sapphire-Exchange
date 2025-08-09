@@ -4,6 +4,7 @@ Provides validation, conversion, and cryptographic utilities.
 """
 
 from .crypto_client import CryptoClient
+from .async_worker import AsyncWorker
 from .validation_utils import (
     Validator, ValidationError,
     validate_email, validate_username, validate_password, validate_amount, sanitize_string
@@ -15,6 +16,7 @@ from .conversion_utils import (
 
 __all__ = [
     'CryptoClient',
+    'AsyncWorker',
     'Validator',
     'ValidationError',
     'validate_email',

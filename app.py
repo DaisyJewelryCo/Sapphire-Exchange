@@ -11,7 +11,7 @@ from PyQt5.QtCore import Qt
 # Enable asyncio event loop for PyQt5
 from qasync import QEventLoop
 
-from main_window import MainWindow
+from ui.simplified_main_window import SimplifiedMainWindow
 
 did_shutdown = False
 
@@ -41,7 +41,7 @@ def main():
     
     # Create and show the main window
     try:
-        window = MainWindow()
+        window = SimplifiedMainWindow()
         window.show()
     except Exception as e:
         QMessageBox.critical(
