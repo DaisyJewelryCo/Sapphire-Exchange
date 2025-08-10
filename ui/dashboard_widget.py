@@ -13,7 +13,6 @@ from PyQt5.QtGui import QFont, QPalette
 
 from services.application_service import app_service
 from utils.async_worker import AsyncWorker
-from ui.logo_component import HeaderWithLogo
 
 
 class ConnectionStatusWidget(QWidget):
@@ -768,9 +767,11 @@ class DashboardWidget(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
         
-        # Header with logo and title
-        self.header = HeaderWithLogo(title="Dashboard", show_title=True)
-        layout.addWidget(self.header)
+        # Title only (no logo)
+        title = QLabel("Dashboard")
+        title.setFont(QFont("Arial", 20, QFont.Bold))
+        title.setStyleSheet("color: #1e293b; margin-bottom: 16px;")
+        layout.addWidget(title)
         
         # Main content layout (45% left, 55% right)
         content_layout = QHBoxLayout()

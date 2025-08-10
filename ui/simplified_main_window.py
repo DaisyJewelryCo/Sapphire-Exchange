@@ -131,20 +131,8 @@ class SimplifiedMainWindow(QMainWindow):
     
     def create_activity_widget(self):
         """Create activity widget."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(24, 24, 24, 24)
-        
-        title = QLabel("Activity & Leaderboard")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
-        layout.addWidget(title)
-        
-        content = QLabel("Activity feed and leaderboard will appear here")
-        content.setStyleSheet("color: #64748b; font-size: 16px;")
-        content.setAlignment(Qt.AlignCenter)
-        layout.addWidget(content, 1)
-        
-        return widget
+        from ui.activity_widget import ActivityWidget
+        return ActivityWidget()
     
     def create_dev_tools_widget(self):
         """Create dev tools widget."""
