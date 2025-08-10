@@ -20,6 +20,7 @@ class User:
     nano_address: str = ""  # nano_[a-z0-9]{60} format
     arweave_address: str = ""  # Arweave wallet address
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
     # DOGE wallet integration (from More_Robot_info.json)
     doge_address: str = ""
@@ -58,6 +59,7 @@ class User:
             'public_key': self.public_key,
             'nano_address': self.nano_address,
             'created_at': self.created_at,
+            'updated_at': self.updated_at,
             'doge_address': self.doge_address,
             'doge_private_key_encrypted': self.doge_private_key_encrypted,
             'doge_mnemonic_hash': self.doge_mnemonic_hash,
@@ -83,6 +85,7 @@ class User:
             public_key=data.get('public_key', ''),
             nano_address=data.get('nano_address', ''),
             created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
+            updated_at=data.get('updated_at', datetime.now(timezone.utc).isoformat()),
             doge_address=data.get('doge_address', ''),
             doge_private_key_encrypted=data.get('doge_private_key_encrypted', ''),
             doge_mnemonic_hash=data.get('doge_mnemonic_hash', ''),
@@ -147,6 +150,7 @@ class Item:
     auction_end: str = ""  # ISO 8601 timestamp
     auction_end_time: Optional[str] = None  # Legacy field
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
     # Status management (from data_models.Item.status enum)
     status: str = "draft"  # draft/active/sold/expired/cancelled
@@ -205,6 +209,7 @@ class Item:
             'auction_end': self.auction_end,
             'auction_end_time': self.auction_end_time,
             'created_at': self.created_at,
+            'updated_at': self.updated_at,
             'status': self.status,
             'is_auction': self.is_auction,
             'arweave_metadata_uri': self.arweave_metadata_uri,
@@ -249,6 +254,7 @@ class Item:
             auction_end=data.get('auction_end', ''),
             auction_end_time=data.get('auction_end_time'),
             created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
+            updated_at=data.get('updated_at', datetime.now(timezone.utc).isoformat()),
             status=data.get('status', 'draft'),
             is_auction=data.get('is_auction', False),
             arweave_metadata_uri=data.get('arweave_metadata_uri', ''),
@@ -330,6 +336,7 @@ class Bid:
     
     # Timing and status
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     confirmed_at: Optional[str] = None
     status: str = "pending"  # pending/confirmed/outbid/won/refunded
     
@@ -354,6 +361,7 @@ class Bid:
             'nano_block_hash': self.nano_block_hash,
             'arweave_tx_id': self.arweave_tx_id,
             'created_at': self.created_at,
+            'updated_at': self.updated_at,
             'confirmed_at': self.confirmed_at,
             'status': self.status,
             'rsa_signature': self.rsa_signature,
@@ -376,6 +384,7 @@ class Bid:
             nano_block_hash=data.get('nano_block_hash', ''),
             arweave_tx_id=data.get('arweave_tx_id', ''),
             created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
+            updated_at=data.get('updated_at', datetime.now(timezone.utc).isoformat()),
             confirmed_at=data.get('confirmed_at'),
             status=data.get('status', 'pending'),
             rsa_signature=data.get('rsa_signature', ''),

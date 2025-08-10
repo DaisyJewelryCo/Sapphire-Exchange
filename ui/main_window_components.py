@@ -508,11 +508,6 @@ class UserProfileSection(QWidget):
             self.username_label.setText(user.username or "User")
             
             self.bid_credits_label.setText(f"Available Bid Credits: ${user.bid_credits:.2f}")
-            
-            # Force UI refresh
-            self.username_label.repaint()
-            self.bid_credits_label.repaint()
-            self.update()
             print(f"[DEBUG] UserProfileSection update completed")
     
     def update_balances(self, balances):
