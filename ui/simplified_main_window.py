@@ -119,6 +119,10 @@ class SimplifiedMainWindow(QMainWindow):
         
         main_layout.addWidget(self.content_stack, 1)
         
+        # Connect bid settings refresh interval to marketplace widget
+        bid_settings_widget = self.dashboard_widget.get_bid_settings_widget()
+        bid_settings_widget.refresh_interval_changed.connect(self.marketplace_widget.set_refresh_interval)
+        
         # Initially hide sidebar (shown after login)
         self.sidebar.setVisible(False)
         

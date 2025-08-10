@@ -172,6 +172,16 @@ class Item:
     data_hash: str = ""  # SHA-256 hash for verification
     arweave_confirmed: bool = False
     
+    # Auction-specific wallet and RSA data
+    auction_nano_address: str = ""  # Dedicated NANO address for this auction
+    auction_nano_public_key: str = ""  # Public key for the auction wallet
+    auction_nano_private_key: str = ""  # Private key for the auction wallet (encrypted)
+    auction_nano_seed: str = ""  # Seed for the auction wallet (encrypted)
+    auction_rsa_private_key: str = ""  # RSA private key (base64 encoded)
+    auction_rsa_public_key: str = ""  # RSA public key (base64 encoded)
+    auction_rsa_fingerprint: str = ""  # RSA key fingerprint
+    auction_wallet_created_at: str = ""  # When the auction wallet was created
+    
     # Additional metadata
     metadata: Dict = field(default_factory=dict)
     
@@ -207,6 +217,14 @@ class Item:
             'category': self.category,
             'data_hash': self.data_hash,
             'arweave_confirmed': self.arweave_confirmed,
+            'auction_nano_address': self.auction_nano_address,
+            'auction_nano_public_key': self.auction_nano_public_key,
+            'auction_nano_private_key': self.auction_nano_private_key,
+            'auction_nano_seed': self.auction_nano_seed,
+            'auction_rsa_private_key': self.auction_rsa_private_key,
+            'auction_rsa_public_key': self.auction_rsa_public_key,
+            'auction_rsa_fingerprint': self.auction_rsa_fingerprint,
+            'auction_wallet_created_at': self.auction_wallet_created_at,
             'metadata': self.metadata
         }
     
@@ -243,6 +261,14 @@ class Item:
             category=data.get('category', ''),
             data_hash=data.get('data_hash', ''),
             arweave_confirmed=data.get('arweave_confirmed', False),
+            auction_nano_address=data.get('auction_nano_address', ''),
+            auction_nano_public_key=data.get('auction_nano_public_key', ''),
+            auction_nano_private_key=data.get('auction_nano_private_key', ''),
+            auction_nano_seed=data.get('auction_nano_seed', ''),
+            auction_rsa_private_key=data.get('auction_rsa_private_key', ''),
+            auction_rsa_public_key=data.get('auction_rsa_public_key', ''),
+            auction_rsa_fingerprint=data.get('auction_rsa_fingerprint', ''),
+            auction_wallet_created_at=data.get('auction_wallet_created_at', ''),
             metadata=data.get('metadata', {})
         )
     

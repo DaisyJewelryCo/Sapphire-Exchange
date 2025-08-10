@@ -6,13 +6,213 @@ Contains user profile management and wallet overview with transaction history.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QFrame, QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QGroupBox, QSizePolicy, QSpacerItem, QApplication
+    QMessageBox, QGroupBox, QSizePolicy, QSpacerItem, QApplication,
+    QSlider, QSpinBox
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette
 
 from services.application_service import app_service
 from utils.async_worker import AsyncWorker
+
+
+class BidSettingsWidget(QWidget):
+    """Widget for bid settings including max bid and bid increment."""
+    
+    refresh_interval_changed = pyqtSignal(int)  # Signal when refresh interval changes
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup the bid settings UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
+        
+        # Max Bid section
+        max_bid_layout = QVBoxLayout()
+        max_bid_layout.setSpacing(6)
+        
+        max_bid_label = QLabel("Max Bid:")
+        max_bid_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        max_bid_layout.addWidget(max_bid_label)
+        
+        # Max bid slider and value display
+        max_bid_control_layout = QHBoxLayout()
+        max_bid_control_layout.setSpacing(8)
+        
+        self.max_bid_slider = QSlider(Qt.Horizontal)
+        self.max_bid_slider.setMinimum(1)  # $0.01
+        self.max_bid_slider.setMaximum(2000)  # $20.00
+        self.max_bid_slider.setValue(500)  # Default $5.00
+        self.max_bid_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #d1d5db;
+                height: 6px;
+                background: #f3f4f6;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #3b82f6;
+                border: 1px solid #2563eb;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                margin: -6px 0;
+            }
+            QSlider::sub-page:horizontal {
+                background: #3b82f6;
+                border-radius: 3px;
+            }
+        """)
+        
+        self.max_bid_value_label = QLabel("$5.00")
+        self.max_bid_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500; min-width: 40px;")
+        self.max_bid_value_label.setAlignment(Qt.AlignRight)
+        
+        max_bid_control_layout.addWidget(self.max_bid_slider)
+        max_bid_control_layout.addWidget(self.max_bid_value_label)
+        max_bid_layout.addLayout(max_bid_control_layout)
+        
+        layout.addLayout(max_bid_layout)
+        
+        # Bid Increment section
+        bid_increment_layout = QVBoxLayout()
+        bid_increment_layout.setSpacing(6)
+        
+        bid_increment_label = QLabel("Bid Increment:")
+        bid_increment_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        bid_increment_layout.addWidget(bid_increment_label)
+        
+        # Bid increment slider and value display
+        bid_increment_control_layout = QHBoxLayout()
+        bid_increment_control_layout.setSpacing(8)
+        
+        self.bid_increment_slider = QSlider(Qt.Horizontal)
+        self.bid_increment_slider.setMinimum(1)  # $0.01
+        self.bid_increment_slider.setMaximum(25)  # $0.25
+        self.bid_increment_slider.setValue(5)  # Default $0.05
+        self.bid_increment_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #d1d5db;
+                height: 6px;
+                background: #f3f4f6;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #3b82f6;
+                border: 1px solid #2563eb;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                margin: -6px 0;
+            }
+            QSlider::sub-page:horizontal {
+                background: #3b82f6;
+                border-radius: 3px;
+            }
+        """)
+        
+        self.bid_increment_value_label = QLabel("$0.05")
+        self.bid_increment_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500; min-width: 40px;")
+        self.bid_increment_value_label.setAlignment(Qt.AlignRight)
+        
+        bid_increment_control_layout.addWidget(self.bid_increment_slider)
+        bid_increment_control_layout.addWidget(self.bid_increment_value_label)
+        bid_increment_layout.addLayout(bid_increment_control_layout)
+        
+        layout.addLayout(bid_increment_layout)
+        
+        # Marketplace Refresh Interval section
+        refresh_layout = QVBoxLayout()
+        refresh_layout.setSpacing(6)
+        
+        refresh_label = QLabel("Marketplace Refresh:")
+        refresh_label.setStyleSheet("color: #374151; font-size: 12px; font-weight: 500;")
+        refresh_layout.addWidget(refresh_label)
+        
+        # Refresh interval slider and value display
+        refresh_control_layout = QHBoxLayout()
+        refresh_control_layout.setSpacing(8)
+        
+        self.refresh_interval_slider = QSlider(Qt.Horizontal)
+        self.refresh_interval_slider.setMinimum(5)  # 5 seconds
+        self.refresh_interval_slider.setMaximum(300)  # 5 minutes
+        self.refresh_interval_slider.setValue(30)  # Default 30 seconds
+        self.refresh_interval_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #d1d5db;
+                height: 6px;
+                background: #f3f4f6;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #10b981;
+                border: 1px solid #059669;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                margin: -6px 0;
+            }
+            QSlider::sub-page:horizontal {
+                background: #10b981;
+                border-radius: 3px;
+            }
+        """)
+        
+        self.refresh_interval_value_label = QLabel("30s")
+        self.refresh_interval_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500; min-width: 40px;")
+        self.refresh_interval_value_label.setAlignment(Qt.AlignRight)
+        
+        refresh_control_layout.addWidget(self.refresh_interval_slider)
+        refresh_control_layout.addWidget(self.refresh_interval_value_label)
+        refresh_layout.addLayout(refresh_control_layout)
+        
+        layout.addLayout(refresh_layout)
+        
+        # Connect signals
+        self.max_bid_slider.valueChanged.connect(self.update_max_bid_value)
+        self.bid_increment_slider.valueChanged.connect(self.update_bid_increment_value)
+        self.refresh_interval_slider.valueChanged.connect(self.update_refresh_interval_value)
+    
+    def update_max_bid_value(self, value):
+        """Update max bid value display."""
+        dollars = value / 100.0
+        self.max_bid_value_label.setText(f"${dollars:.2f}")
+    
+    def update_bid_increment_value(self, value):
+        """Update bid increment value display."""
+        dollars = value / 100.0
+        self.bid_increment_value_label.setText(f"${dollars:.2f}")
+    
+    def update_refresh_interval_value(self, value):
+        """Update refresh interval value display and emit signal."""
+        if value < 60:
+            self.refresh_interval_value_label.setText(f"{value}s")
+        else:
+            minutes = value // 60
+            seconds = value % 60
+            if seconds == 0:
+                self.refresh_interval_value_label.setText(f"{minutes}m")
+            else:
+                self.refresh_interval_value_label.setText(f"{minutes}m{seconds}s")
+        
+        # Emit signal for marketplace refresh interval change
+        self.refresh_interval_changed.emit(value)
+    
+    def get_max_bid(self):
+        """Get current max bid value in dollars."""
+        return self.max_bid_slider.value() / 100.0
+    
+    def get_bid_increment(self):
+        """Get current bid increment value in dollars."""
+        return self.bid_increment_slider.value() / 100.0
+    
+    def get_refresh_interval(self):
+        """Get current refresh interval in seconds."""
+        return self.refresh_interval_slider.value()
 
 
 class ConnectionStatusWidget(QWidget):
@@ -280,6 +480,30 @@ class UserProfileWidget(QWidget):
         stats_layout.addWidget(self.purchases_label)
         
         layout.addWidget(stats_group)
+        
+        # Bid Settings section
+        bid_settings_group = QGroupBox("Bid Settings")
+        bid_settings_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #e2e8f0;
+                border-radius: 8px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
+        bid_settings_layout = QVBoxLayout(bid_settings_group)
+        
+        # Create bid settings widget
+        self.bid_settings_widget = BidSettingsWidget()
+        bid_settings_layout.addWidget(self.bid_settings_widget)
+        
+        layout.addWidget(bid_settings_group)
         
         # Connection Information section
         connection_group = QGroupBox("Connection Information")
@@ -796,3 +1020,7 @@ class DashboardWidget(QWidget):
         """Handle username change."""
         # You could emit a signal here to update other parts of the UI
         print(f"Username changed to: {new_username}")
+    
+    def get_bid_settings_widget(self):
+        """Get the bid settings widget for connecting signals."""
+        return self.user_profile_widget.bid_settings_widget

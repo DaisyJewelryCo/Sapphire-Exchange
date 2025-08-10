@@ -249,10 +249,10 @@ class Validator:
         if description and len(description) > app_config.ui.max_description_length:
             result['errors'].append(f'Description cannot exceed {app_config.ui.max_description_length} characters')
         
-        # Starting price validation
+        # Starting price validation (now allows 0.0 for auctions that start at zero)
         starting_price = item_data.get('starting_price_doge')
         if starting_price is not None:
-            price_validation = Validator.validate_amount(starting_price, min_amount=0.01)
+            price_validation = Validator.validate_amount(starting_price, min_amount=0.0)
             if not price_validation['valid']:
                 result['errors'].extend(price_validation['errors'])
         

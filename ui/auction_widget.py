@@ -336,14 +336,15 @@ class AuctionItemWidget(QWidget):
         return None
     
     def create_authenticator_dot(self):
-        """Create authenticator status dot with tooltip."""
+        """Create authenticator status dot with popup functionality."""
         dot = QPushButton()
         dot.setFixedSize(12, 12)
+        dot.setCursor(Qt.PointingHandCursor)
         
         # Determine authentication status (simplified for now)
-        is_verified = True  # This would be determined by actual verification logic
+        is_verified = self.get_overall_authentication_status()
         
-        if is_verified:
+        if is_verified == 'verified':
             dot.setStyleSheet("""
                 QPushButton {
                     background-color: #10b981;
@@ -354,9 +355,23 @@ class AuctionItemWidget(QWidget):
                 QPushButton:hover {
                     background-color: #059669;
                     outline: 1px solid #059669;
+                    transform: scale(1.1);
                 }
             """)
-            dot.setToolTip("Authentication Status\n\n✓ Item Verified\n✓ Seller Verified\n✓ Blockchain Secured")
+        elif is_verified == 'warning':
+            dot.setStyleSheet("""
+                QPushButton {
+                    background-color: #f59e0b;
+                    border: 2px solid white;
+                    border-radius: 6px;
+                    outline: 1px solid #f59e0b;
+                }
+                QPushButton:hover {
+                    background-color: #d97706;
+                    outline: 1px solid #d97706;
+                    transform: scale(1.1);
+                }
+            """)
         else:
             dot.setStyleSheet("""
                 QPushButton {
@@ -368,11 +383,53 @@ class AuctionItemWidget(QWidget):
                 QPushButton:hover {
                     background-color: #dc2626;
                     outline: 1px solid #dc2626;
+                    transform: scale(1.1);
                 }
             """)
-            dot.setToolTip("Authentication Status\n\n✗ Verification Pending")
+        
+        # Connect click to show authentication popup
+        dot.clicked.connect(self.show_authentication_popup)
         
         return dot
+    
+    def get_overall_authentication_status(self) -> str:
+        """Get overall authentication status for the item."""
+        # Check various authentication factors
+        has_arweave = bool(self.item.arweave_metadata_uri)
+        has_nano_wallet = bool(self.item.auction_nano_address)
+        has_rsa = bool(self.item.auction_rsa_public_key)
+        has_data_hash = bool(self.item.data_hash)
+        
+        verified_count = sum([has_arweave, has_nano_wallet, has_rsa, has_data_hash])
+        
+        if verified_count >= 3:
+            return 'verified'
+        elif verified_count >= 1:
+            return 'warning'
+        else:
+            return 'error'
+    
+    def show_authentication_popup(self):
+        """Show authentication status popup."""
+        from ui.authentication_status_popup import AuthenticationStatusPopup
+        
+        # Close any existing popup
+        if hasattr(self, 'auth_popup') and self.auth_popup:
+            self.auth_popup.close()
+        
+        # Create new popup
+        self.auth_popup = AuthenticationStatusPopup(self.item, self)
+        
+        # Position popup near the dot
+        dot_button = self.sender()
+        dot_global_pos = dot_button.mapToGlobal(dot_button.rect().bottomRight())
+        popup_pos = dot_global_pos
+        popup_pos.setX(popup_pos.x() + 10)  # Offset to the right
+        popup_pos.setY(popup_pos.y() + 5)   # Offset down slightly
+        
+        # Show popup
+        self.auth_popup.show_popup(popup_pos)
+        self.auth_popup.closed.connect(lambda: setattr(self, 'auth_popup', None))
     
     def get_price_info(self):
         """Get price information with appropriate label."""
@@ -597,73 +654,46 @@ class AuctionListWidget(QWidget):
         self.items = []
         self.filtered_items = []
         self.active_section = active_section  # "marketplace" or "my-items"
+        self.refresh_interval = 30000  # Default 30 seconds in milliseconds
         self.setup_ui()
+        self.setup_periodic_refresh()
     
     def setup_ui(self):
         """Setup auction list UI."""
         layout = QVBoxLayout(self)
         
-        # Filter and sort controls
-        controls_layout = QHBoxLayout()
+        # Category section (without header)
+        category_section = self.create_category_section()
+        layout.addWidget(category_section)
         
-        # Search
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search auctions...")
-        self.search_edit.textChanged.connect(self.apply_filters)
-        controls_layout.addWidget(QLabel("Search:"))
-        controls_layout.addWidget(self.search_edit)
-        
-        # Status filter
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(["All", "Active", "Ending Soon", "Sold", "Expired"])
-        self.status_combo.currentTextChanged.connect(self.apply_filters)
-        controls_layout.addWidget(QLabel("Status:"))
-        controls_layout.addWidget(self.status_combo)
-        
-        # Sort by
-        self.sort_combo = QComboBox()
-        self.sort_combo.addItems(["End Time", "Current Bid", "Starting Price", "Title"])
-        self.sort_combo.currentTextChanged.connect(self.apply_filters)
-        controls_layout.addWidget(QLabel("Sort by:"))
-        controls_layout.addWidget(self.sort_combo)
-        
-        # Sort order
-        self.sort_order_combo = QComboBox()
-        self.sort_order_combo.addItems(["Ascending", "Descending"])
-        self.sort_order_combo.currentTextChanged.connect(self.apply_filters)
-        controls_layout.addWidget(self.sort_order_combo)
-        
-        controls_layout.addStretch()
-        
-        # Add Item button (only for my-items section)
+        # Action buttons row (only for my-items section)
         if self.active_section == "my-items":
+            actions_layout = QHBoxLayout()
+            actions_layout.addStretch()
+            
+            # Add Item button (only for my-items section)
             add_item_btn = QPushButton("➕ Add Item")
             add_item_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #28a745;
+                    background-color: #3b82f6;
                     color: white;
                     border: none;
-                    padding: 8px 16px;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    font-size: 12px;
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    font-size: 13px;
                 }
                 QPushButton:hover {
-                    background-color: #218838;
+                    background-color: #2563eb;
                 }
                 QPushButton:pressed {
-                    background-color: #1e7e34;
+                    background-color: #1d4ed8;
                 }
             """)
             add_item_btn.clicked.connect(self.show_add_item_dialog)
-            controls_layout.addWidget(add_item_btn)
-        
-        # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.clicked.connect(self.refresh_auctions)
-        controls_layout.addWidget(refresh_btn)
-        
-        layout.addLayout(controls_layout)
+            actions_layout.addWidget(add_item_btn)
+            
+            layout.addLayout(actions_layout)
         
         # Auction list
         self.scroll_area = QScrollArea()
@@ -683,55 +713,180 @@ class AuctionListWidget(QWidget):
         self.status_label.setStyleSheet("color: #666; font-size: 10px;")
         layout.addWidget(self.status_label)
     
+    def setup_periodic_refresh(self):
+        """Setup periodic refresh timer."""
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.refresh_auctions)
+        self.refresh_timer.start(self.refresh_interval)
+    
+    def set_refresh_interval(self, seconds):
+        """Set the refresh interval in seconds."""
+        self.refresh_interval = seconds * 1000  # Convert to milliseconds
+        if hasattr(self, 'refresh_timer'):
+            self.refresh_timer.stop()
+            self.refresh_timer.start(self.refresh_interval)
+    
+    def create_category_section(self):
+        """Create the category filter section."""
+        section = QWidget()
+        section.setStyleSheet("""
+            QWidget {
+                background-color: #f8fafc;
+                border-radius: 12px;
+                border: 1px solid #e2e8f0;
+            }
+        """)
+        
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+        
+        # Category buttons (removed the "Categories" title)
+        categories_layout = QHBoxLayout()
+        categories_layout.setSpacing(8)
+        
+        # Define categories with icons
+        categories = [
+            ("All", "🏪", "all"),
+            ("Electronics", "📱", "electronics"),
+            ("Collectibles", "🎨", "collectibles"),
+            ("Fashion", "👕", "fashion"),
+            ("Home & Garden", "🏠", "home"),
+            ("Sports", "⚽", "sports"),
+            ("Books", "📚", "books"),
+            ("Other", "📦", "other")
+        ]
+        
+        self.category_buttons = {}
+        self.selected_category = "all"
+        
+        for name, icon, category_id in categories:
+            btn = QPushButton(f"{icon} {name}")
+            btn.setCheckable(True)
+            btn.setChecked(category_id == "all")  # Default to "All"
+            btn.setStyleSheet(self.get_category_button_style(category_id == "all"))
+            btn.clicked.connect(lambda checked, cat=category_id: self.on_category_selected(cat))
+            
+            self.category_buttons[category_id] = btn
+            categories_layout.addWidget(btn)
+        
+        categories_layout.addStretch()
+        layout.addLayout(categories_layout)
+        
+        return section
+    
+    def get_category_button_style(self, is_selected=False):
+        """Get style for category buttons."""
+        if is_selected:
+            return """
+                QPushButton {
+                    background-color: #3b82f6;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #2563eb;
+                }
+            """
+        else:
+            return """
+                QPushButton {
+                    background-color: white;
+                    color: #64748b;
+                    border: 1px solid #e2e8f0;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #f8fafc;
+                    border-color: #cbd5e1;
+                    color: #475569;
+                }
+                QPushButton:checked {
+                    background-color: #3b82f6;
+                    color: white;
+                    border-color: #3b82f6;
+                }
+            """
+    
+    def on_category_selected(self, category_id):
+        """Handle category selection."""
+        # Update button styles
+        for cat_id, btn in self.category_buttons.items():
+            is_selected = cat_id == category_id
+            btn.setChecked(is_selected)
+            btn.setStyleSheet(self.get_category_button_style(is_selected))
+        
+        self.selected_category = category_id
+        self.apply_filters()
+    
     def set_items(self, items: list):
         """Set the list of auction items."""
         self.items = items
         self.apply_filters()
     
     def apply_filters(self):
-        """Apply current filters and sorting."""
+        """Apply current category filter."""
         # Start with all items
         filtered = self.items.copy()
         
-        # Apply search filter
-        search_text = self.search_edit.text().lower()
-        if search_text:
+        # Apply category filter
+        if hasattr(self, 'selected_category') and self.selected_category != "all":
             filtered = [item for item in filtered 
-                       if search_text in (item.title or item.name or "").lower() 
-                       or search_text in (item.description or "").lower()]
+                       if self.item_matches_category(item, self.selected_category)]
         
-        # Apply status filter
-        status_filter = self.status_combo.currentText()
-        if status_filter != "All":
-            if status_filter == "Active":
-                filtered = [item for item in filtered if item.status == 'active']
-            elif status_filter == "Ending Soon":
-                # Items ending within 24 hours
-                now = datetime.now(timezone.utc)
-                cutoff = now + timedelta(hours=24)
-                filtered = [item for item in filtered 
-                           if item.status == 'active' and item.auction_end 
-                           and datetime.fromisoformat(item.auction_end.replace('Z', '+00:00')) <= cutoff]
-            elif status_filter == "Sold":
-                filtered = [item for item in filtered if item.status == 'sold']
-            elif status_filter == "Expired":
-                filtered = [item for item in filtered if item.status == 'expired']
+        # Sort by auction end time (active auctions first, then by end time)
+        def sort_key(item):
+            if item.status == 'active':
+                try:
+                    if item.auction_end:
+                        end_time = datetime.fromisoformat(item.auction_end.replace('Z', '+00:00'))
+                        return (0, end_time)  # Active items first, sorted by end time
+                    else:
+                        return (0, datetime.max.replace(tzinfo=timezone.utc))  # Active items without end time
+                except:
+                    return (0, datetime.max.replace(tzinfo=timezone.utc))
+            else:
+                return (1, datetime.max.replace(tzinfo=timezone.utc))  # Non-active items last
         
-        # Apply sorting
-        sort_by = self.sort_combo.currentText()
-        reverse = self.sort_order_combo.currentText() == "Descending"
-        
-        if sort_by == "End Time":
-            filtered.sort(key=lambda x: x.auction_end or "", reverse=reverse)
-        elif sort_by == "Current Bid":
-            filtered.sort(key=lambda x: float(x.current_bid_doge or x.current_bid or 0), reverse=reverse)
-        elif sort_by == "Starting Price":
-            filtered.sort(key=lambda x: float(x.starting_price_doge or x.starting_price or 0), reverse=reverse)
-        elif sort_by == "Title":
-            filtered.sort(key=lambda x: (x.title or x.name or "").lower(), reverse=reverse)
+        filtered.sort(key=sort_key)
         
         self.filtered_items = filtered
         self.update_display()
+    
+    def item_matches_category(self, item, category):
+        """Check if an item matches the selected category."""
+        item_category = (item.category or "").lower()
+        
+        category_mappings = {
+            'electronics': ['electronics', 'tech', 'computer', 'phone', 'gadget'],
+            'collectibles': ['collectible', 'antique', 'vintage', 'art', 'coin', 'card'],
+            'fashion': ['fashion', 'clothing', 'apparel', 'shoes', 'accessory'],
+            'home': ['home', 'garden', 'furniture', 'decor', 'kitchen'],
+            'sports': ['sports', 'fitness', 'outdoor', 'athletic', 'exercise'],
+            'books': ['book', 'literature', 'novel', 'textbook', 'magazine'],
+            'other': []  # Will match items that don't fit other categories
+        }
+        
+        if category in category_mappings:
+            keywords = category_mappings[category]
+            if not keywords:  # 'other' category
+                # Check if item doesn't match any other category
+                for other_cat, other_keywords in category_mappings.items():
+                    if other_cat != 'other' and other_keywords:
+                        if any(keyword in item_category for keyword in other_keywords):
+                            return False
+                return True
+            else:
+                return any(keyword in item_category for keyword in keywords)
+        
+        return False
     
     def update_display(self):
         """Update the display with filtered items using enhanced tiles."""
@@ -864,15 +1019,8 @@ class AddItemDialog(QDialog):
         ])
         form_layout.addRow("Category:", self.category_combo)
         
-        # Starting price
-        price_layout = QHBoxLayout()
-        self.price_edit = QLineEdit()
-        self.price_edit.setPlaceholderText("0.00")
-        self.currency_combo = QComboBox()
-        self.currency_combo.addItems(["DOGE", "NANO"])
-        price_layout.addWidget(self.price_edit)
-        price_layout.addWidget(self.currency_combo)
-        form_layout.addRow("Starting Price*:", price_layout)
+        # Starting price is now always zero - removed from UI
+        # The starting price will be set to 0 automatically
         
         # Auction duration
         self.duration_combo = QComboBox()
@@ -890,6 +1038,76 @@ class AddItemDialog(QDialog):
         
         layout.addLayout(form_layout)
         
+        # Wallet generation section
+        wallet_group = QGroupBox("Auction Wallet")
+        wallet_layout = QVBoxLayout(wallet_group)
+        
+        # Generate wallet button
+        self.generate_wallet_btn = QPushButton("Generate RSA and Wallet")
+        self.generate_wallet_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                font-weight: 500;
+                font-size: 12px;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 16px;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+                color: #6b7280;
+            }
+        """)
+        self.generate_wallet_btn.clicked.connect(self.generate_wallet_and_rsa)
+        wallet_layout.addWidget(self.generate_wallet_btn)
+        
+        # Wallet address display (read-only)
+        wallet_form_layout = QFormLayout()
+        self.wallet_address_edit = QLineEdit()
+        self.wallet_address_edit.setReadOnly(True)
+        self.wallet_address_edit.setPlaceholderText("Wallet will be generated when you click the button above")
+        self.wallet_address_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 4px;
+                padding: 8px;
+                color: #495057;
+            }
+        """)
+        wallet_form_layout.addRow("Auction Wallet Address:", self.wallet_address_edit)
+        
+        # RSA fingerprint display (read-only)
+        self.rsa_fingerprint_edit = QLineEdit()
+        self.rsa_fingerprint_edit.setReadOnly(True)
+        self.rsa_fingerprint_edit.setPlaceholderText("RSA fingerprint will be generated")
+        self.rsa_fingerprint_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 4px;
+                padding: 8px;
+                color: #495057;
+                font-family: monospace;
+                font-size: 10px;
+            }
+        """)
+        wallet_form_layout.addRow("RSA Fingerprint:", self.rsa_fingerprint_edit)
+        
+        wallet_layout.addLayout(wallet_form_layout)
+        layout.addWidget(wallet_group)
+        
+        # Store wallet data
+        self.wallet_data = None
+        
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -899,19 +1117,25 @@ class AddItemDialog(QDialog):
         button_layout.addWidget(cancel_btn)
         
         self.create_btn = QPushButton("Create Auction")
+        self.create_btn.setEnabled(False)  # Disabled until wallet is generated
         self.create_btn.setStyleSheet("""
-            QPushButton {
+            QPushButton:disabled {
+                background-color: #e5e7eb;
+                color: #9ca3af;
+                border: 1px solid #d1d5db;
+            }
+            QPushButton:enabled {
                 background-color: #28a745;
                 color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 6px;
                 font-weight: bold;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
             }
-            QPushButton:hover {
+            QPushButton:enabled:hover {
                 background-color: #218838;
             }
-            QPushButton:pressed {
+            QPushButton:enabled:pressed {
                 background-color: #1e7e34;
             }
         """)
@@ -919,6 +1143,71 @@ class AddItemDialog(QDialog):
         button_layout.addWidget(self.create_btn)
         
         layout.addLayout(button_layout)
+    
+    def generate_wallet_and_rsa(self):
+        """Generate wallet and RSA keys for the auction."""
+        try:
+            # Import the wallet generation utilities
+            import asyncio
+            import uuid
+            from utils.auction_wallet_utils import generate_auction_wallet_and_rsa
+            
+            # Disable the button during generation
+            self.generate_wallet_btn.setEnabled(False)
+            self.generate_wallet_btn.setText("Generating...")
+            
+            # Generate a temporary auction ID for wallet generation
+            temp_auction_id = str(uuid.uuid4())
+            
+            # For now, use a placeholder user ID (in real implementation, get from current user)
+            user_id = "current_user_id"  # This should come from the current logged-in user
+            
+            # Create event loop if needed
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Generate wallet and RSA keys
+            self.wallet_data = loop.run_until_complete(
+                generate_auction_wallet_and_rsa(user_id, temp_auction_id)
+            )
+            
+            if self.wallet_data and self.wallet_data.get('nano_address'):
+                # Update UI with generated wallet info
+                self.wallet_address_edit.setText(self.wallet_data['nano_address'])
+                self.rsa_fingerprint_edit.setText(self.wallet_data['rsa_fingerprint'])
+                
+                # Enable the create auction button
+                self.create_btn.setEnabled(True)
+                
+                # Update button text and style
+                self.generate_wallet_btn.setText("✓ Wallet Generated")
+                self.generate_wallet_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #059669;
+                        color: white;
+                        font-weight: 500;
+                        font-size: 12px;
+                        border: none;
+                        border-radius: 6px;
+                        padding: 10px 16px;
+                        min-height: 20px;
+                    }
+                """)
+                
+                # Wallet generated successfully - no popup needed
+            else:
+                raise Exception("Failed to generate wallet data")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Generation Failed", 
+                               f"Failed to generate wallet and RSA keys:\n\n{str(e)}")
+            
+            # Re-enable the button
+            self.generate_wallet_btn.setEnabled(True)
+            self.generate_wallet_btn.setText("Generate RSA and Wallet")
     
     def create_auction(self):
         """Create the auction with the provided data."""
@@ -931,16 +1220,9 @@ class AddItemDialog(QDialog):
             QMessageBox.warning(self, "Validation Error", "Description is required.")
             return
         
-        if not self.price_edit.text().strip():
-            QMessageBox.warning(self, "Validation Error", "Starting price is required.")
-            return
-        
-        try:
-            price = float(self.price_edit.text())
-            if price <= 0:
-                raise ValueError("Price must be positive")
-        except ValueError:
-            QMessageBox.warning(self, "Validation Error", "Please enter a valid starting price.")
+        # Check if wallet has been generated
+        if not self.wallet_data:
+            QMessageBox.warning(self, "Missing Wallet", "Please generate a wallet and RSA keys first.")
             return
         
         # Parse duration
@@ -950,16 +1232,30 @@ class AddItemDialog(QDialog):
         # Parse tags
         tags = [tag.strip() for tag in self.tags_edit.text().split(',') if tag.strip()]
         
-        # Create item data
+        # Create item data with wallet information
         item_data = {
             'title': self.name_edit.text().strip(),
             'description': self.description_edit.toPlainText().strip(),
             'category': self.category_combo.currentText(),
-            'starting_price_doge': price if self.currency_combo.currentText() == "DOGE" else None,
-            'starting_price_nano': price if self.currency_combo.currentText() == "NANO" else None,
+            'starting_price_doge': "0.0",  # Always zero now
+            'starting_price': 0.0,  # Always zero now
+            'currency': "NANO",  # Default to NANO since we're generating NANO wallets
             'auction_duration_hours': duration_hours,
             'tags': tags
         }
+        
+        # Add wallet and RSA data if available
+        if self.wallet_data:
+            item_data.update({
+                'auction_nano_address': self.wallet_data.get('nano_address', ''),
+                'auction_nano_public_key': self.wallet_data.get('nano_public_key', ''),
+                'auction_nano_private_key': self.wallet_data.get('nano_private_key', ''),
+                'auction_nano_seed': self.wallet_data.get('nano_seed', ''),
+                'auction_rsa_private_key': self.wallet_data.get('rsa_private_key', ''),
+                'auction_rsa_public_key': self.wallet_data.get('rsa_public_key', ''),
+                'auction_rsa_fingerprint': self.wallet_data.get('rsa_fingerprint', ''),
+                'auction_wallet_created_at': self.wallet_data.get('created_at', ''),
+            })
         
         # Create auction using async worker
         from services.application_service import app_service
@@ -1281,17 +1577,8 @@ class CreateAuctionDialog(QDialog):
         self.description_edit.setMaximumHeight(150)  # Increased from 100 to 150
         form_layout.addRow("Description:", self.description_edit)
         
-        # Starting price
-        price_layout = QHBoxLayout()
-        self.starting_price_edit = QLineEdit()
-        self.starting_price_edit.setPlaceholderText("0.00")
-        price_layout.addWidget(self.starting_price_edit)
-        
-        self.currency_combo = QComboBox()
-        self.currency_combo.addItems(["DOGE", "NANO"])
-        price_layout.addWidget(self.currency_combo)
-        
-        form_layout.addRow("Starting Price*:", price_layout)
+        # Starting price is now always zero - removed from UI
+        # The starting price will be set to 0 automatically
         
         # Auction duration
         duration_layout = QHBoxLayout()
@@ -1341,6 +1628,73 @@ class CreateAuctionDialog(QDialog):
         layout.addLayout(form_layout)
         layout.addWidget(shipping_group)
         
+        # Wallet generation section
+        wallet_group = QGroupBox("Auction Wallet")
+        wallet_layout = QVBoxLayout(wallet_group)
+        
+        # Generate wallet button
+        self.generate_wallet_btn = QPushButton("Generate RSA and Wallet")
+        self.generate_wallet_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                font-weight: 500;
+                font-size: 12px;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 16px;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+                color: #6b7280;
+            }
+        """)
+        self.generate_wallet_btn.clicked.connect(self.generate_wallet_and_rsa)
+        wallet_layout.addWidget(self.generate_wallet_btn)
+        
+        # Wallet address display (read-only)
+        wallet_form_layout = QFormLayout()
+        self.wallet_address_edit = QLineEdit()
+        self.wallet_address_edit.setReadOnly(True)
+        self.wallet_address_edit.setPlaceholderText("Wallet will be generated when you click the button above")
+        self.wallet_address_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 4px;
+                padding: 8px;
+                color: #495057;
+            }
+        """)
+        wallet_form_layout.addRow("Auction Wallet Address:", self.wallet_address_edit)
+        
+        # RSA fingerprint display (read-only)
+        self.rsa_fingerprint_edit = QLineEdit()
+        self.rsa_fingerprint_edit.setReadOnly(True)
+        self.rsa_fingerprint_edit.setPlaceholderText("RSA fingerprint will be generated")
+        self.rsa_fingerprint_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 4px;
+                padding: 8px;
+                color: #495057;
+                font-family: monospace;
+                font-size: 10px;
+            }
+        """)
+        wallet_form_layout.addRow("RSA Fingerprint:", self.rsa_fingerprint_edit)
+        
+        wallet_layout.addLayout(wallet_form_layout)
+        layout.addWidget(wallet_group)
+        
         # Preview section
         preview_group = QGroupBox("Preview")
         preview_layout = QVBoxLayout(preview_group)
@@ -1354,32 +1708,127 @@ class CreateAuctionDialog(QDialog):
         
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.button(QDialogButtonBox.Ok).setText("Create Auction")
+        self.create_auction_btn = button_box.button(QDialogButtonBox.Ok)
+        self.create_auction_btn.setText("Create Auction")
+        self.create_auction_btn.setEnabled(False)  # Disabled until wallet is generated
+        self.create_auction_btn.setStyleSheet("""
+            QPushButton:disabled {
+                background-color: #e5e7eb;
+                color: #9ca3af;
+                border: 1px solid #d1d5db;
+            }
+            QPushButton:enabled {
+                background-color: #3b82f6;
+                color: white;
+                font-weight: 500;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }
+            QPushButton:enabled:hover {
+                background-color: #2563eb;
+            }
+        """)
         button_box.accepted.connect(self.create_auction)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
         
+        # Store wallet data
+        self.wallet_data = None
+        
         # Connect signals for live preview
         self.title_edit.textChanged.connect(self.update_preview)
         self.description_edit.textChanged.connect(self.update_preview)
-        self.starting_price_edit.textChanged.connect(self.update_preview)
-        self.currency_combo.currentTextChanged.connect(self.update_preview)
+        # Starting price is always 0, no need to connect signals
     
     def update_preview(self):
         """Update the auction preview."""
         title = self.title_edit.text() or "Untitled Auction"
         description = self.description_edit.toPlainText() or "No description"
-        price = self.starting_price_edit.text() or "0"
-        currency = self.currency_combo.currentText()
+        
+        wallet_status = "Wallet Generated" if self.wallet_data else "Wallet Not Generated"
+        wallet_color = "#10b981" if self.wallet_data else "#ef4444"
         
         preview_text = f"""
         <b>{title}</b><br>
         <i>{description[:100]}{'...' if len(description) > 100 else ''}</i><br><br>
-        <b>Starting Price:</b> {price} {currency}<br>
-        <b>Status:</b> Ready to create
+        <b>Starting Price:</b> 0.00 (Always starts at zero)<br>
+        <b>Wallet Status:</b> <span style="color: {wallet_color};">{wallet_status}</span><br>
+        <b>Status:</b> {'Ready to create' if self.wallet_data else 'Generate wallet first'}
         """
         
         self.preview_label.setText(preview_text)
+    
+    def generate_wallet_and_rsa(self):
+        """Generate wallet and RSA keys for the auction."""
+        try:
+            # Import the wallet generation utilities
+            import asyncio
+            import uuid
+            from utils.auction_wallet_utils import generate_auction_wallet_and_rsa
+            
+            # Disable the button during generation
+            self.generate_wallet_btn.setEnabled(False)
+            self.generate_wallet_btn.setText("Generating...")
+            
+            # Generate a temporary auction ID for wallet generation
+            temp_auction_id = str(uuid.uuid4())
+            
+            # For now, use a placeholder user ID (in real implementation, get from current user)
+            user_id = "current_user_id"  # This should come from the current logged-in user
+            
+            # Create event loop if needed
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Generate wallet and RSA keys
+            self.wallet_data = loop.run_until_complete(
+                generate_auction_wallet_and_rsa(user_id, temp_auction_id)
+            )
+            
+            if self.wallet_data and self.wallet_data.get('nano_address'):
+                # Update UI with generated wallet info
+                self.wallet_address_edit.setText(self.wallet_data['nano_address'])
+                self.rsa_fingerprint_edit.setText(self.wallet_data['rsa_fingerprint'])
+                
+                # Enable the create auction button
+                self.create_auction_btn.setEnabled(True)
+                
+                # Update button text and style
+                self.generate_wallet_btn.setText("✓ Wallet Generated")
+                self.generate_wallet_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #059669;
+                        color: white;
+                        font-weight: 500;
+                        font-size: 12px;
+                        border: none;
+                        border-radius: 6px;
+                        padding: 10px 16px;
+                        min-height: 20px;
+                    }
+                """)
+                
+                # Update preview
+                self.update_preview()
+                
+                QMessageBox.information(self, "Wallet Generated", 
+                                      f"Auction wallet and RSA keys generated successfully!\n\n"
+                                      f"Wallet Address: {self.wallet_data['nano_address'][:20]}...\n"
+                                      f"RSA Fingerprint: {self.wallet_data['rsa_fingerprint'][:32]}...")
+            else:
+                raise Exception("Failed to generate wallet data")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Generation Failed", 
+                               f"Failed to generate wallet and RSA keys:\n\n{str(e)}")
+            
+            # Re-enable the button
+            self.generate_wallet_btn.setEnabled(True)
+            self.generate_wallet_btn.setText("Generate RSA and Wallet")
     
     def create_auction(self):
         """Validate and create the auction."""
@@ -1388,16 +1837,9 @@ class CreateAuctionDialog(QDialog):
             QMessageBox.warning(self, "Missing Title", "Please enter an auction title.")
             return
         
-        if not self.starting_price_edit.text().strip():
-            QMessageBox.warning(self, "Missing Price", "Please enter a starting price.")
-            return
-        
-        try:
-            price = float(self.starting_price_edit.text())
-            if price <= 0:
-                raise ValueError()
-        except ValueError:
-            QMessageBox.warning(self, "Invalid Price", "Please enter a valid starting price.")
+        # Check if wallet has been generated
+        if not self.wallet_data:
+            QMessageBox.warning(self, "Missing Wallet", "Please generate a wallet and RSA keys first.")
             return
         
         # Validate tags
@@ -1426,14 +1868,31 @@ class CreateAuctionDialog(QDialog):
         
         tags = [tag.strip() for tag in self.tags_edit.text().split(',') if tag.strip()]
         
-        return {
+        # Base auction data
+        auction_data = {
             'title': self.title_edit.text().strip(),
             'description': self.description_edit.toPlainText().strip(),
-            'starting_price_doge': self.starting_price_edit.text(),
-            'currency': self.currency_combo.currentText(),
+            'starting_price_doge': "0.0",  # Always zero now
+            'starting_price': 0.0,  # Always zero now
+            'currency': "NANO",  # Default to NANO since we're generating NANO wallets
             'auction_end': end_time.isoformat(),
             'category': self.category_combo.currentText(),
             'tags': tags,
             'shipping_required': self.shipping_required_checkbox.isChecked(),
             'shipping_cost_doge': self.shipping_cost_edit.text() if self.shipping_required_checkbox.isChecked() else "0"
         }
+        
+        # Add wallet and RSA data if available
+        if self.wallet_data:
+            auction_data.update({
+                'auction_nano_address': self.wallet_data.get('nano_address', ''),
+                'auction_nano_public_key': self.wallet_data.get('nano_public_key', ''),
+                'auction_nano_private_key': self.wallet_data.get('nano_private_key', ''),
+                'auction_nano_seed': self.wallet_data.get('nano_seed', ''),
+                'auction_rsa_private_key': self.wallet_data.get('rsa_private_key', ''),
+                'auction_rsa_public_key': self.wallet_data.get('rsa_public_key', ''),
+                'auction_rsa_fingerprint': self.wallet_data.get('rsa_fingerprint', ''),
+                'auction_wallet_created_at': self.wallet_data.get('created_at', ''),
+            })
+        
+        return auction_data
