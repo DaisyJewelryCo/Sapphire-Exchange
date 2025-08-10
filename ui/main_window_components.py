@@ -629,15 +629,15 @@ class NavigationSidebar(QWidget):
                 "page_id": 1,
                 "icon": "Package"
             },
-            "dashboard_btn": {
-                "text": "📊  Dashboard",
-                "page_id": 2,
-                "icon": "LayoutDashboard"
-            },
             "activity_btn": {
                 "text": "📈  Activity",
-                "page_id": 3,
+                "page_id": 2,
                 "icon": "Activity"
+            },
+            "dashboard_btn": {
+                "text": "📊  Dashboard",
+                "page_id": 3,
+                "icon": "LayoutDashboard"
             },
             "dev_tools_btn": {
                 "text": "🔧  Dev Tools",

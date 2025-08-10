@@ -104,13 +104,13 @@ class SimplifiedMainWindow(QMainWindow):
         self.my_items_widget = AuctionListWidget(active_section="my-items")
         self.content_stack.addWidget(self.my_items_widget)
         
-        # Dashboard page (index 2)
-        self.dashboard_widget = self.create_dashboard_widget()
-        self.content_stack.addWidget(self.dashboard_widget)
-        
-        # Activity page (index 3)
+        # Activity page (index 2)
         self.activity_widget = self.create_activity_widget()
         self.content_stack.addWidget(self.activity_widget)
+        
+        # Dashboard page (index 3)
+        self.dashboard_widget = self.create_dashboard_widget()
+        self.content_stack.addWidget(self.dashboard_widget)
         
         # Dev Tools page (index 4)
         self.dev_tools_widget = self.create_dev_tools_widget()

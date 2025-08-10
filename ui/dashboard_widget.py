@@ -69,11 +69,12 @@ class BidSettingsWidget(QWidget):
         """)
         
         self.max_bid_value_label = QLabel("$5.00")
-        self.max_bid_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500; min-width: 40px;")
+        self.max_bid_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500;")
         self.max_bid_value_label.setAlignment(Qt.AlignRight)
+        self.max_bid_value_label.setFixedWidth(60)
         
-        max_bid_control_layout.addWidget(self.max_bid_slider)
-        max_bid_control_layout.addWidget(self.max_bid_value_label)
+        max_bid_control_layout.addWidget(self.max_bid_slider, 1)  # Give slider stretch factor
+        max_bid_control_layout.addWidget(self.max_bid_value_label, 0)  # Fixed size for label
         max_bid_layout.addLayout(max_bid_control_layout)
         
         layout.addLayout(max_bid_layout)
@@ -116,11 +117,12 @@ class BidSettingsWidget(QWidget):
         """)
         
         self.bid_increment_value_label = QLabel("$0.05")
-        self.bid_increment_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500; min-width: 40px;")
+        self.bid_increment_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500;")
         self.bid_increment_value_label.setAlignment(Qt.AlignRight)
+        self.bid_increment_value_label.setFixedWidth(60)
         
-        bid_increment_control_layout.addWidget(self.bid_increment_slider)
-        bid_increment_control_layout.addWidget(self.bid_increment_value_label)
+        bid_increment_control_layout.addWidget(self.bid_increment_slider, 1)  # Give slider stretch factor
+        bid_increment_control_layout.addWidget(self.bid_increment_value_label, 0)  # Fixed size for label
         bid_increment_layout.addLayout(bid_increment_control_layout)
         
         layout.addLayout(bid_increment_layout)
@@ -163,11 +165,12 @@ class BidSettingsWidget(QWidget):
         """)
         
         self.refresh_interval_value_label = QLabel("30s")
-        self.refresh_interval_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500; min-width: 40px;")
+        self.refresh_interval_value_label.setStyleSheet("color: #1e293b; font-size: 12px; font-weight: 500;")
         self.refresh_interval_value_label.setAlignment(Qt.AlignRight)
+        self.refresh_interval_value_label.setFixedWidth(60)
         
-        refresh_control_layout.addWidget(self.refresh_interval_slider)
-        refresh_control_layout.addWidget(self.refresh_interval_value_label)
+        refresh_control_layout.addWidget(self.refresh_interval_slider, 1)  # Give slider stretch factor
+        refresh_control_layout.addWidget(self.refresh_interval_value_label, 0)  # Fixed size for label
         refresh_layout.addLayout(refresh_control_layout)
         
         layout.addLayout(refresh_layout)

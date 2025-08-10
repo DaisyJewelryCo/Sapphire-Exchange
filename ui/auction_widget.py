@@ -662,38 +662,14 @@ class AuctionListWidget(QWidget):
         """Setup auction list UI."""
         layout = QVBoxLayout(self)
         
+        # Add header for My Items section
+        if self.active_section == "my-items":
+            header_widget = self.create_header_section()
+            layout.addWidget(header_widget)
+        
         # Category section (without header)
         category_section = self.create_category_section()
         layout.addWidget(category_section)
-        
-        # Action buttons row (only for my-items section)
-        if self.active_section == "my-items":
-            actions_layout = QHBoxLayout()
-            actions_layout.addStretch()
-            
-            # Add Item button (only for my-items section)
-            add_item_btn = QPushButton("➕ Add Item")
-            add_item_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3b82f6;
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2563eb;
-                }
-                QPushButton:pressed {
-                    background-color: #1d4ed8;
-                }
-            """)
-            add_item_btn.clicked.connect(self.show_add_item_dialog)
-            actions_layout.addWidget(add_item_btn)
-            
-            layout.addLayout(actions_layout)
         
         # Auction list
         self.scroll_area = QScrollArea()
@@ -702,8 +678,33 @@ class AuctionListWidget(QWidget):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
         self.scroll_widget = QWidget()
-        self.scroll_layout = QVBoxLayout(self.scroll_widget)
-        self.scroll_layout.addStretch()
+        
+        if self.active_section == "my-items":
+            # Create partitioned layout for my-items
+            self.scroll_layout = QVBoxLayout(self.scroll_widget)
+            self.scroll_layout.setSpacing(20)
+            self.scroll_layout.setContentsMargins(20, 20, 20, 20)
+            
+            # Create partition sections
+            self.partition_sections = {}
+            partition_configs = [
+                ("current_bids", "Current Bids", "🔥", "Items you are currently bidding on"),
+                ("current_auctions", "Current Auctions", "⏰", "Your active auction listings"),
+                ("won_items", "Won Items", "🏆", "Auctions you have won"),
+                ("sold_auctions", "Sold Auctions", "💰", "Your auctions that have been sold"),
+                ("expired_auctions", "Expired Auctions", "⏳", "Your expired auction listings")
+            ]
+            
+            for section_id, title, icon, description in partition_configs:
+                section_widget = self.create_partition_section(section_id, title, icon, description)
+                self.partition_sections[section_id] = section_widget
+                self.scroll_layout.addWidget(section_widget)
+            
+            self.scroll_layout.addStretch()
+        else:
+            # Standard layout for marketplace
+            self.scroll_layout = QVBoxLayout(self.scroll_widget)
+            self.scroll_layout.addStretch()
         
         self.scroll_area.setWidget(self.scroll_widget)
         layout.addWidget(self.scroll_area)
@@ -726,6 +727,36 @@ class AuctionListWidget(QWidget):
             self.refresh_timer.stop()
             self.refresh_timer.start(self.refresh_interval)
     
+    def create_header_section(self):
+        """Create the header section for My Items page."""
+        header_widget = QWidget()
+        header_widget.setStyleSheet("""
+            QWidget {
+                background-color: #ffffff;
+                border-bottom: 2px solid #e2e8f0;
+                padding: 0px;
+            }
+        """)
+        
+        header_layout = QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(20, 20, 20, 20)
+        header_layout.setSpacing(0)
+        
+        # Main title
+        title_label = QLabel("My Items")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 28px;
+                font-weight: 700;
+                color: #1e293b;
+                margin: 0px;
+                padding: 0px;
+            }
+        """)
+        header_layout.addWidget(title_label)
+        
+        return header_widget
+    
     def create_category_section(self):
         """Create the category filter section."""
         section = QWidget()
@@ -745,17 +776,26 @@ class AuctionListWidget(QWidget):
         categories_layout = QHBoxLayout()
         categories_layout.setSpacing(8)
         
-        # Define categories with icons
-        categories = [
-            ("All", "🏪", "all"),
-            ("Electronics", "📱", "electronics"),
-            ("Collectibles", "🎨", "collectibles"),
-            ("Fashion", "👕", "fashion"),
-            ("Home & Garden", "🏠", "home"),
-            ("Sports", "⚽", "sports"),
-            ("Books", "📚", "books"),
-            ("Other", "📦", "other")
-        ]
+        # Define categories with icons based on section
+        if self.active_section == "my-items":
+            categories = [
+                ("All", "📋", "all"),
+                ("Current Bids", "🔥", "current_bids"),
+                ("Current Auctions", "⏰", "current_auctions"),
+                ("Won Items", "🏆", "won_items"),
+                ("Expired Auctions", "⏳", "expired_auctions")
+            ]
+        else:
+            categories = [
+                ("All", "🏪", "all"),
+                ("Electronics", "📱", "electronics"),
+                ("Collectibles", "🎨", "collectibles"),
+                ("Fashion", "👕", "fashion"),
+                ("Home & Garden", "🏠", "home"),
+                ("Sports", "⚽", "sports"),
+                ("Books", "📚", "books"),
+                ("Other", "📦", "other")
+            ]
         
         self.category_buttons = {}
         self.selected_category = "all"
@@ -769,6 +809,33 @@ class AuctionListWidget(QWidget):
             
             self.category_buttons[category_id] = btn
             categories_layout.addWidget(btn)
+        
+        # Add Item button for my-items section (inline with categories)
+        if self.active_section == "my-items":
+            # Add some spacing before the button
+            categories_layout.addSpacing(20)
+            
+            # Add Item button
+            add_item_btn = QPushButton("➕ Add Item")
+            add_item_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3b82f6;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-weight: 600;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #2563eb;
+                }
+                QPushButton:pressed {
+                    background-color: #1d4ed8;
+                }
+            """)
+            add_item_btn.clicked.connect(self.show_add_item_dialog)
+            categories_layout.addWidget(add_item_btn)
         
         categories_layout.addStretch()
         layout.addLayout(categories_layout)
@@ -826,6 +893,83 @@ class AuctionListWidget(QWidget):
         self.selected_category = category_id
         self.apply_filters()
     
+    def create_partition_section(self, section_id, title, icon, description):
+        """Create a partition section for my-items view."""
+        section_widget = QWidget()
+        section_widget.setStyleSheet("""
+            QWidget {
+                background-color: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                margin: 0px;
+            }
+        """)
+        
+        section_layout = QVBoxLayout(section_widget)
+        section_layout.setContentsMargins(20, 16, 20, 16)
+        section_layout.setSpacing(12)
+        
+        # Section header
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(12)
+        
+        # Title with icon
+        title_label = QLabel(f"{icon} {title}")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 18px;
+                font-weight: 600;
+                color: #1e293b;
+                margin: 0px;
+                padding: 0px;
+            }
+        """)
+        header_layout.addWidget(title_label)
+        
+        # Description
+        desc_label = QLabel(description)
+        desc_label.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                color: #64748b;
+                margin: 0px;
+                padding: 0px;
+            }
+        """)
+        header_layout.addWidget(desc_label)
+        header_layout.addStretch()
+        
+        section_layout.addLayout(header_layout)
+        
+        # Items container
+        items_container = QWidget()
+        items_layout = QVBoxLayout(items_container)
+        items_layout.setContentsMargins(0, 0, 0, 0)
+        items_layout.setSpacing(8)
+        
+        # Store reference to items layout for adding items later
+        setattr(section_widget, 'items_layout', items_layout)
+        setattr(section_widget, 'section_id', section_id)
+        
+        # Empty state message
+        empty_label = QLabel(f"No {title.lower()} found")
+        empty_label.setStyleSheet("""
+            QLabel {
+                color: #94a3b8;
+                font-size: 14px;
+                font-style: italic;
+                text-align: center;
+                padding: 20px;
+            }
+        """)
+        empty_label.setAlignment(Qt.AlignCenter)
+        items_layout.addWidget(empty_label)
+        setattr(section_widget, 'empty_label', empty_label)
+        
+        section_layout.addWidget(items_container)
+        
+        return section_widget
+    
     def set_items(self, items: list):
         """Set the list of auction items."""
         self.items = items
@@ -833,32 +977,124 @@ class AuctionListWidget(QWidget):
     
     def apply_filters(self):
         """Apply current category filter."""
-        # Start with all items
-        filtered = self.items.copy()
+        if self.active_section == "my-items":
+            # For my-items, organize into partitions
+            self.organize_my_items()
+        else:
+            # Standard marketplace filtering
+            # Start with all items
+            filtered = self.items.copy()
+            
+            # Apply category filter
+            if hasattr(self, 'selected_category') and self.selected_category != "all":
+                filtered = [item for item in filtered 
+                           if self.item_matches_category(item, self.selected_category)]
+            
+            # Sort by auction end time (active auctions first, then by end time)
+            def sort_key(item):
+                if item.status == 'active':
+                    try:
+                        if item.auction_end:
+                            end_time = datetime.fromisoformat(item.auction_end.replace('Z', '+00:00'))
+                            return (0, end_time)  # Active items first, sorted by end time
+                        else:
+                            return (0, datetime.max.replace(tzinfo=timezone.utc))  # Active items without end time
+                    except:
+                        return (0, datetime.max.replace(tzinfo=timezone.utc))
+                else:
+                    return (1, datetime.max.replace(tzinfo=timezone.utc))  # Non-active items last
+            
+            filtered.sort(key=sort_key)
+            
+            self.filtered_items = filtered
+            self.update_display()
+    
+    def organize_my_items(self):
+        """Organize items into partitions for my-items view."""
+        if not hasattr(self, 'partition_sections'):
+            return
         
-        # Apply category filter
+        # Categorize items into partitions
+        partitioned_items = {
+            'current_bids': [],
+            'current_auctions': [],
+            'won_items': [],
+            'sold_auctions': [],
+            'expired_auctions': []
+        }
+        
+        # Apply category filter first if not "all"
+        items_to_organize = self.items.copy()
         if hasattr(self, 'selected_category') and self.selected_category != "all":
-            filtered = [item for item in filtered 
-                       if self.item_matches_category(item, self.selected_category)]
-        
-        # Sort by auction end time (active auctions first, then by end time)
-        def sort_key(item):
-            if item.status == 'active':
-                try:
-                    if item.auction_end:
-                        end_time = datetime.fromisoformat(item.auction_end.replace('Z', '+00:00'))
-                        return (0, end_time)  # Active items first, sorted by end time
+            if self.selected_category in partitioned_items:
+                # If a specific partition is selected, only show that partition
+                for section_id, section_widget in self.partition_sections.items():
+                    if section_id == self.selected_category:
+                        section_widget.setVisible(True)
                     else:
-                        return (0, datetime.max.replace(tzinfo=timezone.utc))  # Active items without end time
-                except:
-                    return (0, datetime.max.replace(tzinfo=timezone.utc))
+                        section_widget.setVisible(False)
             else:
-                return (1, datetime.max.replace(tzinfo=timezone.utc))  # Non-active items last
+                # Show all partitions
+                for section_widget in self.partition_sections.values():
+                    section_widget.setVisible(True)
+        else:
+            # Show all partitions
+            for section_widget in self.partition_sections.values():
+                section_widget.setVisible(True)
         
-        filtered.sort(key=sort_key)
+        # Categorize items based on their status and relationship to current user
+        # Note: get_user_items() already returns items belonging to the current user
+        for item in items_to_organize:
+            item_status = getattr(item, 'status', '').lower()
+            
+            # Check if user is currently bidding on this item (items they don't own but are bidding on)
+            if hasattr(item, 'user_is_bidding') and getattr(item, 'user_is_bidding', False):
+                partitioned_items['current_bids'].append(item)
+            # Check if user won this item (items they bid on and won)
+            elif hasattr(item, 'winner_id') and hasattr(item, 'current_user_id') and getattr(item, 'winner_id') == getattr(item, 'current_user_id', None):
+                partitioned_items['won_items'].append(item)
+            # Items owned by current user (from get_user_items)
+            elif item_status == 'active':
+                partitioned_items['current_auctions'].append(item)
+            # Check if this is a sold auction (completed with a winner)
+            elif item_status in ['completed', 'sold'] and hasattr(item, 'winner_id') and getattr(item, 'winner_id'):
+                partitioned_items['sold_auctions'].append(item)
+            else:
+                # Expired auctions (ended without a winner) or other statuses
+                partitioned_items['expired_auctions'].append(item)
         
-        self.filtered_items = filtered
-        self.update_display()
+        # Update each partition section
+        for section_id, items in partitioned_items.items():
+            if section_id in self.partition_sections:
+                self.update_partition_section(self.partition_sections[section_id], items)
+        
+        # Update status
+        total_items = sum(len(items) for items in partitioned_items.values())
+        self.status_label.setText(f"Showing {total_items} items across all categories")
+    
+    def update_partition_section(self, section_widget, items):
+        """Update a partition section with items."""
+        items_layout = section_widget.items_layout
+        empty_label = section_widget.empty_label
+        
+        # Clear existing items (except empty label)
+        for i in reversed(range(items_layout.count())):
+            child = items_layout.itemAt(i).widget()
+            if child and child != empty_label and isinstance(child, AuctionItemWidget):
+                child.setParent(None)
+        
+        if items:
+            # Hide empty label and add items
+            empty_label.setVisible(False)
+            
+            for item in items:
+                item_widget = AuctionItemWidget(item, active_section=self.active_section)
+                item_widget.item_selected.connect(self.item_selected.emit)
+                item_widget.bid_placed.connect(self.bid_placed.emit)
+                items_layout.insertWidget(items_layout.count() - 1, item_widget)  # Insert before empty label
+        else:
+            # Show empty label
+            empty_label.setVisible(True)
     
     def item_matches_category(self, item, category):
         """Check if an item matches the selected category."""
@@ -890,6 +1126,10 @@ class AuctionListWidget(QWidget):
     
     def update_display(self):
         """Update the display with filtered items using enhanced tiles."""
+        # Skip grid layout for my-items as it uses partitioned sections
+        if self.active_section == "my-items":
+            return
+        
         # Clear existing widgets
         for i in reversed(range(self.scroll_layout.count())):
             child = self.scroll_layout.itemAt(i).widget()
