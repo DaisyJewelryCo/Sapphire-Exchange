@@ -91,7 +91,6 @@ class SimplifiedMainWindow(QMainWindow):
         # Create sidebar
         self.sidebar = NavigationSidebar()
         self.sidebar.nav_button_group.buttonClicked.connect(self.on_nav_button_clicked)
-        self.sidebar.logout_btn.clicked.connect(self.logout)
         main_layout.addWidget(self.sidebar)
         
         # Create main content area
@@ -122,6 +121,9 @@ class SimplifiedMainWindow(QMainWindow):
         # Connect bid settings refresh interval to marketplace widget
         bid_settings_widget = self.dashboard_widget.get_bid_settings_widget()
         bid_settings_widget.refresh_interval_changed.connect(self.marketplace_widget.set_refresh_interval)
+        
+        # Connect dashboard logout button
+        self.dashboard_widget.logout_btn.clicked.connect(self.logout)
         
         # Initially hide sidebar (shown after login)
         self.sidebar.setVisible(False)

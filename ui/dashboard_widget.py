@@ -991,11 +991,46 @@ class DashboardWidget(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
         
-        # Title only (no logo)
+        # Header with title and logout button
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(0)
+        
+        # Title
         title = QLabel("Dashboard")
         title.setFont(QFont("Arial", 20, QFont.Bold))
         title.setStyleSheet("color: #1e293b; margin-bottom: 16px;")
-        layout.addWidget(title)
+        header_layout.addWidget(title)
+        
+        # Spacer to push logout button to the right
+        header_layout.addStretch()
+        
+        # Logout button
+        self.logout_btn = QPushButton("🚪  Logout")
+        self.logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ef4444;
+                border: 1px solid #ef4444;
+                padding: 8px 16px;
+                text-align: center;
+                font-size: 14px;
+                font-weight: 500;
+                border-radius: 6px;
+                margin-bottom: 16px;
+            }
+            QPushButton:hover {
+                background-color: #fef2f2;
+                color: #dc2626;
+                border-color: #dc2626;
+            }
+            QPushButton:pressed {
+                background-color: #fee2e2;
+            }
+        """)
+        header_layout.addWidget(self.logout_btn)
+        
+        layout.addLayout(header_layout)
         
         # Main content layout (45% left, 55% right)
         content_layout = QHBoxLayout()

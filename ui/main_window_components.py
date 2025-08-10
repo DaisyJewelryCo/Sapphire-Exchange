@@ -656,32 +656,6 @@ class NavigationSidebar(QWidget):
         
         # Add spacer
         self.sidebar_layout.addStretch(1)
-        
-        # User actions section
-        user_actions_title = QLabel("Account")
-        user_actions_title.setStyleSheet("font-size: 12px; font-weight: 600; color: #374151; padding: 0 16px 8px 16px;")
-        self.sidebar_layout.addWidget(user_actions_title)
-        
-        # Logout button
-        self.logout_btn = QPushButton("🚪  Logout")
-        self.logout_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ef4444;
-                border: none;
-                padding: 12px 16px;
-                text-align: left;
-                font-size: 14px;
-                font-weight: 500;
-                border-radius: 6px;
-                margin: 2px 8px;
-            }
-            QPushButton:hover {
-                background-color: #fef2f2;
-                color: #dc2626;
-            }
-        """)
-        self.sidebar_layout.addWidget(self.logout_btn)
     
     def set_active_page(self, page_id):
         """Set the active page in navigation."""
