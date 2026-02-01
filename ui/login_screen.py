@@ -3,7 +3,6 @@ Login Screen for Sapphire Exchange.
 Beautiful login screen with seed phrase input and new account creation.
 """
 
-import secrets
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QMessageBox, QFrame, QDialog
@@ -15,6 +14,7 @@ from services.application_service import app_service
 from utils.async_worker import AsyncWorker
 from ui.dialogs import SeedPhraseDialog
 from ui.logo_component import LogoComponent
+from blockchain.unified_wallet_generator import UnifiedWalletGenerator
 
 
 class LoginScreen(QWidget):
@@ -25,13 +25,14 @@ class LoginScreen(QWidget):
         self.parent_window = parent
         self.is_new_user = False
         self.current_user = None
+        self.wallet_generator = UnifiedWalletGenerator()
         self.setup_ui()
     
     def setup_ui(self):
         """Create the beautiful login screen UI."""
         layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)  # Reduced margins to prevent cutoff
-        layout.setSpacing(20)  # Reduced spacing to fit better
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
         
         # Add logo at the top left
         logo_container = QWidget()
@@ -195,44 +196,25 @@ class LoginScreen(QWidget):
         self.seed_input.setFixedHeight(new_height)
     
     def handle_new_account(self):
-        """Handle new account creation with seed phrase generation."""
+        """Handle new account creation with wallet generation."""
         try:
-            # Generate a BIP-39 compatible seed phrase
-            wordlist = [
-                'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse',
-                'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'across', 'act', 'action',
-                'actor', 'actress', 'actual', 'adapt', 'add', 'addict', 'address', 'adjust', 'admit', 'adult',
-                'advance', 'advice', 'aerobic', 'affair', 'afford', 'afraid', 'again', 'agent', 'agree', 'ahead',
-                'aim', 'air', 'airport', 'aisle', 'alarm', 'album', 'alcohol', 'alert', 'alien', 'all',
-                'alley', 'allow', 'almost', 'alone', 'alpha', 'already', 'also', 'alter', 'always', 'amateur',
-                'amazing', 'among', 'amount', 'amused', 'analyst', 'anchor', 'ancient', 'anger', 'angle', 'angry',
-                'animal', 'ankle', 'announce', 'annual', 'another', 'answer', 'antenna', 'antique', 'anxiety', 'any',
-                'apart', 'apology', 'appear', 'apple', 'approve', 'april', 'arch', 'arctic', 'area', 'arena',
-                'argue', 'arm', 'armed', 'armor', 'army', 'around', 'arrange', 'arrest', 'arrive', 'arrow',
-                'art', 'artefact', 'artist', 'artwork', 'ask', 'aspect', 'assault', 'asset', 'assist', 'assume',
-                'asthma', 'athlete', 'atom', 'attack', 'attend', 'attitude', 'attract', 'auction', 'audit', 'august',
-                'aunt', 'author', 'auto', 'autumn', 'average', 'avocado', 'avoid', 'awake', 'aware', 'away',
-                'awesome', 'awful', 'awkward', 'axis', 'baby', 'bachelor', 'bacon', 'badge', 'bag', 'balance'
-            ]
-            
-            # Generate 15 random words
-            seed_words = [secrets.choice(wordlist) for _ in range(15)]
-            seed_phrase = ' '.join(seed_words)
+            # Generate a BIP-39 mnemonic using UnifiedWalletGenerator
+            mnemonic = self.wallet_generator.generate_mnemonic()
             
             # Show the beautiful seed phrase dialog
-            dialog = SeedPhraseDialog(seed_phrase, self.parent_window)
+            dialog = SeedPhraseDialog(mnemonic, self.parent_window)
             result = dialog.exec_()
             
             if result == QDialog.Accepted:
                 # Set the seed phrase in the input field
-                self.seed_input.setPlainText(seed_phrase)
+                self.seed_input.setPlainText(mnemonic)
                 # Adjust the text field height to fit the content properly
                 self.adjust_seed_input_height()
                 self.is_new_user = True
                 # Update form title to reflect new account creation
                 self.form_title.setText("New Account Created")
                 self.form_title.setStyleSheet("color: #28a745;")  # Green color for success
-            
+                
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate seed phrase: {str(e)}")
     
@@ -270,8 +252,23 @@ class LoginScreen(QWidget):
             QMessageBox.critical(self, "Login Error", f"Failed to login: {str(e)}")
     
     async def login_async(self, seed_phrase):
-        """Async login process."""
+        """Async login process with wallet generation."""
         try:
+            # Validate mnemonic
+            is_valid, message = self.wallet_generator.validate_mnemonic(seed_phrase)
+            if not is_valid:
+                return False, f"Invalid mnemonic phrase: {message}", None
+            
+            # Generate wallets for all supported blockchains
+            success, wallet_data = self.wallet_generator.generate_from_mnemonic(
+                seed_phrase,
+                passphrase=""
+            )
+            
+            if not success:
+                return False, "Failed to generate wallets from mnemonic", None
+            
+            # Proceed with user registration or login
             if self.is_new_user:
                 # Register new user with seed phrase
                 success, message, user = await app_service.register_user_with_seed(seed_phrase)
@@ -279,10 +276,16 @@ class LoginScreen(QWidget):
                 # Login existing user with seed phrase
                 success, message, user = await app_service.login_user_with_seed(seed_phrase)
             
+            # Attach wallet data to user
+            if success and user:
+                if isinstance(user, dict):
+                    user['wallets'] = wallet_data
+                    user['mnemonic'] = seed_phrase
+            
             return success, message, user
             
         except Exception as e:
-            return False, str(e), None
+            return False, f"Login error: {str(e)}", None
     
     def on_login_complete(self, result):
         """Handle completion of the login process."""
@@ -295,6 +298,26 @@ class LoginScreen(QWidget):
             
             if success:
                 self.current_user = user
+                
+                # Show wallet information if available
+                if isinstance(user, dict) and 'wallets' in user:
+                    wallets = user['wallets']
+                    wallet_summary = "Your wallets have been synchronized:\n\n"
+                    
+                    if 'solana' in wallets:
+                        solana_addr = wallets['solana'].get('address', 'N/A')
+                        wallet_summary += f"✓ Solana: {solana_addr[:30]}...\n"
+                    
+                    if 'nano' in wallets:
+                        nano_addr = wallets['nano'].get('address', 'N/A')
+                        wallet_summary += f"✓ Nano: {nano_addr[:30]}...\n"
+                    
+                    if 'arweave' in wallets:
+                        arweave_addr = wallets['arweave'].get('address', 'N/A')
+                        wallet_summary += f"✓ Arweave: {arweave_addr[:30]}...\n"
+                    
+                    QMessageBox.information(self, "Login Successful", wallet_summary)
+                
                 # Notify parent window that login was successful
                 if self.parent_window:
                     self.parent_window.on_login_success(user)
@@ -311,3 +334,18 @@ class LoginScreen(QWidget):
         self.login_btn.setEnabled(True)
         self.login_btn.setText("Continue")
         QMessageBox.critical(self, "Login Error", f"An error occurred during login: {error_message}")
+    
+    def set_app_ready(self, ready):
+        """Set the app ready state.
+        
+        Args:
+            ready (bool): Whether the app is ready to use.
+        """
+        # This method is called by the main window when the app initialization is complete
+        # Update UI state based on app readiness
+        self.login_btn.setEnabled(ready)
+        if not ready:
+            self.login_btn.setText("Initializing...")
+        else:
+            self.login_btn.setText("Continue")
+    

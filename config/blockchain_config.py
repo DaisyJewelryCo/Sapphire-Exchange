@@ -54,8 +54,39 @@ class ArweaveConfig:
 
 
 @dataclass
+class UsdcConfig:
+    """USDC token configuration. (Testing database implementation)"""
+    network_type: str = "stablecoin token"
+    purpose: str = "Primary currency for UI and transactions"
+    
+    # Database settings (testing implementation)
+    database_settings: Dict[str, Any] = None
+    
+    # Supported chains
+    supported_chains: list = None
+    default_chain: str = "ethereum"
+    
+    # Token specifications
+    decimals: int = 6
+    symbol: str = "USDC"
+    
+    def __post_init__(self):
+        if self.database_settings is None:
+            self.database_settings = {
+                "host": "localhost",
+                "port": 5432,
+                "database": "saphire",
+                "user": "postgres",
+                "password": ""
+            }
+        if self.supported_chains is None:
+            self.supported_chains = ["ethereum", "solana", "stellar"]
+
+# Foundation code for real DOGE blockchain (commented out)
+"""
+@dataclass
 class DogecoinConfig:
-    """Dogecoin blockchain configuration."""
+    # Dogecoin blockchain configuration.
     network_type: str = "cryptocurrency"
     purpose: str = "Primary currency for UI and transactions"
     
@@ -73,6 +104,7 @@ class DogecoinConfig:
     # Security settings
     export_method: str = "Secure download only"
     redisplay_policy: str = "Never re-display seed after initial generation"
+"""
 
 
 class BlockchainConfig:
@@ -94,6 +126,20 @@ class BlockchainConfig:
             gateway_url=os.getenv('ARWEAVE_GATEWAY_URL', 'https://arweave.net')
         )
         
+        # USDC configuration (Testing database implementation)
+        self.usdc = UsdcConfig(
+            database_settings={
+                "host": os.getenv('USDC_DB_HOST', 'localhost'),
+                "port": int(os.getenv('USDC_DB_PORT', '5432')),
+                "database": os.getenv('USDC_DB_NAME', 'saphire'),
+                "user": os.getenv('USDC_DB_USER', 'postgres'),
+                "password": os.getenv('USDC_DB_PASSWORD', '')
+            },
+            default_chain=os.getenv('USDC_DEFAULT_CHAIN', 'ethereum')
+        )
+        
+        # Foundation code for real DOGE blockchain (commented out)
+        """
         # Dogecoin configuration
         dogecoin_network = os.getenv('DOGECOIN_NETWORK', 'testnet')
         dogecoin_rpc_port = os.getenv('DOGECOIN_RPC_PORT')
@@ -107,15 +153,17 @@ class BlockchainConfig:
             rpc_user=os.getenv('DOGECOIN_RPC_USER', 'dogecoin'),
             rpc_password=os.getenv('DOGECOIN_RPC_PASSWORD', 'password')
         )
+        """
         
-        # Environment-specific settings - default to mock mode for development
-        self.mock_nano = os.getenv('MOCK_NANO', 'true').lower() == 'true'
-        self.mock_arweave = os.getenv('MOCK_ARWEAVE', 'true').lower() == 'true'
-        self.mock_dogecoin = os.getenv('MOCK_DOGECOIN', 'true').lower() == 'true'
+        # Environment-specific settings - use database for testing
+        self.mock_nano = os.getenv('MOCK_NANO', 'false').lower() == 'true'
+        self.mock_arweave = os.getenv('MOCK_ARWEAVE', 'false').lower() == 'true'
+        self.mock_usdc = os.getenv('MOCK_USDC', 'false').lower() == 'true'
+        # self.mock_dogecoin = os.getenv('MOCK_DOGECOIN', 'true').lower() == 'true'  # Foundation code for real DOGE blockchain
         
         # Wallet file paths
         self.arweave_wallet_file = os.getenv('ARWEAVE_WALLET_FILE', 'wallet.json')
-        self.dogecoin_wallet_file = os.getenv('DOGECOIN_WALLET_FILE', 'dogecoin_wallet.dat')
+        # self.dogecoin_wallet_file = os.getenv('DOGECOIN_WALLET_FILE', 'dogecoin_wallet.dat')  # Foundation code for real DOGE blockchain
     
     def get_nano_config(self) -> Dict[str, Any]:
         """Get Nano configuration dictionary."""
@@ -159,8 +207,31 @@ class BlockchainConfig:
             "mock_mode": self.mock_arweave
         }
     
+    def get_usdc_config(self) -> Dict[str, Any]:
+        """Get USDC configuration dictionary. (Testing database implementation)"""
+        return {
+            "network_type": self.usdc.network_type,
+            "purpose": self.usdc.purpose,
+            "database_settings": {
+                "host": self.usdc.database_settings["host"],
+                "port": self.usdc.database_settings["port"],
+                "database": self.usdc.database_settings["database"],
+                "user": self.usdc.database_settings["user"],
+                "password": "***"  # Hide password in config output
+            },
+            "token_specs": {
+                "supported_chains": self.usdc.supported_chains,
+                "default_chain": self.usdc.default_chain,
+                "decimals": self.usdc.decimals,
+                "symbol": self.usdc.symbol
+            },
+            "mock_mode": self.mock_usdc
+        }
+
+    # Foundation code for real DOGE blockchain (commented out)
+    """
     def get_dogecoin_config(self) -> Dict[str, Any]:
-        """Get Dogecoin configuration dictionary."""
+        # Get Dogecoin configuration dictionary.
         return {
             "network_type": self.dogecoin.network_type,
             "purpose": self.dogecoin.purpose,
@@ -182,6 +253,7 @@ class BlockchainConfig:
             "wallet_file": self.dogecoin_wallet_file,
             "mock_mode": self.mock_dogecoin
         }
+    """
     
     def get_conversion_formulas(self) -> Dict[str, Dict[str, Any]]:
         """Get currency conversion formulas from robot_info.json."""
@@ -237,7 +309,8 @@ class BlockchainConfig:
         return {
             "nano": self.get_nano_config(),
             "arweave": self.get_arweave_config(),
-            "dogecoin": self.get_dogecoin_config(),
+            "usdc": self.get_usdc_config(),  # Testing database implementation
+            # "dogecoin": self.get_dogecoin_config(),  # Foundation code for real DOGE blockchain
             "conversion_formulas": self.get_conversion_formulas(),
             "api_endpoints": self.get_api_endpoints()
         }
@@ -255,10 +328,18 @@ class BlockchainConfig:
             assert self.arweave.key_length_bits > 0
             assert self.arweave.max_block_size_bytes > 0
             
+            # Validate USDC configuration (Testing database implementation)
+            assert self.usdc.default_chain in self.usdc.supported_chains
+            assert self.usdc.decimals == 6
+            assert len(self.usdc.symbol) > 0
+            
+            # Foundation code for real DOGE blockchain validation (commented out)
+            """
             # Validate Dogecoin configuration
             assert self.dogecoin.network in ['mainnet', 'testnet']
             assert self.dogecoin.rpc_port > 0
             assert len(self.dogecoin.rpc_user) > 0
+            """
             
             return True
         except (AssertionError, ValueError):

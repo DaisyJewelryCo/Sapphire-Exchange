@@ -4,10 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="1.2">
-      <change beforePath="$PROJECT_DIR$/services/application_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/application_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/dialogs/seed_phrase_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/dialogs/seed_phrase_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/simplified_main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/simplified_main_window.py" afterDir="false" />
+    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="1.41">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Ideas.md" beforeDir="false" afterPath="$PROJECT_DIR$/Ideas.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,43 +59,45 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python tests.Python tests in test_dev_tools.py.executor": "Run",
-    "Python tests.Python tests in test_simple_startup.py.executor": "Run",
-    "Python.app.executor": "Run",
-    "Python.application_service.executor": "Run",
-    "Python.decentralized_client.executor": "Run",
-    "Python.main_window.executor": "Run",
-    "Python.main_window_components.executor": "Run",
-    "Python.main_window_unified.executor": "Run",
-    "Python.mock_server.executor": "Run",
-    "Python.nano_utils.executor": "Run",
-    "Python.seed_phrase_dialog.executor": "Run",
-    "Python.simplified_main_window.executor": "Run",
-    "Python.wallet_service.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.zencoder-patch-add-chat-message-raw-content": "true",
-    "RunOnceActivity.zencoder-patch-chat-storage-migration": "true",
-    "RunOnceActivity.zencoder-patch-generate-chat-message-id": "true",
-    "RunOnceActivity.zencoder-patch-migrate-custom-instruction": "true",
-    "RunOnceActivity.zencoder-patch-migrate-repo-info-to-rules": "true",
-    "git-widget-placeholder": "main",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "ai.zencoder.plugin.settings",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python tests.Python tests in test_dev_tools.py.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.Python tests in test_simple_startup.py.executor&quot;: &quot;Run&quot;,
+    &quot;Python.activity_widget.executor&quot;: &quot;Run&quot;,
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;Python.application_service.executor&quot;: &quot;Run&quot;,
+    &quot;Python.auction_widget.executor&quot;: &quot;Run&quot;,
+    &quot;Python.decentralized_client.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main_window.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main_window_components.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main_window_unified.executor&quot;: &quot;Run&quot;,
+    &quot;Python.mock_server.executor&quot;: &quot;Run&quot;,
+    &quot;Python.nano_utils.executor&quot;: &quot;Run&quot;,
+    &quot;Python.seed_phrase_dialog.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simplified_main_window.executor&quot;: &quot;Run&quot;,
+    &quot;Python.wallet_service.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.zencoder-patch-add-chat-message-raw-content&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.zencoder-patch-chat-storage-migration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.zencoder-patch-generate-chat-message-id&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.zencoder-patch-migrate-custom-instruction&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.zencoder-patch-migrate-repo-info-to-rules&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;ai.zencoder.plugin.settings&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$" />
@@ -121,6 +122,9 @@
       <workItem from="1754361280919" duration="24163000" />
       <workItem from="1754638217590" duration="5235000" />
       <workItem from="1754687502561" duration="4625000" />
+      <workItem from="1754778063910" duration="16941000" />
+      <workItem from="1754942013065" duration="27000" />
+      <workItem from="1755062809645" duration="37000" />
     </task>
     <task id="LOCAL-00001" summary="0.0">
       <option name="closed" value="true" />
@@ -266,7 +270,63 @@
       <option name="project" value="LOCAL" />
       <updated>1754720092592</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="1.3">
+      <option name="closed" value="true" />
+      <created>1754781141429</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1754781141429</updated>
+    </task>
+    <task id="LOCAL-00020" summary="1.35">
+      <option name="closed" value="true" />
+      <created>1754784098374</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1754784098374</updated>
+    </task>
+    <task id="LOCAL-00021" summary="1.4">
+      <option name="closed" value="true" />
+      <created>1754805771458</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1754805771458</updated>
+    </task>
+    <task id="LOCAL-00022" summary="1.4">
+      <option name="closed" value="true" />
+      <created>1754806257886</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1754806257886</updated>
+    </task>
+    <task id="LOCAL-00023" summary="1.4">
+      <option name="closed" value="true" />
+      <created>1754865888835</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1754865888835</updated>
+    </task>
+    <task id="LOCAL-00024" summary="1.41">
+      <option name="closed" value="true" />
+      <created>1754867577694</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1754867577694</updated>
+    </task>
+    <task id="LOCAL-00025" summary="1.41">
+      <option name="closed" value="true" />
+      <created>1754942035165</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1754942035165</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -299,7 +359,11 @@
     <MESSAGE value="1.031" />
     <MESSAGE value="1.1 Monolith" />
     <MESSAGE value="1.2" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.2" />
+    <MESSAGE value="1.3" />
+    <MESSAGE value="1.35" />
+    <MESSAGE value="1.4" />
+    <MESSAGE value="1.41" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.41" />
   </component>
   <component name="ai.zencoder.plugin.mcp">
     <option name="internalToolsState" value="{&quot;fetch_webpage&quot;:true,&quot;web_search&quot;:true,&quot;ExecuteShellCommand&quot;:true,&quot;file_search&quot;:true,&quot;str_replace_editor&quot;:true,&quot;list_resources&quot;:true,&quot;FileDiagnosticsTool&quot;:true,&quot;fulltext_search&quot;:true,&quot;read_resource&quot;:true,&quot;RequirementsTool&quot;:true}" />
@@ -862,22 +926,23 @@
     </option>
   </component>
   <component name="ai.zencoder.plugin.rag.RepoInfoWarningState">
-    <option name="lastCheckTime" value="1754752212346" />
+    <option name="lastCheckTime" value="1754865875594" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/Sapphire_Exchange$simplified_main_window.coverage" NAME="simplified_main_window Coverage Results" MODIFIED="1754718381099" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
-    <SUITE FILE_PATH="coverage/Sapphire_Exchange$app.coverage" NAME="app Coverage Results" MODIFIED="1754777972120" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$simplified_main_window.coverage" NAME="simplified_main_window Coverage Results" MODIFIED="1754806841778" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$app.coverage" NAME="app Coverage Results" MODIFIED="1754877752941" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$application_service.coverage" NAME="application_service Coverage Results" MODIFIED="1754718963452" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/services" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$wallet_service.coverage" NAME="wallet_service Coverage Results" MODIFIED="1754719735335" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/services" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$auction_service.coverage" NAME="auction_service Coverage Results" MODIFIED="1754696719440" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/services" />
-    <SUITE FILE_PATH="coverage/Sapphire_Exchange$main_window_components.coverage" NAME="main_window_components Coverage Results" MODIFIED="1754719835940" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$main_window_components.coverage" NAME="main_window_components Coverage Results" MODIFIED="1754778669971" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$main_window.coverage" NAME="main_window Coverage Results" MODIFIED="1754716605395" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/Sapphire_Exchange$auction_widget.coverage" NAME="auction_widget Coverage Results" MODIFIED="1754695141820" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$auction_widget.coverage" NAME="auction_widget Coverage Results" MODIFIED="1754867397684" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$decentralized_client.coverage" NAME="decentralized_client Coverage Results" MODIFIED="1754264096425" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$nano_utils.coverage" NAME="nano_utils Coverage Results" MODIFIED="1754199840920" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$mock_server.coverage" NAME="mock_server Coverage Results" MODIFIED="1754263857775" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$seed_phrase_dialog.coverage" NAME="seed_phrase_dialog Coverage Results" MODIFIED="1754721797044" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui/dialogs" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$main_window_unified.coverage" NAME="main_window_unified Coverage Results" MODIFIED="1754413578093" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Sapphire_Exchange$activity_widget.coverage" NAME="activity_widget Coverage Results" MODIFIED="1754782378302" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/ui" />
     <SUITE FILE_PATH="coverage/Sapphire_Exchange$.coverage" NAME=" Coverage Results" MODIFIED="1754690544637" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

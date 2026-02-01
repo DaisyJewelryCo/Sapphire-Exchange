@@ -1,0 +1,295 @@
+{
+    "checksum": "3fd3d814b01f10ba4cca2f54a7e7ed36320a7c93309f41647e81e242c2e92912",
+    "data": {
+    "id": "985c288c-4c91-45f8-b138-d1be1fb1dfea",
+    "createdAt": 1754778114772,
+    "updatedAt": 1754778118060,
+    "title": "Repository Overview Generation",
+    "messages": [
+        {
+            "id": "44dbc158-ab0c-4a9b-9d04-5f5f6c285035",
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Generate repo.md file with information from my repo"
+                }
+            ],
+            "context": {
+                "currentFile": {
+                    "path": "app.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/app.py",
+                    "sources": [
+                        "opened_tab"
+                    ],
+                    "content": "\"\"\"\nSapphire Exchange - Main Application Entry Point\n\nThis module launches the PyQt5-based desktop application for Sapphire Exchange.\n\"\"\"\nimport sys\nimport asyncio\nfrom PyQt5.QtWidgets import QApplication, QMessageBox\nfrom PyQt5.QtCore import Qt\n\n# Enable asyncio event loop for PyQt5\nfrom qasync import QEventLoop\n\nfrom ui.simplified_main_window import SimplifiedMainWindow\n\ndid_shutdown = False\n\ndef handle_exception(exc_type, exc_value, exc_traceback):\n    \"\"\"Handle uncaught exceptions.\"\"\"\n    sys.__excepthook__(exc_type, exc_value, exc_traceback)\n    QMessageBox.critical(\n        None,\n        \"Unhandled Exception\",\n        f\"An unhandled exception occurred:\\n\\n{exc_value}\",\n        QMessageBox.Ok\n    )\n\ndef main():\n    \"\"\"Main entry point for the application.\"\"\"\n    # Create the Qt Application\n    app = QApplication(sys.argv)\n    app.setQuitOnLastWindowClosed(True)\n    app.setStyle('Fusion')  # Use Fusion style for a modern look\n    \n    # Set up exception handling\n    sys.excepthook = handle_exception\n    \n    # Set up asyncio event loop\n    loop = QEventLoop(app)\n    asyncio.set_event_loop(loop)\n    \n    # Create and show the main window\n    try:\n        window = SimplifiedMainWindow()\n        window.show()\n    except Exception as e:\n        QMessageBox.critical(\n            None,\n            \"Fatal Error\",\n            f\"Failed to create main window: {str(e)}\"\n        )\n        return 1\n    \n    # Connect the aboutToQuit signal to clean up resources\n    def handle_quit():\n        global did_shutdown\n        if did_shutdown:\n            return\n        did_shutdown = True\n        import threading\n        print(\"[Shutdown] Active threads:\", threading.enumerate())\n        try:\n            # Cancel all running tasks\n            for task in asyncio.all_tasks(loop):\n                if not task.done() and task != asyncio.current_task():\n                    task.cancel()\n            # Give tasks a chance to cancel gracefully, but don't hang forever\n            try:\n                loop.run_until_complete(asyncio.wait_for(asyncio.sleep(0.1), timeout=2.0))\n            except Exception as e:\n                print(f\"Shutdown wait timeout or error: {e}\")\n            # Stop the event loop\n            if loop.is_running():\n                loop.stop()\n            # Force Qt event loop to quit\n            from PyQt5.QtWidgets import QApplication\n            QApplication.quit()\n        except Exception as e:\n            print(f\"Error during shutdown: {e}\")\n        \n    app.aboutToQuit.connect(handle_quit)\n    \n    # Run the application\n    try:\n        return_code = app.exec_()\n        return return_code\n    except KeyboardInterrupt:\n        print(\"Application interrupted by user\")\n        return 0\n    except Exception as e:\n        print(f\"Application error: {e}\")\n        return 1\n    finally:\n        # Ensure the loop is properly closed\n        try:\n            loop.close()\n        except:\n            pass\n    \nif __name__ == \"__main__\":\n    # Don't use asyncio.run() with qasync\n    sys.exit(main())\n",
+                    "language": "python"
+                },
+                "codebaseEnabled": false
+            },
+            "createdAt": 1754778114954,
+            "isInternal": false,
+            "rawContent": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Generate repo.md file with information from my repo"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "autoAppliedRules": [
+                {
+                    "name": "Repository Information Overview",
+                    "description": "Repository Information Overview",
+                    "uri": "zen-rules://repo/repo",
+                    "mimeType": "text/markdown",
+                    "content": "\n\n# Sapphire Exchange Information\n\n## Summary\nSapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n\n## Structure\n- **app.py**: Main application entry point\n- **main_window.py**: PyQt5-based UI implementation\n- **models.py**: Data models for users, items, and auctions\n- **database.py**: Database module using Arweave for storage\n- **arweave_utils.py**: Handles interactions with Arweave blockchain\n- **nano_utils.py**: Manages Nano wallet and transaction functionality\n- **decentralized_client.py**: Client for interacting with blockchain networks\n- **mock_servers.py**: Mock implementations for testing without real blockchain\n- **test_marketplace.py**: Test script for verifying marketplace functionality\n\n## Language & Runtime\n**Language**: Python\n**Version**: 3.7+\n**Build System**: pip (Python package manager)\n**Package Manager**: pip\n\n## Dependencies\n**Main Dependencies**:\n- PyArweave==0.6.0: Arweave blockchain integration\n- python-dotenv>=0.19.2: Environment variable management\n- requests>=2.28.0: HTTP requests\n- base58>=2.1.1: Base58 encoding/decoding\n- cryptography>=3.4.7: Cryptographic operations\n- ed25519-blake2b==1.4.1: Digital signatures\n- pynacl>=1.4.0: Cryptographic library\n- pycryptodome>=3.20.0: Cryptographic primitives\n- PyQt5>=5.15.9: GUI framework\n- qrcode>=7.4.2: QR code generation\n- Pillow>=9.5.0: Image processing\n\n**Development Dependencies**:\n- Not explicitly specified in requirements.txt\n\n## Build & Installation\n```bash\n# Create and activate virtual environment\npython3 -m venv venv\nsource venv/bin/activate  # On Windows: venv\\Scripts\\activate\n\n# Install dependencies\npip install -r requirements.txt\n\n# Set up environment variables\n# Create .env file with:\n# ARWEAVE_GATEWAY_URL=https://arweave.net\n# ARWEAVE_WALLET_FILE=wallet.json\n# NANO_NODE_URL=https://mynano.ninja/api\n# NANO_REPRESENTATIVE=nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3\n```\n\n## Usage\n```bash\n# Run the application\npython app.py\n```\n\n## Testing\n**Framework**: Custom testing with mock implementations\n**Test Location**: test_marketplace.py\n**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n**Run Command**:\n```bash\npython test_marketplace.py\n```\n\n## Features\n- **Decentralized Storage**: Item data stored on Arweave blockchain\n- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing\n- **Secure Wallet Management**: Built-in wallet generation and management\n- **Auction System**: Support for timed auctions with automatic finalization\n- **Mock Mode**: Testing environment that simulates blockchain operations\n- **PyQt5 GUI**: Desktop application interface for user interaction",
+                    "alwaysApply": true
+                }
+            ]
+        },
+        {
+            "id": "52e257ba-54f7-4227-968e-74713e0e1cb9",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "I'll help you generate a comprehensive repository information file. Let me explore your repository structure first to gather all the necessary information."
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_01Lv5QfkTJDdUpuAoGhBGe6V",
+                    "statusText": "Viewed folder",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": ".",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Let me check the README.md file to understand the project better:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_014omKMJ5wb2HDoe1maSmgUm",
+                    "statusText": "Viewed file",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": "README.md",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/README.md"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Now, let me check the requirements.txt file to understand the dependencies:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_012TQXZnHoPWUaLbKsHyK6hz",
+                    "statusText": "Viewed file",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": "requirements.txt",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/requirements.txt"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Let me check the main application file to understand the entry point:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_011dn9aSarU3Ksd3Cxu7PDwe",
+                    "statusText": "Viewed file",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": "app.py",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/app.py"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Let me check for any testing files to understand the testing framework:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_018j33HWqS4sZS16ZRuYGHqq",
+                    "title": "File search",
+                    "statusText": "Done",
+                    "status": "SUCCESS",
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Let me check one of the test files to understand the testing approach:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_01Tx5Ns73ZS7CZhxweuHpXRS",
+                    "statusText": "Viewed file",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": "test_unified_system.py",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/test_unified_system.py"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Let me check for any Docker-related files:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_01KZxQgKhkg3DA19jscMSs5T",
+                    "title": "File search",
+                    "statusText": "Done",
+                    "status": "SUCCESS",
+                    "isHidden": false
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_0195Q3A7KFPrDpNGCni4JKpD",
+                    "title": "File search",
+                    "statusText": "Done",
+                    "status": "SUCCESS",
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Now I'll create the repository information file:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_018spK22ypFRinrXBydeaUQb",
+                    "title": "",
+                    "statusText": "File already exists",
+                    "status": "WARNING",
+                    "context": {
+                        "files": [
+                            {
+                                "path": ".zencoder/rules/repo.md",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/.zencoder/rules/repo.md"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "Let me check if the file already exists and what it contains:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_01KJJVWcvnPxi1nD7JQm5hUL",
+                    "statusText": "Viewed file",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": ".zencoder/rules/repo.md",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/.zencoder/rules/repo.md"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "text",
+                    "text": "I'll update the existing file with the more accurate information I've gathered:"
+                },
+                {
+                    "type": "toolCall",
+                    "toolCallId": "toolu_01DQSYnUbu3AqZGuNCr43yCY",
+                    "statusText": "Change generated",
+                    "status": "SUCCESS",
+                    "context": {
+                        "files": [
+                            {
+                                "path": ".zencoder/rules/repo.md",
+                                "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/.zencoder/rules/repo.md"
+                            }
+                        ]
+                    },
+                    "isHidden": false
+                },
+                {
+                    "type": "codeHunk",
+                    "lineBasedDiff": "--- /Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/.zencoder/rules/repo.md\n+++ /Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/.zencoder/rules/repo.md\n@@ -6,18 +6,18 @@\n # Sapphire Exchange Information\n \n ## Summary\n-Sapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n+Sapphire Exchange is a decentralized auction platform built on Arweave, Nano, and Dogecoin blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n \n ## Structure\n-- **app.py**: Main application entry point\n-- **main_window.py**: PyQt5-based UI implementation\n-- **models.py**: Data models for users, items, and auctions\n-- **database.py**: Database module using Arweave for storage\n-- **arweave_utils.py**: Handles interactions with Arweave blockchain\n-- **nano_utils.py**: Manages Nano wallet and transaction functionality\n-- **decentralized_client.py**: Client for interacting with blockchain networks\n-- **mock_servers.py**: Mock implementations for testing without real blockchain\n-- **test_marketplace.py**: Test script for verifying marketplace functionality\n+- **app.py**: Main application entry point with PyQt5 GUI initialization\n+- **ui/**: PyQt5-based user interface components and dialogs\n+- **models/**: Data models for users, items, and auctions\n+- **services/**: Business logic services for users, auctions, wallets, etc.\n+- **blockchain/**: Blockchain client implementations for Arweave, Nano, and Dogecoin\n+- **repositories/**: Data access layer for persistent storage\n+- **utils/**: Utility functions for validation, conversion, and async operations\n+- **security/**: Security and performance management components\n+- **config/**: Application and blockchain configuration\n \n ## Language & Runtime\n **Language**: Python\n@@ -27,20 +27,23 @@\n \n ## Dependencies\n **Main Dependencies**:\n-- PyArweave==0.6.0: Arweave blockchain integration\n+- PyQt5>=5.15.9: GUI framework\n+- qasync>=0.23.0: Async support for PyQt5\n+- PyArweave>=0.6.0: Arweave blockchain integration\n+- cryptography>=3.4.7: Cryptographic operations\n+- ed25519-blake2b>=1.4.1: Digital signatures\n+- pynacl>=1.4.0: Cryptographic library\n+- mnemonic>=0.20: BIP39 wallet support\n+- hdwallet>=2.2.1: Hierarchical deterministic wallet\n - python-dotenv>=0.19.2: Environment variable management\n-- requests>=2.28.0: HTTP requests\n-- base58>=2.1.1: Base58 encoding/decoding\n-- cryptography>=3.4.7: Cryptographic operations\n-- ed25519-blake2b==1.4.1: Digital signatures\n-- pynacl>=1.4.0: Cryptographic library\n-- pycryptodome>=3.20.0: Cryptographic primitives\n-- PyQt5>=5.15.9: GUI framework\n - qrcode>=7.4.2: QR code generation\n-- Pillow>=9.5.0: Image processing\n \n **Development Dependencies**:\n-- Not explicitly specified in requirements.txt\n+- pytest>=7.0.0: Testing framework\n+- pytest-asyncio>=0.21.0: Async testing support\n+- pytest-mock>=3.10.0: Mocking for tests\n+- black>=22.0.0: Code formatting\n+- flake8>=5.0.0: Code linting\n \n ## Build & Installation\n ```bash\n@@ -66,18 +69,23 @@\n ```\n \n ## Testing\n-**Framework**: Custom testing with mock implementations\n-**Test Location**: test_marketplace.py\n-**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n+**Framework**: pytest with unittest\n+**Test Files**: \n+- test_unified_system.py: Comprehensive test suite for all components\n+- test_dev_tools.py: Development tools testing\n+- test_refactoring.py: Tests for refactored components\n+- test_seed_dialog.py: Tests for seed phrase dialog\n+\n **Run Command**:\n ```bash\n-python test_marketplace.py\n+pytest\n ```\n \n ## Features\n - **Decentralized Storage**: Item data stored on Arweave blockchain\n-- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing\n-- **Secure Wallet Management**: Built-in wallet generation and management\n+- **Multi-Blockchain Support**: Integration with Arweave, Nano, and Dogecoin\n+- **Secure Wallet Management**: BIP39 seed phrase generation and HD wallet support\n - **Auction System**: Support for timed auctions with automatic finalization\n-- **Mock Mode**: Testing environment that simulates blockchain operations\n-- **PyQt5 GUI**: Desktop application interface for user interaction\n+- **Asynchronous Architecture**: Non-blocking UI with asyncio and qasync\n+- **Security**: Encryption, hashing, and secure key management\n+- **Performance Optimization**: Caching and performance monitoring",
+                    "refToolCallId": "toolu_01DQSYnUbu3AqZGuNCr43yCY"
+                },
+                {
+                    "type": "text",
+                    "text": "I've successfully updated the repository information file at `.zencoder/rules/repo.md`. The file now contains a comprehensive overview of your Sapphire Exchange project with the following key sections:\n\n1. **Summary**: A brief description of the decentralized auction platform and its blockchain integrations.\n\n2. **Structure**: An organized breakdown of the project's directory structure and main components.\n\n3. **Language & Runtime**: Details about the Python version and package management.\n\n4. **Dependencies**: A list of the main and development dependencies with their versions and purposes.\n\n5. **Build & Installation**: Step-by-step instructions for setting up the development environment.\n\n6. **Usage**: Simple instructions for running the application.\n\n7. **Testing**: Information about the testing framework and available test files.\n\n8. **Features**: A summary of the key features and capabilities of the application.\n\nThe information is now more accurate and reflects the current state of your repository, including the multi-blockchain support (Arweave, Nano, and Dogecoin), the asynchronous architecture, and the BIP39 wallet support. The file is structured in a clear, concise format that provides a good overview of your project."
+                },
+                {
+                    "type": "codePatch",
+                    "diffs": [
+                        {
+                            "path": ".zencoder/rules/repo.md",
+                            "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/.zencoder/rules/repo.md",
+                            "patch": "@@ -183,17 +183,28 @@\n eave\n- and Nano\n+, Nano, and Dogecoin\n  blo\n@@ -512,60 +512,99 @@\n oint\n-%0A- **main_window.py**: PyQt5-based UI implementation\n+ with PyQt5 GUI initialization%0A- **ui/**: PyQt5-based user interface components and dialogs\n %0A- *\n@@ -610,19 +610,17 @@\n **models\n-.py\n+/\n **: Data\n@@ -666,122 +666,144 @@\n - **\n-database.py**: Database module using Arweave for storage%0A- **arweave_utils.py**: Handles interac\n+services/**: Business logic services for users, auctions, wallets, etc.%0A- **blockchain/**: Blockchain client implementa\n tions \n-with\n+for\n  Arweave\n  blo\n@@ -802,328 +802,291 @@\n eave\n- blockchain%0A- **nano_utils.py**: Manages Nano wallet and transaction functionality%0A- **decentralized_client.py**: Client for interacting with blockchain networks%0A- **mock_servers.py**: Mock implementations for testing without real blockchain%0A- **test_marketplace.py**: Test script for verifying marketplace functionality\n+, Nano, and Dogecoin%0A- **repositories/**: Data access layer for persistent storage%0A- **utils/**: Utility functions for validation, conversion, and async operations%0A- **security/**: Security and performance management components%0A- **config/**: Application and blockchain configuration\n %0A%0A##\n@@ -1264,187 +1264,127 @@\n - Py\n-Arweave==0.6.0: Arweave blockchain integration%0A- python-dotenv%3E=0.19.2: Environment variable management%0A- requests%3E=2.28.0: HTTP requests%0A- base58%3E=2.1.1: Base58 encoding/decoding\n+Qt5%3E=5.15.9: GUI framework%0A- qasync%3E=0.23.0: Async support for PyQt5%0A- PyArweave%3E=0.6.0: Arweave blockchain integration\n %0A- c\n@@ -1445,17 +1445,17 @@\n -blake2b\n-=\n+%3E\n =1.4.1: \n@@ -1518,85 +1518,154 @@\n y%0A- \n-pycryptodome%3E=3.20.0: Cryptographic primitives%0A- PyQt5%3E=5.15.9: GUI framework\n+mnemonic%3E=0.20: BIP39 wallet support%0A- hdwallet%3E=2.2.1: Hierarchical deterministic wallet%0A- python-dotenv%3E=0.19.2: Environment variable management\n %0A- q\n@@ -1701,119 +1701,225 @@\n ion%0A\n-- Pillow%3E=9.5.0: Image processing%0A%0A**Development Dependencies**:%0A- Not explicitly specified in requirements.txt\n+%0A**Development Dependencies**:%0A- pytest%3E=7.0.0: Testing framework%0A- pytest-asyncio%3E=0.21.0: Async testing support%0A- pytest-mock%3E=3.10.0: Mocking for tests%0A- black%3E=22.0.0: Code formatting%0A- flake8%3E=5.0.0: Code linting\n %0A%0A##\n@@ -2484,171 +2484,270 @@\n **: \n-Custom \n+py\n test\n-ing\n  with \n-mock implementations%0A**Test Location\n+unittest%0A**Test Files\n **: \n+%0A- \n test_\n-marketplace.py%0A**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n+unified_system.py: Comprehensive test suite for all components%0A- test_dev_tools.py: Development tools testing%0A- test_refactoring.py: Tests for refactored components%0A- test_seed_dialog.py: Tests for seed phrase dialog%0A\n %0A**R\n@@ -2775,31 +2775,11 @@\n %0Apyt\n-hon test_marketplace.py\n+est\n %0A%60%60%60\n@@ -2868,86 +2868,80 @@\n - **\n-Nano Integration**: Fast, feeless Nano transactions for bidding and purchas\n+Multi-Blockchain Support**: Integration with Arweave, Nano, and Dogeco\n in\n-g\n %0A- *\n@@ -2974,47 +2974,56 @@\n *: B\n-uilt-in wallet generation and managemen\n+IP39 seed phrase generation and HD wallet suppor\n t%0A- \n@@ -3105,141 +3105,202 @@\n - **\n-Mock Mode**: Testing environment that simulates blockchain operations%0A- **PyQt5 GUI**: Desktop application interface for user interaction\n+Asynchronous Architecture**: Non-blocking UI with asyncio and qasync%0A- **Security**: Encryption, hashing, and secure key management%0A- **Performance Optimization**: Caching and performance monitoring\n",
+                            "isNew": false,
+                            "isApplied": true,
+                            "isUnread": true,
+                            "timestamp": 1754778228200
+                        }
+                    ]
+                }
+            ],
+            "context": {
+                "author": "Repo Info Agent",
+                "operationId": "3099496f-04e1-441b-8ed4-10add93bee9b",
+                "usageStatistics": {
+                    "llmCallsUsedForAnswer": 12.0,
+                    "llmCallsUsedTotal": 12.0,
+                    "llmCallsLimit": 200.0,
+                    "limitRenewalMillisecondTimestamp": 1754864482703
+                }
+            },
+            "createdAt": 1754778118060,
+            "isInternal": false
+        }
+    ],
+    "isAgent": false,
+    "isNameGenerated": true,
+    "isCustomAgent": false,
+    "isUnitTestsAgent": false,
+    "isE2EAgent": false,
+    "isQnaAgent": false,
+    "isRepoInfoAgent": true,
+    "isClaudeCode": false,
+    "autoApply": true,
+    "model": "default"
+}
+}

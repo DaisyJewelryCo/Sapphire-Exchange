@@ -739,10 +739,12 @@ class SimpleWalletWidget(QWidget):
         balances_layout = QVBoxLayout()
         
         self.nano_balance_label = QLabel("NANO: Loading...")
-        self.doge_balance_label = QLabel("DOGE: Loading...")
+        self.usdc_balance_label = QLabel("USDC: Loading...")
+        self.arweave_balance_label = QLabel("ARWEAVE: Loading...")
         
         balances_layout.addWidget(self.nano_balance_label)
-        balances_layout.addWidget(self.doge_balance_label)
+        balances_layout.addWidget(self.usdc_balance_label)
+        balances_layout.addWidget(self.arweave_balance_label)
         
         self.balances_group.setLayout(balances_layout)
         layout.addWidget(self.balances_group)
@@ -754,10 +756,12 @@ class SimpleWalletWidget(QWidget):
         user = app_service.get_current_user()
         if user:
             self.nano_address_label = QLabel(f"NANO: {user.nano_address}")
-            self.doge_address_label = QLabel(f"DOGE: {user.doge_address}")
+            self.usdc_address_label = QLabel(f"USDC: {getattr(user, 'usdc_address', 'Not set')}")
+            self.arweave_address_label = QLabel(f"ARWEAVE: {user.arweave_address}")
             
             addresses_layout.addWidget(self.nano_address_label)
-            addresses_layout.addWidget(self.doge_address_label)
+            addresses_layout.addWidget(self.usdc_address_label)
+            addresses_layout.addWidget(self.arweave_address_label)
         
         self.addresses_group.setLayout(addresses_layout)
         layout.addWidget(self.addresses_group)
@@ -785,12 +789,15 @@ class SimpleWalletWidget(QWidget):
     def on_balances_loaded(self, balances):
         """Handle loaded balances."""
         nano_balance = balances.get('nano', 0) or 0
-        doge_balance = balances.get('dogecoin', 0) or 0
+        usdc_balance = balances.get('usdc', 0) or 0
+        arweave_balance = balances.get('arweave', 0) or 0
         
         self.nano_balance_label.setText(f"NANO: {format_currency(nano_balance, 'NANO')}")
-        self.doge_balance_label.setText(f"DOGE: {format_currency(doge_balance, 'DOGE')}")
+        self.usdc_balance_label.setText(f"USDC: {format_currency(usdc_balance, 'USDC')}")
+        self.arweave_balance_label.setText(f"ARWEAVE: {format_currency(arweave_balance, 'ARWEAVE')}")
     
     def on_error(self, error):
         """Handle errors."""
         self.nano_balance_label.setText("NANO: Error loading")
-        self.doge_balance_label.setText("DOGE: Error loading")
+        self.usdc_balance_label.setText("USDC: Error loading")
+        self.arweave_balance_label.setText("ARWEAVE: Error loading")

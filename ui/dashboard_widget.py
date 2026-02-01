@@ -240,7 +240,7 @@ class ConnectionStatusWidget(QWidget):
         blockchain_services = [
             ('nano', 'Nano Network'),
             ('arweave', 'Arweave Network'),
-            ('dogecoin', 'Dogecoin Network')
+            ('solana_usdc', 'USDC Wallet')  # Solana USDC implementation
         ]
         
         for service_key, service_name in blockchain_services:
@@ -320,7 +320,7 @@ class ConnectionStatusWidget(QWidget):
             if hasattr(app_service, 'blockchain') and app_service.blockchain:
                 blockchain_status = app_service.blockchain.connection_status
                 
-                for service_key in ['nano', 'arweave', 'dogecoin']:
+                for service_key in ['nano', 'arweave', 'solana_usdc']:
                     if service_key in blockchain_status:
                         status = blockchain_status[service_key]
                         if status.is_healthy():
@@ -644,7 +644,7 @@ class WalletOverviewWidget(QWidget):
         self.wallet_buttons = {}
         self.wallet_addresses = {}
         self.copy_buttons = {}
-        currencies = ['NANO', 'DOGE', 'ARWEAVE']
+        currencies = ['NANO', 'USDC', 'ARWEAVE']
         
         for currency in currencies:
             # Create wallet container
@@ -853,7 +853,7 @@ class WalletOverviewWidget(QWidget):
         try:
             addresses = app_service.get_wallet_addresses()
             
-            for currency in ['NANO', 'DOGE', 'ARWEAVE']:
+            for currency in ['NANO', 'USDC', 'ARWEAVE']:
                 if currency in self.wallet_addresses:
                     if currency in addresses and addresses[currency]:
                         address = addresses[currency]
@@ -875,7 +875,7 @@ class WalletOverviewWidget(QWidget):
                             self.copy_buttons[currency].setEnabled(False)
         except Exception as e:
             print(f"Error loading wallet addresses: {e}")
-            for currency in ['NANO', 'DOGE', 'ARWEAVE']:
+            for currency in ['NANO', 'USDC', 'ARWEAVE']:
                 if currency in self.wallet_addresses:
                     self.wallet_addresses[currency].setText("Error loading address")
                     if currency in self.copy_buttons:

@@ -230,13 +230,19 @@ class Validator:
             'errors': []
         }
         
-        # Required fields
-        required_fields = ['title', 'description', 'starting_price_doge', 'auction_end']
+        required_fields = ['title', 'description', 'auction_end']
         for field in required_fields:
             if field not in item_data or not item_data[field]:
                 result['errors'].append(f'{field} is required')
         
-        # Title validation
+        has_starting_price = (
+            item_data.get('starting_price_doge') is not None or
+            item_data.get('starting_price_usdc') is not None or
+            item_data.get('starting_price') is not None
+        )
+        if not has_starting_price:
+            result['errors'].append('Starting price is required')
+        
         title = item_data.get('title', '')
         if title:
             if len(title) < 3:
@@ -244,26 +250,26 @@ class Validator:
             elif len(title) > app_config.ui.max_title_length:
                 result['errors'].append(f'Title cannot exceed {app_config.ui.max_title_length} characters')
         
-        # Description validation
         description = item_data.get('description', '')
         if description and len(description) > app_config.ui.max_description_length:
             result['errors'].append(f'Description cannot exceed {app_config.ui.max_description_length} characters')
         
-        # Starting price validation (now allows 0.0 for auctions that start at zero)
-        starting_price = item_data.get('starting_price_doge')
+        starting_price = (
+            item_data.get('starting_price_doge') or
+            item_data.get('starting_price_usdc') or
+            item_data.get('starting_price')
+        )
         if starting_price is not None:
             price_validation = Validator.validate_amount(starting_price, min_amount=0.0)
             if not price_validation['valid']:
                 result['errors'].extend(price_validation['errors'])
         
-        # Auction end validation
         auction_end = item_data.get('auction_end')
         if auction_end:
             end_validation = Validator.validate_future_datetime(auction_end, min_future_minutes=30)
             if not end_validation['valid']:
                 result['errors'].extend(end_validation['errors'])
         
-        # Tags validation
         tags = item_data.get('tags', [])
         if tags:
             if len(tags) > app_config.ui.max_tags_per_item:
@@ -275,13 +281,15 @@ class Validator:
                 elif len(tag) > app_config.ui.max_tag_length:
                     result['errors'].append(f'Tag "{tag}" exceeds maximum length of {app_config.ui.max_tag_length}')
         
-        # Category validation
         category = item_data.get('category', '')
         if category and len(category) > 50:
             result['errors'].append('Category cannot exceed 50 characters')
         
-        # Shipping cost validation
-        shipping_cost = item_data.get('shipping_cost_doge')
+        shipping_cost = (
+            item_data.get('shipping_cost_doge') or
+            item_data.get('shipping_cost_usdc') or
+            item_data.get('shipping_cost')
+        )
         if shipping_cost is not None:
             shipping_validation = Validator.validate_amount(shipping_cost, min_amount=0.0)
             if not shipping_validation['valid']:

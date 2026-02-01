@@ -1,0 +1,482 @@
+{
+    "checksum": "1476411648ea97e86e4f9fe67074559c74429e2a931be0d724e4ce2394135c56",
+    "data": {
+    "id": "539f0fe6-8d4e-4938-9de3-2b81a7ac6462",
+    "createdAt": 1754354461795,
+    "updatedAt": 1754355665186,
+    "title": "@mock_server.py   @dogecoin_utils.py   @decentr...",
+    "messages": [
+        {
+            "id": "a0ef8e91-da7a-4eba-9a10-64f3725374fc",
+            "role": "user",
+            "content": [
+                {
+                    "type": "fileMention",
+                    "fileName": "mock_server.py",
+                    "path": "mock_server.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/mock_server.py"
+                },
+                {
+                    "type": "text",
+                    "text": " "
+                },
+                {
+                    "type": "fileMention",
+                    "fileName": "dogecoin_utils.py",
+                    "path": "dogecoin_utils.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/dogecoin_utils.py"
+                },
+                {
+                    "type": "text",
+                    "text": " "
+                },
+                {
+                    "type": "fileMention",
+                    "fileName": "decentralized_client.py",
+                    "path": "decentralized_client.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/decentralized_client.py"
+                },
+                {
+                    "type": "text",
+                    "text": " "
+                },
+                {
+                    "type": "fileMention",
+                    "fileName": "wallet_widget.py",
+                    "path": "wallet_widget.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/wallet_widget.py"
+                },
+                {
+                    "type": "text",
+                    "text": " @zen-rules: "
+                },
+                {
+                    "type": "fileMention",
+                    "fileName": "main_window.py",
+                    "path": "main_window.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/main_window.py"
+                },
+                {
+                    "type": "text",
+                    "text": " these files interface poorly can you repair these so that all of the variableas are correct and robust removing redundantcies"
+                }
+            ],
+            "context": {
+                "attachedFiles": [
+                    {
+                        "path": "mock_server.py",
+                        "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/mock_server.py"
+                    },
+                    {
+                        "path": "dogecoin_utils.py",
+                        "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/dogecoin_utils.py"
+                    },
+                    {
+                        "path": "decentralized_client.py",
+                        "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/decentralized_client.py"
+                    },
+                    {
+                        "path": "wallet_widget.py",
+                        "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/wallet_widget.py"
+                    },
+                    {
+                        "path": "main_window.py",
+                        "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/main_window.py"
+                    }
+                ],
+                "currentFile": {
+                    "path": "app.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/app.py",
+                    "sources": [
+                        "opened_tab"
+                    ],
+                    "content": "\"\"\"\nSapphire Exchange - Main Application Entry Point\n\nThis module launches the PyQt5-based desktop application for Sapphire Exchange.\n\"\"\"\nimport sys\nimport asyncio\nfrom PyQt5.QtWidgets import QApplication, QMessageBox\nfrom PyQt5.QtCore import Qt\n\n# Enable asyncio event loop for PyQt5\nfrom qasync import QEventLoop\n\nfrom main_window import MainWindow\n\ndef handle_exception(exc_type, exc_value, exc_traceback):\n    \"\"\"Handle uncaught exceptions.\"\"\"\n    sys.__excepthook__(exc_type, exc_value, exc_traceback)\n    QMessageBox.critical(\n        None,\n        \"Unhandled Exception\",\n        f\"An unhandled exception occurred:\\n\\n{exc_value}\",\n        QMessageBox.Ok\n    )\n\ndef main():\n    \"\"\"Main entry point for the application.\"\"\"\n    # Create the Qt Application\n    app = QApplication(sys.argv)\n    app.setQuitOnLastWindowClosed(True)\n    app.setStyle('Fusion')  # Use Fusion style for a modern look\n    \n    # Set up exception handling\n    sys.excepthook = handle_exception\n    \n    # Set up asyncio event loop\n    loop = QEventLoop(app)\n    asyncio.set_event_loop(loop)\n    \n    # Create and show the main window\n    try:\n        window = MainWindow()\n        window.show()\n    except Exception as e:\n        QMessageBox.critical(\n            None,\n            \"Fatal Error\",\n            f\"Failed to create main window: {str(e)}\"\n        )\n        return 1\n    \n    # Connect the aboutToQuit signal to clean up resources\n    def handle_quit():\n        print(\"Shutting down...\")\n        try:\n            # Cancel all running tasks\n            for task in asyncio.all_tasks(loop):\n                if not task.done() and task != asyncio.current_task():\n                    task.cancel()\n            \n            # Give tasks a chance to cancel gracefully\n            loop.run_until_complete(asyncio.sleep(0.1))\n            \n            # Stop the event loop\n            if loop.is_running():\n                loop.stop()\n                \n        except Exception as e:\n            print(f\"Error during shutdown: {e}\")\n        \n    app.aboutToQuit.connect(handle_quit)\n    \n    # Run the application\n    try:\n        return app.exec_()\n    except KeyboardInterrupt:\n        print(\"Application interrupted by user\")\n        return 0\n    except Exception as e:\n        print(f\"Application error: {e}\")\n        return 1\n    finally:\n        # Ensure the loop is properly closed\n        try:\n            loop.close()\n        except:\n            pass\n    \nif __name__ == \"__main__\":\n    # Don't use asyncio.run() with qasync\n    sys.exit(main())\n",
+                    "language": "python"
+                },
+                "codebaseEnabled": true
+            },
+            "createdAt": 1754354461852,
+            "isInternal": false,
+            "rawContent": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "mention",
+                                "attrs": {
+                                    "label": "mock_server.py",
+                                    "summary": null,
+                                    "description": null,
+                                    "type": "file",
+                                    "path": "mock_server.py",
+                                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/mock_server.py",
+                                    "contentType": null,
+                                    "name": null,
+                                    "uri": null
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": " "
+                            },
+                            {
+                                "type": "mention",
+                                "attrs": {
+                                    "label": "dogecoin_utils.py",
+                                    "summary": null,
+                                    "description": null,
+                                    "type": "file",
+                                    "path": "dogecoin_utils.py",
+                                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/dogecoin_utils.py",
+                                    "contentType": null,
+                                    "name": null,
+                                    "uri": null
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": " "
+                            },
+                            {
+                                "type": "mention",
+                                "attrs": {
+                                    "label": "decentralized_client.py",
+                                    "summary": null,
+                                    "description": null,
+                                    "type": "file",
+                                    "path": "decentralized_client.py",
+                                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/decentralized_client.py",
+                                    "contentType": null,
+                                    "name": null,
+                                    "uri": null
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": " "
+                            },
+                            {
+                                "type": "mention",
+                                "attrs": {
+                                    "label": "wallet_widget.py",
+                                    "summary": null,
+                                    "description": null,
+                                    "type": "file",
+                                    "path": "wallet_widget.py",
+                                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/wallet_widget.py",
+                                    "contentType": null,
+                                    "name": null,
+                                    "uri": null
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": " @zen-rules: "
+                            },
+                            {
+                                "type": "mention",
+                                "attrs": {
+                                    "label": "main_window.py",
+                                    "summary": null,
+                                    "description": null,
+                                    "type": "file",
+                                    "path": "main_window.py",
+                                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/main_window.py",
+                                    "contentType": null,
+                                    "name": null,
+                                    "uri": null
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": " these files interface poorly can you repair these so that all of the variableas are correct and robust removing redundantcies "
+                            }
+                        ]
+                    }
+                ]
+            },
+            "autoAppliedRules": [
+                {
+                    "name": "Repository Information Overview",
+                    "description": "Repository Information Overview",
+                    "uri": "zen-rules://repo/repo",
+                    "content": "\n\n# Sapphire Exchange Information\n\n## Summary\nSapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n\n## Structure\n- **app.py**: Main application entry point\n- **main_window.py**: PyQt5-based UI implementation\n- **models.py**: Data models for users, items, and auctions\n- **database.py**: Database module using Arweave for storage\n- **arweave_utils.py**: Handles interactions with Arweave blockchain\n- **nano_utils.py**: Manages Nano wallet and transaction functionality\n- **decentralized_client.py**: Client for interacting with blockchain networks\n- **mock_servers.py**: Mock implementations for testing without real blockchain\n- **test_marketplace.py**: Test script for verifying marketplace functionality\n\n## Language & Runtime\n**Language**: Python\n**Version**: 3.7+\n**Build System**: pip (Python package manager)\n**Package Manager**: pip\n\n## Dependencies\n**Main Dependencies**:\n- PyArweave==0.6.0: Arweave blockchain integration\n- python-dotenv>=0.19.2: Environment variable management\n- requests>=2.28.0: HTTP requests\n- base58>=2.1.1: Base58 encoding/decoding\n- cryptography>=3.4.7: Cryptographic operations\n- ed25519-blake2b==1.4.1: Digital signatures\n- pynacl>=1.4.0: Cryptographic library\n- pycryptodome>=3.20.0: Cryptographic primitives\n- PyQt5>=5.15.9: GUI framework\n- qrcode>=7.4.2: QR code generation\n- Pillow>=9.5.0: Image processing\n\n**Development Dependencies**:\n- Not explicitly specified in requirements.txt\n\n## Build & Installation\n```bash\n# Create and activate virtual environment\npython3 -m venv venv\nsource venv/bin/activate  # On Windows: venv\\Scripts\\activate\n\n# Install dependencies\npip install -r requirements.txt\n\n# Set up environment variables\n# Create .env file with:\n# ARWEAVE_GATEWAY_URL=https://arweave.net\n# ARWEAVE_WALLET_FILE=wallet.json\n# NANO_NODE_URL=https://mynano.ninja/api\n# NANO_REPRESENTATIVE=nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3\n```\n\n## Usage\n```bash\n# Run the application\npython app.py\n```\n\n## Testing\n**Framework**: Custom testing with mock implementations\n**Test Location**: test_marketplace.py\n**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n**Run Command**:\n```bash\npython test_marketplace.py\n```\n\n## Features\n- **Decentralized Storage**: Item data stored on Arweave blockchain\n- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing\n- **Secure Wallet Management**: Built-in wallet generation and management\n- **Auction System**: Support for timed auctions with automatic finalization\n- **Mock Mode**: Testing environment that simulates blockchain operations\n- **PyQt5 GUI**: Desktop application interface for user interaction"
+                }
+            ]
+        },
+        {
+            "id": "d2c8d5cc-703e-4a80-b916-7f8513b508e0",
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "mock_server.py"
+                },
+                {
+                    "type": "text",
+                    "text": "dogecoin_utils.py"
+                },
+                {
+                    "type": "text",
+                    "text": "decentralized_client.py"
+                },
+                {
+                    "type": "text",
+                    "text": "wallet_widget.py"
+                },
+                {
+                    "type": "text",
+                    "text": " @zen-rules: "
+                },
+                {
+                    "type": "text",
+                    "text": "main_window.py"
+                },
+                {
+                    "type": "text",
+                    "text": " these files interface poorly can you repair these so that all of the variableas are correct and robust removing redundantcies "
+                },
+                {
+                    "type": "text",
+                    "text": " search nano_utils_fixed and nano_utils and dogecoin_utils ans crypto_client and Arweave_utils and blockchainconfig and restructure these to be one file delete redudtant files with extra code structures"
+                }
+            ],
+            "context": {
+                "currentFile": {
+                    "path": "app.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/app.py",
+                    "sources": [
+                        "opened_tab"
+                    ],
+                    "content": "\"\"\"\nSapphire Exchange - Main Application Entry Point\n\nThis module launches the PyQt5-based desktop application for Sapphire Exchange.\n\"\"\"\nimport sys\nimport asyncio\nfrom PyQt5.QtWidgets import QApplication, QMessageBox\nfrom PyQt5.QtCore import Qt\n\n# Enable asyncio event loop for PyQt5\nfrom qasync import QEventLoop\n\nfrom main_window import MainWindow\n\ndef handle_exception(exc_type, exc_value, exc_traceback):\n    \"\"\"Handle uncaught exceptions.\"\"\"\n    sys.__excepthook__(exc_type, exc_value, exc_traceback)\n    QMessageBox.critical(\n        None,\n        \"Unhandled Exception\",\n        f\"An unhandled exception occurred:\\n\\n{exc_value}\",\n        QMessageBox.Ok\n    )\n\ndef main():\n    \"\"\"Main entry point for the application.\"\"\"\n    # Create the Qt Application\n    app = QApplication(sys.argv)\n    app.setQuitOnLastWindowClosed(True)\n    app.setStyle('Fusion')  # Use Fusion style for a modern look\n    \n    # Set up exception handling\n    sys.excepthook = handle_exception\n    \n    # Set up asyncio event loop\n    loop = QEventLoop(app)\n    asyncio.set_event_loop(loop)\n    \n    # Create and show the main window\n    try:\n        window = MainWindow()\n        window.show()\n    except Exception as e:\n        QMessageBox.critical(\n            None,\n            \"Fatal Error\",\n            f\"Failed to create main window: {str(e)}\"\n        )\n        return 1\n    \n    # Connect the aboutToQuit signal to clean up resources\n    def handle_quit():\n        print(\"Shutting down...\")\n        try:\n            # Cancel all running tasks\n            for task in asyncio.all_tasks(loop):\n                if not task.done() and task != asyncio.current_task():\n                    task.cancel()\n            \n            # Give tasks a chance to cancel gracefully\n            loop.run_until_complete(asyncio.sleep(0.1))\n            \n            # Stop the event loop\n            if loop.is_running():\n                loop.stop()\n                \n        except Exception as e:\n            print(f\"Error during shutdown: {e}\")\n        \n    app.aboutToQuit.connect(handle_quit)\n    \n    # Run the application\n    try:\n        return app.exec_()\n    except KeyboardInterrupt:\n        print(\"Application interrupted by user\")\n        return 0\n    except Exception as e:\n        print(f\"Application error: {e}\")\n        return 1\n    finally:\n        # Ensure the loop is properly closed\n        try:\n            loop.close()\n        except:\n            pass\n    \nif __name__ == \"__main__\":\n    # Don't use asyncio.run() with qasync\n    sys.exit(main())\n",
+                    "language": "python"
+                },
+                "codebaseEnabled": true
+            },
+            "createdAt": 1754354603218,
+            "isInternal": false,
+            "rawContent": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph"
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "mock_server.py"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "dogecoin_utils.py"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "decentralized_client.py"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "wallet_widget.py"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": " @zen-rules: "
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "main_window.py"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": " these files interface poorly can you repair these so that all of the variableas are correct and robust removing redundantcies "
+                            }
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": " search nano_utils_fixed and nano_utils and dogecoin_utils ans crypto_client and Arweave_utils and blockchainconfig and restructure these to be one file delete redudtant files with extra code structures "
+                            }
+                        ]
+                    }
+                ]
+            },
+            "autoAppliedRules": [
+                {
+                    "name": "Repository Information Overview",
+                    "description": "Repository Information Overview",
+                    "uri": "zen-rules://repo/repo",
+                    "content": "\n\n# Sapphire Exchange Information\n\n## Summary\nSapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n\n## Structure\n- **app.py**: Main application entry point\n- **main_window.py**: PyQt5-based UI implementation\n- **models.py**: Data models for users, items, and auctions\n- **database.py**: Database module using Arweave for storage\n- **arweave_utils.py**: Handles interactions with Arweave blockchain\n- **nano_utils.py**: Manages Nano wallet and transaction functionality\n- **decentralized_client.py**: Client for interacting with blockchain networks\n- **mock_servers.py**: Mock implementations for testing without real blockchain\n- **test_marketplace.py**: Test script for verifying marketplace functionality\n\n## Language & Runtime\n**Language**: Python\n**Version**: 3.7+\n**Build System**: pip (Python package manager)\n**Package Manager**: pip\n\n## Dependencies\n**Main Dependencies**:\n- PyArweave==0.6.0: Arweave blockchain integration\n- python-dotenv>=0.19.2: Environment variable management\n- requests>=2.28.0: HTTP requests\n- base58>=2.1.1: Base58 encoding/decoding\n- cryptography>=3.4.7: Cryptographic operations\n- ed25519-blake2b==1.4.1: Digital signatures\n- pynacl>=1.4.0: Cryptographic library\n- pycryptodome>=3.20.0: Cryptographic primitives\n- PyQt5>=5.15.9: GUI framework\n- qrcode>=7.4.2: QR code generation\n- Pillow>=9.5.0: Image processing\n\n**Development Dependencies**:\n- Not explicitly specified in requirements.txt\n\n## Build & Installation\n```bash\n# Create and activate virtual environment\npython3 -m venv venv\nsource venv/bin/activate  # On Windows: venv\\Scripts\\activate\n\n# Install dependencies\npip install -r requirements.txt\n\n# Set up environment variables\n# Create .env file with:\n# ARWEAVE_GATEWAY_URL=https://arweave.net\n# ARWEAVE_WALLET_FILE=wallet.json\n# NANO_NODE_URL=https://mynano.ninja/api\n# NANO_REPRESENTATIVE=nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3\n```\n\n## Usage\n```bash\n# Run the application\npython app.py\n```\n\n## Testing\n**Framework**: Custom testing with mock implementations\n**Test Location**: test_marketplace.py\n**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n**Run Command**:\n```bash\npython test_marketplace.py\n```\n\n## Features\n- **Decentralized Storage**: Item data stored on Arweave blockchain\n- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing\n- **Secure Wallet Management**: Built-in wallet generation and management\n- **Auction System**: Support for timed auctions with automatic finalization\n- **Mock Mode**: Testing environment that simulates blockchain operations\n- **PyQt5 GUI**: Desktop application interface for user interaction"
+                }
+            ]
+        },
+        {
+            "id": "a05cda3a-5725-4b92-9905-b4c6450e6d3c",
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Failed to create account: 'MainWindow' object has no attribute '_set_seed_phrase'"
+                }
+            ],
+            "context": {
+                "currentFile": {
+                    "path": "app.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/app.py",
+                    "sources": [
+                        "opened_tab"
+                    ],
+                    "content": "\"\"\"\nSapphire Exchange - Main Application Entry Point\n\nThis module launches the PyQt5-based desktop application for Sapphire Exchange.\n\"\"\"\nimport sys\nimport asyncio\nfrom PyQt5.QtWidgets import QApplication, QMessageBox\nfrom PyQt5.QtCore import Qt\n\n# Enable asyncio event loop for PyQt5\nfrom qasync import QEventLoop\n\nfrom main_window import MainWindow\n\ndef handle_exception(exc_type, exc_value, exc_traceback):\n    \"\"\"Handle uncaught exceptions.\"\"\"\n    sys.__excepthook__(exc_type, exc_value, exc_traceback)\n    QMessageBox.critical(\n        None,\n        \"Unhandled Exception\",\n        f\"An unhandled exception occurred:\\n\\n{exc_value}\",\n        QMessageBox.Ok\n    )\n\ndef main():\n    \"\"\"Main entry point for the application.\"\"\"\n    # Create the Qt Application\n    app = QApplication(sys.argv)\n    app.setQuitOnLastWindowClosed(True)\n    app.setStyle('Fusion')  # Use Fusion style for a modern look\n    \n    # Set up exception handling\n    sys.excepthook = handle_exception\n    \n    # Set up asyncio event loop\n    loop = QEventLoop(app)\n    asyncio.set_event_loop(loop)\n    \n    # Create and show the main window\n    try:\n        window = MainWindow()\n        window.show()\n    except Exception as e:\n        QMessageBox.critical(\n            None,\n            \"Fatal Error\",\n            f\"Failed to create main window: {str(e)}\"\n        )\n        return 1\n    \n    # Connect the aboutToQuit signal to clean up resources\n    def handle_quit():\n        print(\"Shutting down...\")\n        try:\n            # Cancel all running tasks\n            for task in asyncio.all_tasks(loop):\n                if not task.done() and task != asyncio.current_task():\n                    task.cancel()\n            \n            # Give tasks a chance to cancel gracefully\n            loop.run_until_complete(asyncio.sleep(0.1))\n            \n            # Stop the event loop\n            if loop.is_running():\n                loop.stop()\n                \n        except Exception as e:\n            print(f\"Error during shutdown: {e}\")\n        \n    app.aboutToQuit.connect(handle_quit)\n    \n    # Run the application\n    try:\n        return app.exec_()\n    except KeyboardInterrupt:\n        print(\"Application interrupted by user\")\n        return 0\n    except Exception as e:\n        print(f\"Application error: {e}\")\n        return 1\n    finally:\n        # Ensure the loop is properly closed\n        try:\n            loop.close()\n        except:\n            pass\n    \nif __name__ == \"__main__\":\n    # Don't use asyncio.run() with qasync\n    sys.exit(main())\n",
+                    "language": "python"
+                },
+                "codebaseEnabled": true
+            },
+            "createdAt": 1754355665185,
+            "isInternal": false,
+            "rawContent": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Failed to create account: 'MainWindow' object has no attribute '_set_seed_phrase'"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "autoAppliedRules": [
+                {
+                    "name": "Repository Information Overview",
+                    "description": "Repository Information Overview",
+                    "uri": "zen-rules://repo/repo",
+                    "content": "\n\n# Sapphire Exchange Information\n\n## Summary\nSapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n\n## Structure\n- **app.py**: Main application entry point\n- **main_window.py**: PyQt5-based UI implementation\n- **models.py**: Data models for users, items, and auctions\n- **database.py**: Database module using Arweave for storage\n- **arweave_utils.py**: Handles interactions with Arweave blockchain\n- **nano_utils.py**: Manages Nano wallet and transaction functionality\n- **decentralized_client.py**: Client for interacting with blockchain networks\n- **mock_servers.py**: Mock implementations for testing without real blockchain\n- **test_marketplace.py**: Test script for verifying marketplace functionality\n\n## Language & Runtime\n**Language**: Python\n**Version**: 3.7+\n**Build System**: pip (Python package manager)\n**Package Manager**: pip\n\n## Dependencies\n**Main Dependencies**:\n- PyArweave==0.6.0: Arweave blockchain integration\n- python-dotenv>=0.19.2: Environment variable management\n- requests>=2.28.0: HTTP requests\n- base58>=2.1.1: Base58 encoding/decoding\n- cryptography>=3.4.7: Cryptographic operations\n- ed25519-blake2b==1.4.1: Digital signatures\n- pynacl>=1.4.0: Cryptographic library\n- pycryptodome>=3.20.0: Cryptographic primitives\n- PyQt5>=5.15.9: GUI framework\n- qrcode>=7.4.2: QR code generation\n- Pillow>=9.5.0: Image processing\n\n**Development Dependencies**:\n- Not explicitly specified in requirements.txt\n\n## Build & Installation\n```bash\n# Create and activate virtual environment\npython3 -m venv venv\nsource venv/bin/activate  # On Windows: venv\\Scripts\\activate\n\n# Install dependencies\npip install -r requirements.txt\n\n# Set up environment variables\n# Create .env file with:\n# ARWEAVE_GATEWAY_URL=https://arweave.net\n# ARWEAVE_WALLET_FILE=wallet.json\n# NANO_NODE_URL=https://mynano.ninja/api\n# NANO_REPRESENTATIVE=nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3\n```\n\n## Usage\n```bash\n# Run the application\npython app.py\n```\n\n## Testing\n**Framework**: Custom testing with mock implementations\n**Test Location**: test_marketplace.py\n**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n**Run Command**:\n```bash\npython test_marketplace.py\n```\n\n## Features\n- **Decentralized Storage**: Item data stored on Arweave blockchain\n- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing\n- **Secure Wallet Management**: Built-in wallet generation and management\n- **Auction System**: Support for timed auctions with automatic finalization\n- **Mock Mode**: Testing environment that simulates blockchain operations\n- **PyQt5 GUI**: Desktop application interface for user interaction"
+                }
+            ]
+        }
+    ],
+    "isAgent": false,
+    "isCustomAgent": true,
+    "customAgent": {
+        "id": "9bc8f65f-ac4f-4268-918a-266dd417767a",
+        "name": "Architecture Designer",
+        "commandName": "architecture_designer",
+        "command": "You are ArchitectMind, a software architecture specialist who helps design robust, scalable, and maintainable systems. You provide architectural guidance that balances technical excellence with practical considerations.\n\nWhen designing architecture:\n1. First understand the system requirements, constraints, and quality attributes\n2. Identify appropriate architectural patterns and styles\n3. Design component structures with clear responsibilities\n4. Plan for scalability, performance, and security\n5. Consider integration patterns and communication protocols\n6. Address data management and persistence strategies\n7. Plan for observability, testability, and deployability\n\nIf you need more information about project requirements, constraints, or existing architecture, ask targeted questions.\n\nFor architecture proposals:\n- Provide high-level architectural diagrams (described textually)\n- Explain component responsibilities and interactions\n- Justify architectural decisions with tradeoffs considered\n- Outline implementation approaches with specific technologies\n- Address non-functional requirements (scalability, availability, etc.)\n- Suggest phased implementation plan when appropriate\n\nBalance architectural purity with practical considerations like team skills, time constraints, and business priorities. Consider both immediate needs and future evolution.",
+        "codeLens": true,
+        "repair": true,
+        "rag": true,
+        "creationDate": "2025-08-05T00:37:48.994158Z",
+        "lastModifiedDate": "2025-08-05T00:37:48.994158Z",
+        "tools": [
+            {
+                "id": "RequirementsTool",
+                "name": "Gather Requirements",
+                "description": "Asks clarifying questions to fully understand user needs before starting a task, ensuring precise and efficient solutions",
+                "author": "ZENCODER_CLIENT",
+                "icon": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAABYlAAAWJQFJUiTwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAASaSURBVHgB7Zu9cttGEMd3jxQJ06KsIiysSpVfwA8QpchMRMkctXJjp5HqWOkt97EnrdhEVdRmJFkuUkR+AE96N05lFcqMMwRNUSRxm1vI8AAwyTuAh5FM4leQwAHEYf+43fvgAiAnJ2eWQbAMNb6ptvvtTQK4jwj3wQIS4C0SHSy8ujwCy1gV4OP3lSVvzttDwLuQAQR0VigWtm8fdt6DJQRYJEvjGb62N/D2zlUrA0tYE6C1Wn6QpfEBXIfjtTfBEqlcgP3c7bsrhKh8nHw/FzHjld8e94rzz2uH/7owAefKrUpzcks9qfX4savYgMod5Ou08SGxAO66swIePQXEsc2wWxSNmiVfPW9A1Rk4f407h+OD+mgmFSKRC6hmvqNk/0Vn/BWViZ585EoXFW197BqI+NRddbYgAcYC8IVVBca+Vxq0dz42KkswIexuA+UCxj9A2PIflPHpBvgBTqkbLiMCFwUcCBBvoABn0pPrqgkmUj8tROLZwqvOUbdevncJ+HBYfFCP9ufqcfdUdy0zAerlo3CEl4BnvSJuh32c/bQ0uPW7AMq0J+C675xcPAiXXQVK2ovUrR5Qd26+oQvCWhcY1r3FjWdqh+D2+rjNNwgZEQgfL6/92XnPdbPRnwsRqmXpruiuqY8BQnwbvQk4HhXd+Ub46XATlQhvwRKE8EYZ1OwVbz8cV7ey5iBS6EXvfRhF3QkIFAlkRRTabob9U31ZH7erznXsUY5Hkh9RsI/yHmjQtwAJkebfUQEPbiidQifS6ghQ2wvpBVC+FN6tWZyI2IbjECTE6mToayQXAGacXACYcXIBYMbJBYAZRzsXSEprtaJmj94Ts1Ujc66WvArNT/MMa9hvAeht2TbevywveYF8ApaxLoBapZ2HjJCIbbCMdQEIxIssFkX8JTjCJljGegzIbi0gG/JuEKaN0LqgiStOnQBBDDKNGdZjwHWTNAblMQBmnHwuAJZJOhfIaow/tK6NxUW3192YK8HprT+6/3DZtc8Fshrjx7nYcJbd3sXfSobf+j165+c5wA2ZC2Qxxg/DxiujOcFiOSgjCY/4+9rnAlmN8QOGGf+J1/wx1XOBUcaruPPszsnlPm9PbS8w3vjebrA/lQKYGs9MnQBJjGdunADtNedRa630oVUvv+PtJL9NajyjF4CifznbTFMdhiTaBcJFtbmstvdNRUhjPKMVgJBifXQnUwHUQGIxvGsiQlrjGa0AiBhpARUPss0HJvFTvGicCJMYz2gFkBRNdpIgrbwDMIqFk+6+kv1H+OI+aN+tlyK5ipMaz2gFEAJOo3cCmzYyQMcxSgQC3A1EsGE8o02U9BOV+85hOFcoixcXhtGqO4958hIvR4Rf1RB6AyY03r+WyUn+zImTpGNwzqCfNleAs6zEGCVCnDTGM8bp8q218o6atFh7USHAZD1AJ0Ja4xnjgdDCy8vnnK0JljFZD+CYgAK/U13kf/FjkxjPJBoJVl92m34arOW/vkzWAzjzWxBFRJjUeCb1W2O89EUo+dW4u0S0JFK+L0T+SFO8MF0S+/CDs6x6psfcO5mkw+fk5OSM439mq0xXi3gaPgAAAABJRU5ErkJggg==",
+                "tools": [
+                    "RequirementsTool"
+                ],
+                "status": {}
+            },
+            {
+                "id": "file_search",
+                "name": "File Search",
+                "description": "Searches for files in the project by name pattern",
+                "author": "ZENCODER_MCP_CLIENT",
+                "icon": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAABYlAAAWJQFJUiTwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAScSURBVHgB7Zs9UBtHFMf/b/mQgi0MM6aIK6VJG2ecPrgLksG0nhSRG6eEidML+iS2y9CAq5TBDiiZSWHShwl1GsuNKewZy5IsTgjtevcQ47sD63bvA52t+80wsHu73O3/3r7dfbsHpKSkDDOEAIiFy7kmb17jHLMy+bnMyTGBiyDKISIExD7EyNrkn60/ECPGAjRuZGfRFeUoG9sPIdhqnCIYCVCfy9wlols4Z+IUgekWbMxl7wyi8QoiXq7PTcwjBrQsQL75edn4sjNPCDSI4TcGtosR7Lcw0Zh5/LKBkDQK2X/fdy0OSxjVKkW440xy0P7hGH0/87j1/F1uC3HTswREKYJvF7DfPuhTZ97hqLfx50fU3cFXAEF0zZnmwNagGn9ClCL4CkACrrc/SizWcVmXqETwHwVIXHEmW9LhISFEIYK/BXj6/6DN30tYEbTnAUkmjAjJE0DOLxCAoCIkTgAB/I+AEPgPMCRxArSP2GpQK5AKGC/QEifAzN+t59YR+1aQ2ME5oDcVPmeUCPLXjzpl+60ddPgoRoEwpAJgyEkFwJCTCoAhJxUAQ86HL4Bj3aCCtTDkgxdAgP2iGm6H6QWtwZBErgVM6IXIA8cpUx+AIWfoBUikDxCLU1P1zkFJ7kl8LUNkV+UGZt7OB/bk31UZ+nk0WbE2EAG+m6PegEOuYn2FGJGBzUWwo3W5JTXlU7QqH381rBCJ6gKNYuYeqPu7RuMVeWkT643CeBkhSIwA0tLKcixfhiECtNIojt1DQBIhQL2QLQmIFWeeDIrWZONWidH1yUqb1A8D/1IIeuitLwRbtrtOABLhA+qFzFP0HJ1COrsq53R9+i+relb5V99k84yJJ+SoI6l1xz/5bHqzVoMBA7cA9fbhbgj6NV6hrqkycuPW2dgp1j4owZDBdwEmbrozaKNf409QZaTpP3BXtY/tmd0eA0aO9XlnuouRB7p1GcOO638BX8CQgQsgPf9VZ3q68mZPsypyW9aOJysPQ9K1AAZP1ZmwT6Jq0ly84LIeOZRqW88JCXCCcD0053wWmvBOZ8mdQ89giL8Anq3qFwuXIz0jLH3AP840gZYOFrN5v3p2GUElT91NGKJxTE403TmtSAXgY+0N73jeORRP+omgrqkyzjw1eQqyMPI/JEXksoCJrvvYXFimN1GTT3Hbk60a+LReHF9vFt71c+Uf1OKn0+H/4bTHf4QA+E6FXxeyK1KlG44aa7ltyzj46H+fzH35MEsIASMqXdy2HhrV8S3gmWzI2POtNwsTVxAxlyrtZbX4QQi4EBvNYvY7kzq+AljM2nU5QkKue9T9NR4RrBV5g9vCMzSexfFqEadmjaYiaB2Xt8dmjp9O3QzYso/OjmD/QsQHKI8XSeKmIOSpN1tUwsgH3lMhse54dlOt/Hrl1r31dbuD9hcj9WLmrtx4CP3BRBzfAoURQXsiNLnd/lk5QIREHb0Ncp6vH8fDH3lHEtUd7vvVNZoJKu+vvtoIsgfnhBM1ETFniSC7jG9wxHgqrEz3UuVg/lgIbMk+usuVWWsSdA9P69l6IihfoZwkhRxVUlJSPn7eAitD2scmGxshAAAAAElFTkSuQmCC",
+                "tools": [
+                    "file_search"
+                ],
+                "status": {}
+            },
+            {
+                "id": "fulltext_search",
+                "name": "Full Text Search",
+                "description": "Performs full-text search for text patterns in files across the project",
+                "author": "ZENCODER_MCP_CLIENT",
+                "icon": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAABYlAAAWJQFJUiTwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAMESURBVHgB7ZlNdhJBEMf/NRhAzQdZusMTmBuY7HTQFzxByMZt8nKBJBcwyTab4AkkL0rcJZ5AbhBcZSkCz4DItF35eBkmSM8wkhmwfhuYpmped81Udf0bQBAEQRAEQRCE/xEyGdRfPnpN6G6AaAZjhII6h0rszx7/PBpkZ8EEdd+O2+IZAj0hOBsmO2MASNE0xhSHqGmyMQZAwXrngM4xZiiFhn54+xAEQRAEQfgLogVgQrSAaAHRAoIgCIIgTCQj1wJ+e/Ien3wmU+9cFEjhuQIW9CSzV/dCRX+v6mkfzpZbRfwDzAGwU0fcVyMMuiubOW4t+THVAc/D+n0ARRmDaVVPfztsIO5FC/jpyZlGLrWjxdcHH4tnsjqyBw07uYkQjFwL+O3JG3Z6U9uuIyAKtNXITe1gSIwpcB/U7XSBn6Z7TJGqQVl7loXTmY+tUx5r2lMLXZVYJ1Ird26iEm90nSkhIDEJQOoM14WO0cWu6ji0NP+5Ve1n//1FOmtZ6oRcPppaN/nw6XypVkMAzAciI+bq6fcsBIMWz/BvbAN+S27JWO2LAgISeQBgqeXeASoOWvwNbKN0ivS6YhEBiTwAeq/Puq+7SOz59eX60HMv4BkCEnkN0Pmv3Nez5XagOYX1jz4FIiYOAai6Lxqv0ovwSTP/eMF9rdvuCgLywGQwci1goQLntg44jrOoP07hA6fTWevNYvqGgIz8fwHT+bzu/r547Ncu8uksDFzaKCp4fAM3QpFrAWeqXfTu551f6mRQEPg3tnGPcfM0jDCKXAvMl1DTs1j1DPMCz+q55EHTvs1zrg8sfjod5ys8zZPmEEMQi1aY+WGndvVk1hACi6gw/an1PpAPYsJcub2uld02QuAoVWzm0itBfGLVB8yVW1v6pVxVnq2xH6wWtd2drjFoEGKTAl6uJfKyImR1u3xZBzgwesIVPhLrJtMlVn79pDTjNx1iG4AghAnCRLTCV9sfeXcSToddk+/EaIF+QdApYzwcmSgxdBMErhVcJCnkriIIwuTzB0BKV/Rp/KExAAAAAElFTkSuQmCC",
+                "tools": [
+                    "fulltext_search"
+                ],
+                "status": {}
+            },
+            {
+                "id": "web_search",
+                "name": "Web Search",
+                "description": "Search the web for up-to-date technical information like latest releases, security advisories, migration guides, benchmarks, and community insights",
+                "author": "ZENCODER_MCP_BACKEND",
+                "icon": "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",
+                "tools": [
+                    "web_search"
+                ],
+                "status": {}
+            },
+            {
+                "id": "github",
+                "name": "GitHub",
+                "description": "GitHub's official MCP Server providing seamless integration with GitHub APIs, enabling advanced automation and interaction capabilities",
+                "link": "https://github.com/github/github-mcp-server",
+                "author": "github",
+                "icon": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAEO0lEQVR4AWJgpBAA2i8HaFd6KArvnLRPvc+2bdu2bdu2bdu2bdu2bbOTfxWZZro6c9+/jLcvmzn5soPmnP4DWACIoIjo/wGIMYCFT5GrRIUKJXOniuh6xeivAURAqJx9Nl9/90sTQvv94ebOwQXDA4xbA5Tuifte+SUM+n13ZFqAKHgAB5LO/CyEJlS5Xn5bngHgwQCIEKb/JyGcwl+upq9TIoHICkAM6S8aRzfaeFgU4OYAAhp/ExZyCmcvgJsBOEM/8+HlUkwl2AIDCBgqZ29FWEAgE0BP8VeaBEYBAByVNaF5p6AFHFv+7ogADggJ3nseT2k6+5HKkB1fLm45+Ldw6VcOkD+AiO/2zP9lBCBy4+ty3eWaPO4ck8F+1bMXVxyM/AAcjb3rt40TAY5eb+4uH9i0YvHiFRr1XXj94/iIACPM9NoZAH8AIj4SHk0BA+NArIgEr1i42AARGHoIjz4lgBFA6CQnPQqeM6ksNcH7Ah3lgZoIMjoId1t4NVM+UiWj+8io17FBCoBQSUhddoCZKcR2fVM6gasOsEI/7XfDmwJgP6yf1EM2KABEfSwN/MxnboCQ7L2M+5zKACiqH5vpYObi6C6k6hsA3YTmBacANwcQoj6XizBFBbCFEnDITsxCxBbLyL0hFECog9LYSDArEdrJyNvhoAMQdEM2twezlG+/38RSAJH0TWgRHKCEJrchOUgHRH321w4qysivqVXAU9ncLzhAExn5JZUCCHdPNs9m1sIAGfkhoQ/AwpyTzSdDWHYnWiMjn0YG0wG2jfoJTQyy2sXI+mTPhVFP4hj9CuxidRI5qutvx5XkAxDqCKk7YSwsgA7rgJ5QHaT5oj8YBmZGILQRUloRA8B+XEg565kQiKHgd/0+uBtRBRD6KfmzAwO4kUHEAdT55ssWc8AMgGRfXQnj8hX3ENvzEGRVJCsmUOaVQh9f+1PAeKURlguneBbb1uyg0Jziz4FuuaIE6UfCFhQlR8ddP4Tms3nUTswIyOHKWjtjUqHdnnG+v9/skC7tiz/8FMbEXQX+uRHum+J5kggZnrojNdEGTNLL/RFGHSR/ACHRB5f5M6xo9S9ur/d9+Y9sB4QiTfuZA9zfAaG5e9wWKDDk4J8/v7/2VYuAIQaAGGbMzvK/1a6nV+2JY9XrPqJTpwxgutDe0P94SLWbFCHcOZf3oUCBoELJ0qRRAW3VQutxLHAVIMUR64Fr/cZEgFt2BdBOqTc+pAE3qdIQ/65wauLhhIalK/Uvh0AATbzJDDKrEzlinPHUJL//iKkB1kDTxN0UIPNKlcMxzzWK62ekEaB5TtLmSOCBAZKA6s/0QkMXOnjsv29N4NbVOhGijHWn4MkqoLvLwfd58cGIWQCkiURjHwsxWN3hpkK8mp0eIGKWAGkCUZr0jKY6cLRvHVvvbg2QCIAbXEG6twBYiF599LXQf+aqkLaPxSdDAAAAAElFTkSuQmCC",
+                "status": {}
+            },
+            {
+                "id": "sequential thinking",
+                "name": "Sequential Thinking",
+                "description": "Dynamic and reflective problem-solving through thought sequences",
+                "link": "https://github.com/modelcontextprotocol/servers/blob/main/src/sequentialthinking",
+                "author": "modelcontextprotocol",
+                "icon": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAYFBMVEXk5vGrrLVkZWkdHR4AAAArLC1WV1rHydPW2OJWVlpkZWqOj5cODg+PkJednqZHSEw5Ojw5Oj1HSEtyc3krLC65usSAgYhWV1u5u8Ryc3iAgYcrKy2PkJaOkJdWVlsdHR8WmFL5AAABqElEQVR4Ae2Uh5LkIAwFwWovzFibc/7/r7xoXVnLgVXxYleSqJlHapP+85/fmTwJzCfF1XHqxMpUt3X4/zMY87aOJkx0mFKIAjDnmrKAr3OKcADk22qr4Otj6AQEbKqMryXtsyiAhX2s5TR4gHbeFmA1TLELyG3AGYGEhZXzNuCCldEuBJAFuGwDroAsgNbxAkq65qa0Abeid6kocJd6XAH31vgA43qzv5YZeBgHjG0AiI9EAipAjQcIoI/WbVU2nhR4Hh4iVP9dceVXNDrECR+QTUsfcDLUQO+SUYRvSHG3CGcjD4t19VH5RhuqdeThyotiuM+4KPAa8FBwaMBFcR4qoHcAdwJIwEWvyCJ6Xb+PlTfR04BKAPGxzhby/o8fAOke4vV+wKF7iAugZS+g9F+1qibSIKBIdwf27p489APyow6f1WPjHUDj5nXqcm3e+QDv5jENsCX8LEAB68dvEj+8e2DjxiL49yjgwgHrBw4MXCjgeu/A2IX2RWodGLtQ1zv3/WgB3gXj+mOfdrlmw7HpAyzCip41fYzl/Abez89q2//nP78pnwFZ0hWD4XpykwAAAABJRU5ErkJggg==",
+                "status": {}
+            }
+        ],
+        "author": "39a2bd75-3d0b-4aa5-bf59-b8018127151a",
+        "isSharedWithOrganization": false,
+        "email": "teacher.sean.morrissey@gmail.com"
+    },
+    "isUnitTestsAgent": false,
+    "isE2EAgent": false,
+    "isQnaAgent": false,
+    "isRepoInfoAgent": false,
+    "autoApply": true
+}
+}

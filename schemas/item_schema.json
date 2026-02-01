@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Auction Item",
+  "description": "Schema for auction items in Sapphire Exchange",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the item"
+    },
+    "seller_name": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 50,
+      "description": "Username of the seller (3-50 characters, alphanumeric with underscores and hyphens)",
+      "pattern": "^[a-zA-Z0-9_-]{3,50}$"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Item title (max 100 characters)"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Detailed item description (max 2000 characters)"
+    },
+
+    "name": {
+      "type": "string",
+      "description": "Legacy item name"
+    },
+
+    "current_bid_raw": {
+      "type": ["string", "null"],
+      "pattern": "^\\d*$",
+      "description": "Current highest bid in raw units (1 NANO = 10^30 raw)"
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "sold", "expired", "cancelled", "deleted"],
+      "description": "Current status of the auction"
+    },
+    "category": {
+      "type": "string",
+      "description": "Item category"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 20
+      },
+      "maxItems": 10,
+      "description": "Item tags (max 10 tags, 20 chars each)"
+    },
+    "image_urls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "Array of image URLs"
+    },
+    "auction_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End time of the auction in ISO 8601 format"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deleted_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "arweave_metadata_uri": {
+      "type": "string",
+      "description": "Arweave transaction ID for the item metadata"
+    },
+    "data_hash": {
+      "type": "string",
+      "description": "SHA-256 hash for data integrity verification"
+    },
+    "arweave_confirmed": {
+      "type": "boolean",
+      "description": "Whether the Arweave transaction is confirmed"
+    },
+    "rsa_private_key": {
+      "type": "string",
+      "description": "RSA private key for the user (encrypted in production)"
+    },
+    "rsa_public_key": {
+      "type": "string",
+      "description": "RSA public key for the user"
+    },
+    "rsa_fingerprint": {
+      "type": "string",
+      "description": "Fingerprint of the RSA key pair"
+    },
+    "auction_wallet_created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata in key-value format",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "id",
+    "seller_name",
+    "title",
+    "status",
+    "starting_price_nano",
+    "starting_price_raw"
+  ],
+  "additionalProperties": false
+}

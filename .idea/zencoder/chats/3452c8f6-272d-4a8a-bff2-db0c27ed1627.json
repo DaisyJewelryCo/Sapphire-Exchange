@@ -1,0 +1,68 @@
+{
+    "checksum": "b7d5bc9882f4528882ea178e0e31eaf0c9cbaf1784cf61bed642ddcc8f8d7891",
+    "data": {
+    "id": "3452c8f6-272d-4a8a-bff2-db0c27ed1627",
+    "createdAt": 1754684340089,
+    "updatedAt": 1754684340362,
+    "title": "Failed to create main window: AuctionListWidget...",
+    "messages": [
+        {
+            "id": "1a9c1fde-ec4a-42ba-8169-cb0af64c9785",
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Failed to create main window: AuctionListWidget.__init__() got an unexpected keyword argument 'active_section'"
+                }
+            ],
+            "context": {
+                "currentFile": {
+                    "path": "app.py",
+                    "fsPath": "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/app.py",
+                    "sources": [
+                        "opened_tab"
+                    ],
+                    "content": "\"\"\"\nSapphire Exchange - Main Application Entry Point\n\nThis module launches the PyQt5-based desktop application for Sapphire Exchange.\n\"\"\"\nimport sys\nimport asyncio\nfrom PyQt5.QtWidgets import QApplication, QMessageBox\nfrom PyQt5.QtCore import Qt\n\n# Enable asyncio event loop for PyQt5\nfrom qasync import QEventLoop\n\nfrom main_window import MainWindow\n\ndid_shutdown = False\n\ndef handle_exception(exc_type, exc_value, exc_traceback):\n    \"\"\"Handle uncaught exceptions.\"\"\"\n    sys.__excepthook__(exc_type, exc_value, exc_traceback)\n    QMessageBox.critical(\n        None,\n        \"Unhandled Exception\",\n        f\"An unhandled exception occurred:\\n\\n{exc_value}\",\n        QMessageBox.Ok\n    )\n\ndef main():\n    \"\"\"Main entry point for the application.\"\"\"\n    # Create the Qt Application\n    app = QApplication(sys.argv)\n    app.setQuitOnLastWindowClosed(True)\n    app.setStyle('Fusion')  # Use Fusion style for a modern look\n    \n    # Set up exception handling\n    sys.excepthook = handle_exception\n    \n    # Set up asyncio event loop\n    loop = QEventLoop(app)\n    asyncio.set_event_loop(loop)\n    \n    # Create and show the main window\n    try:\n        window = MainWindow()\n        window.show()\n    except Exception as e:\n        QMessageBox.critical(\n            None,\n            \"Fatal Error\",\n            f\"Failed to create main window: {str(e)}\"\n        )\n        return 1\n    \n    # Connect the aboutToQuit signal to clean up resources\n    def handle_quit():\n        global did_shutdown\n        if did_shutdown:\n            return\n        did_shutdown = True\n        import threading\n        print(\"[Shutdown] Active threads:\", threading.enumerate())\n        try:\n            # Cancel all running tasks\n            for task in asyncio.all_tasks(loop):\n                if not task.done() and task != asyncio.current_task():\n                    task.cancel()\n            # Give tasks a chance to cancel gracefully, but don't hang forever\n            try:\n                loop.run_until_complete(asyncio.wait_for(asyncio.sleep(0.1), timeout=2.0))\n            except Exception as e:\n                print(f\"Shutdown wait timeout or error: {e}\")\n            # Stop the event loop\n            if loop.is_running():\n                loop.stop()\n            # Force Qt event loop to quit\n            from PyQt5.QtWidgets import QApplication\n            QApplication.quit()\n        except Exception as e:\n            print(f\"Error during shutdown: {e}\")\n        \n    app.aboutToQuit.connect(handle_quit)\n    \n    # Run the application\n    try:\n        return_code = app.exec_()\n        return return_code\n    except KeyboardInterrupt:\n        print(\"Application interrupted by user\")\n        return 0\n    except Exception as e:\n        print(f\"Application error: {e}\")\n        return 1\n    finally:\n        # Ensure the loop is properly closed\n        try:\n            loop.close()\n        except:\n            pass\n    \nif __name__ == \"__main__\":\n    # Don't use asyncio.run() with qasync\n    sys.exit(main())\n",
+                    "language": "python"
+                },
+                "codebaseEnabled": true
+            },
+            "createdAt": 1754684340361,
+            "isInternal": false,
+            "rawContent": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Failed to create main window: AuctionListWidget.__init__() got an unexpected keyword argument 'active_section'"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "autoAppliedRules": [
+                {
+                    "name": "Repository Information Overview",
+                    "description": "Repository Information Overview",
+                    "uri": "zen-rules://repo/repo",
+                    "mimeType": "text/markdown",
+                    "content": "\n\n# Sapphire Exchange Information\n\n## Summary\nSapphire Exchange is a decentralized auction platform built on Arweave and Nano blockchains. It enables users to list, bid on, and purchase items with secure blockchain transactions. The application provides decentralized storage on Arweave, fast and feeless Nano transactions, secure wallet management, and a timed auction system.\n\n## Structure\n- **app.py**: Main application entry point\n- **main_window.py**: PyQt5-based UI implementation\n- **models.py**: Data models for users, items, and auctions\n- **database.py**: Database module using Arweave for storage\n- **arweave_utils.py**: Handles interactions with Arweave blockchain\n- **nano_utils.py**: Manages Nano wallet and transaction functionality\n- **decentralized_client.py**: Client for interacting with blockchain networks\n- **mock_servers.py**: Mock implementations for testing without real blockchain\n- **test_marketplace.py**: Test script for verifying marketplace functionality\n\n## Language & Runtime\n**Language**: Python\n**Version**: 3.7+\n**Build System**: pip (Python package manager)\n**Package Manager**: pip\n\n## Dependencies\n**Main Dependencies**:\n- PyArweave==0.6.0: Arweave blockchain integration\n- python-dotenv>=0.19.2: Environment variable management\n- requests>=2.28.0: HTTP requests\n- base58>=2.1.1: Base58 encoding/decoding\n- cryptography>=3.4.7: Cryptographic operations\n- ed25519-blake2b==1.4.1: Digital signatures\n- pynacl>=1.4.0: Cryptographic library\n- pycryptodome>=3.20.0: Cryptographic primitives\n- PyQt5>=5.15.9: GUI framework\n- qrcode>=7.4.2: QR code generation\n- Pillow>=9.5.0: Image processing\n\n**Development Dependencies**:\n- Not explicitly specified in requirements.txt\n\n## Build & Installation\n```bash\n# Create and activate virtual environment\npython3 -m venv venv\nsource venv/bin/activate  # On Windows: venv\\Scripts\\activate\n\n# Install dependencies\npip install -r requirements.txt\n\n# Set up environment variables\n# Create .env file with:\n# ARWEAVE_GATEWAY_URL=https://arweave.net\n# ARWEAVE_WALLET_FILE=wallet.json\n# NANO_NODE_URL=https://mynano.ninja/api\n# NANO_REPRESENTATIVE=nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3\n```\n\n## Usage\n```bash\n# Run the application\npython app.py\n```\n\n## Testing\n**Framework**: Custom testing with mock implementations\n**Test Location**: test_marketplace.py\n**Mock Implementation**: mock_servers.py provides simulated blockchain environments\n**Run Command**:\n```bash\npython test_marketplace.py\n```\n\n## Features\n- **Decentralized Storage**: Item data stored on Arweave blockchain\n- **Nano Integration**: Fast, feeless Nano transactions for bidding and purchasing\n- **Secure Wallet Management**: Built-in wallet generation and management\n- **Auction System**: Support for timed auctions with automatic finalization\n- **Mock Mode**: Testing environment that simulates blockchain operations\n- **PyQt5 GUI**: Desktop application interface for user interaction",
+                    "alwaysApply": true
+                }
+            ]
+        }
+    ],
+    "isAgent": true,
+    "isCustomAgent": false,
+    "isUnitTestsAgent": false,
+    "isE2EAgent": false,
+    "isQnaAgent": false,
+    "isRepoInfoAgent": false,
+    "isClaudeCode": false,
+    "autoApply": true,
+    "model": "default"
+}
+}

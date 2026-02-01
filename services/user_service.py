@@ -44,16 +44,49 @@ class UserService:
                 print(f"User {username} already exists")
                 return None
             
-            # Generate blockchain addresses
-            nano_address = await self.blockchain.generate_nano_address()
-            arweave_address = await self.blockchain.generate_arweave_address()
-            doge_address = await self.blockchain.generate_doge_address()
+            # Generate blockchain addresses sequentially with delays to avoid pool contention
+            nano_address = None
+            arweave_address = None
+            usdc_address = None
             
-            if not all([nano_address, arweave_address, doge_address]):
-                print("Failed to generate blockchain addresses")
+            try:
+                # Generate Nano address
+                nano_address = await self.blockchain.generate_nano_address()
+                if not nano_address:
+                    raise RuntimeError("Failed to generate Nano address")
+                print(f"Generated Nano address: {nano_address}")
+                
+                # Delay to ensure pool connection is fully released
+                try:
+                    await asyncio.sleep(0.5)
+                except RuntimeError:
+                    pass
+                
+                # Generate Arweave address
+                arweave_address = await self.blockchain.generate_arweave_address()
+                if not arweave_address:
+                    raise RuntimeError("Failed to generate Arweave address")
+                print(f"Generated Arweave address: {arweave_address}")
+                
+                # Delay to ensure pool connection is fully released
+                try:
+                    await asyncio.sleep(0.5)
+                except RuntimeError:
+                    pass
+                
+                # Generate USDC address (optional)
+                usdc_address = await self.blockchain.generate_usdc_address()
+                if usdc_address:
+                    print(f"Generated USDC address: {usdc_address}")
+                
+            except Exception as e:
+                print(f"Failed to generate blockchain addresses: {e}")
+                print(f"  Nano: {nano_address}")
+                print(f"  Arweave: {arweave_address}")
+                print(f"  USDC: {usdc_address}")
                 return None
             
-            print(f"Generated addresses - Nano: {nano_address}, Arweave: {arweave_address}, DOGE: {doge_address}")
+            print(f"Generated addresses - Nano: {nano_address}, Arweave: {arweave_address}, USDC: {usdc_address}")
             
             # Hash password
             password_hash = self.security.hash_password(password)
@@ -64,7 +97,7 @@ class UserService:
                 password_hash=password_hash,
                 nano_address=nano_address,
                 arweave_address=arweave_address,
-                doge_address=doge_address,
+                usdc_address=usdc_address,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 is_active=True,
                 reputation_score=0.0,

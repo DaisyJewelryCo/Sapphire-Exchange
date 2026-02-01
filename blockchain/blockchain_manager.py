@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from enum import Enum
 
 from config.blockchain_config import blockchain_config
+from utils.qasync_compat import async_sleep
 from .nano_client import NanoClient
 from .arweave_client import ArweaveClient
-from .dogecoin_client import DogecoinClient
+from .solana_usdc_client import SolanaUsdcClient
+# from .dogecoin_client import DogecoinClient  # Foundation code for real DOGE blockchain
 
 
 class BlockchainStatus(Enum):
@@ -45,14 +47,20 @@ class BlockchainManager:
         """Initialize blockchain manager with all clients."""
         self.nano_client = NanoClient(blockchain_config.get_nano_config())
         self.arweave_client = ArweaveClient(blockchain_config.get_arweave_config())
-        self.dogecoin_client = DogecoinClient(blockchain_config.get_dogecoin_config())
+        # Real Solana USDC implementation
+        self.solana_usdc_client = SolanaUsdcClient(blockchain_config.get_usdc_config())
+        # self.dogecoin_client = DogecoinClient(blockchain_config.get_dogecoin_config())  # Foundation code for real DOGE blockchain
         
         # Connection status tracking
         self.connection_status: Dict[str, ConnectionStatus] = {
             'nano': ConnectionStatus('Nano', BlockchainStatus.DISCONNECTED),
             'arweave': ConnectionStatus('Arweave', BlockchainStatus.DISCONNECTED),
-            'dogecoin': ConnectionStatus('DOGE Wallet', BlockchainStatus.DISCONNECTED)
+            'solana_usdc': ConnectionStatus('Solana USDC', BlockchainStatus.DISCONNECTED)
+            # 'dogecoin': ConnectionStatus('DOGE Wallet', BlockchainStatus.DISCONNECTED)  # Foundation code for real DOGE blockchain
         }
+        
+        # Lock for serializing blockchain operations to avoid database pool exhaustion
+        self._blockchain_op_lock: Optional[asyncio.Lock] = None
         
         # Event callbacks
         self.status_change_callbacks = []
@@ -60,14 +68,32 @@ class BlockchainManager:
     async def initialize(self) -> bool:
         """Initialize all blockchain clients."""
         try:
-            # Initialize clients concurrently
-            tasks = [
-                self._initialize_nano(),
-                self._initialize_arweave(),
-                self._initialize_dogecoin()
-            ]
+            # Initialize lock for blockchain operations
+            # Try to create the lock, but handle the case where event loop might not be fully ready
+            try:
+                self._blockchain_op_lock = asyncio.Lock()
+            except RuntimeError as e:
+                print(f"Warning: Could not create async lock immediately: {e}")
+                # Lock will be created lazily when first needed
+                self._blockchain_op_lock = None
             
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Initialize clients with staggered timing to avoid pool contention
+            self.connection_status['nano'].status = BlockchainStatus.DISCONNECTED
+            self.connection_status['arweave'].status = BlockchainStatus.DISCONNECTED
+            self.connection_status['solana_usdc'].status = BlockchainStatus.DISCONNECTED
+            
+            # Initialize Nano first
+            nano_result = await self._initialize_nano()
+            await async_sleep(0.1)  # Small delay to avoid pool contention
+            
+            # Initialize Arweave
+            arweave_result = await self._initialize_arweave()
+            await async_sleep(0.1)  # Small delay to avoid pool contention
+            
+            # Initialize Solana USDC
+            solana_usdc_result = await self._initialize_solana_usdc()
+            
+            results = [nano_result, arweave_result, solana_usdc_result]
             
             # Check results and update status
             success_count = 0
@@ -82,6 +108,8 @@ class BlockchainManager:
             
         except Exception as e:
             print(f"Error initializing blockchain manager: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     async def _initialize_nano(self) -> bool:
@@ -122,8 +150,35 @@ class BlockchainManager:
             )
             return False
     
+    async def _initialize_solana_usdc(self) -> bool:
+        """Initialize Solana USDC client."""
+        try:
+            success = await self.solana_usdc_client.initialize()
+            if success:
+                self.connection_status['solana_usdc'] = ConnectionStatus(
+                    'Solana USDC', BlockchainStatus.CONNECTED, "Connected to Solana USDC"
+                )
+            else:
+                self.connection_status['solana_usdc'] = ConnectionStatus(
+                    'Solana USDC', BlockchainStatus.RPC_ERROR, "Failed to connect to Solana RPC"
+                )
+            return success
+        except Exception as e:
+            self.connection_status['solana_usdc'] = ConnectionStatus(
+                'Solana USDC', BlockchainStatus.ERROR, f"Solana USDC initialization error: {e}"
+            )
+            return False
+
+    # Legacy USDC implementation (kept for reference, replaced by Solana USDC)
+    async def _initialize_usdc(self) -> bool:
+        """Initialize USDC client. (Legacy - use Solana USDC instead)"""
+        # This method is kept for backward compatibility but is no longer used
+        return False
+
+    # Foundation code for real DOGE blockchain (commented out)
+    """
     async def _initialize_dogecoin(self) -> bool:
-        """Initialize Dogecoin client."""
+        # Initialize Dogecoin client.
         try:
             success = await self.dogecoin_client.initialize()
             if success:
@@ -140,6 +195,7 @@ class BlockchainManager:
                 'DOGE Wallet', BlockchainStatus.ERROR, f"DOGE wallet error: {e}"
             )
             return False
+    """
     
     def get_overall_status(self) -> BlockchainStatus:
         """Get overall system status based on all connections."""
@@ -189,7 +245,8 @@ class BlockchainManager:
         health_checks = {
             'nano': self.nano_client.check_health(),
             'arweave': self.arweave_client.check_health(),
-            'dogecoin': self.dogecoin_client.check_health()
+            'solana_usdc': self.solana_usdc_client.check_health()
+            # 'dogecoin': self.dogecoin_client.check_health()  # Foundation code for real DOGE blockchain
         }
         
         results = {}
@@ -217,10 +274,11 @@ class BlockchainManager:
             print(f"Error getting Nano balance: {e}")
             return None
     
-    async def send_nano(self, from_address: str, to_address: str, amount_raw: str) -> Optional[str]:
-        """Send Nano transaction."""
+    async def send_nano(self, from_address: str, to_address: str, amount_raw: str, 
+                       memo: Optional[str] = None) -> Optional[str]:
+        """Send Nano transaction with optional memo."""
         try:
-            return await self.nano_client.send_payment(from_address, to_address, amount_raw)
+            return await self.nano_client.send_payment(from_address, to_address, amount_raw, memo=memo)
         except Exception as e:
             print(f"Error sending Nano: {e}")
             return None
@@ -242,9 +300,37 @@ class BlockchainManager:
             print(f"Error retrieving data from Arweave: {e}")
             return None
     
+    # USDC operations (Testing database implementation)
+    async def get_usdc_balance(self, address: str) -> Optional[Dict[str, Any]]:
+        """Get USDC balance on Solana."""
+        try:
+            return await self.solana_usdc_client.get_balance(address)
+        except Exception as e:
+            print(f"Error getting USDC balance: {e}")
+            return None
+    
+    async def send_usdc(self, from_address: str, to_address: str, amount: float, 
+                       keypair_bytes: Optional[bytes] = None) -> Optional[str]:
+        """Send USDC transaction on Solana."""
+        try:
+            return await self.solana_usdc_client.send_usdc(from_address, to_address, amount, keypair_bytes)
+        except Exception as e:
+            print(f"Error sending USDC: {e}")
+            return None
+    
+    async def create_usdc_wallet(self, chain: str = None, wallet_name: str = None, user_id: int = None) -> Optional[str]:
+        """Create new USDC wallet. (Legacy method - Solana USDC wallets are managed separately)"""
+        try:
+            return None
+        except Exception as e:
+            print(f"Error creating USDC wallet: {e}")
+            return None
+
+    # Foundation code for real DOGE blockchain operations (commented out)
+    """
     # Dogecoin operations
     async def get_doge_balance(self, address: Optional[str] = None) -> Optional[float]:
-        """Get Dogecoin balance."""
+        # Get Dogecoin balance.
         try:
             return await self.dogecoin_client.get_balance(address)
         except Exception as e:
@@ -252,7 +338,7 @@ class BlockchainManager:
             return None
     
     async def send_doge(self, to_address: str, amount: float) -> Optional[str]:
-        """Send Dogecoin transaction."""
+        # Send Dogecoin transaction.
         try:
             return await self.dogecoin_client.send_payment(to_address, amount)
         except Exception as e:
@@ -260,17 +346,21 @@ class BlockchainManager:
             return None
     
     async def generate_doge_address(self) -> Optional[str]:
-        """Generate new Dogecoin address."""
+        # Generate new Dogecoin address.
         try:
             return await self.dogecoin_client.generate_address()
         except Exception as e:
             print(f"Error generating DOGE address: {e}")
             return None
+    """
     
     async def generate_nano_address(self) -> Optional[str]:
         """Generate new Nano address."""
         try:
-            return await self.nano_client.generate_address()
+            if self._blockchain_op_lock is None:
+                self._blockchain_op_lock = asyncio.Lock()
+            async with self._blockchain_op_lock:
+                return await self.nano_client.generate_address()
         except Exception as e:
             print(f"Error generating Nano address: {e}")
             return None
@@ -278,9 +368,28 @@ class BlockchainManager:
     async def generate_arweave_address(self) -> Optional[str]:
         """Generate new Arweave address."""
         try:
-            return await self.arweave_client.generate_address()
+            if self._blockchain_op_lock is None:
+                self._blockchain_op_lock = asyncio.Lock()
+            async with self._blockchain_op_lock:
+                return await self.arweave_client.generate_address()
         except Exception as e:
             print(f"Error generating Arweave address: {e}")
+            return None
+    
+    async def generate_usdc_address(self) -> Optional[str]:
+        """Generate new USDC address. Returns a mock Solana address."""
+        try:
+            import uuid
+            import base58
+            
+            # Generate a mock Solana address using base58 encoding
+            # Solana addresses are 32-byte public keys encoded in base58
+            unique_bytes = uuid.uuid4().bytes + uuid.uuid4().bytes[:8]
+            solana_address = base58.b58encode(unique_bytes).decode('ascii')
+            
+            return solana_address
+        except Exception as e:
+            print(f"Error generating USDC address: {e}")
             return None
     
     # Unified transaction methods
@@ -333,8 +442,9 @@ class BlockchainManager:
         for blockchain, address in addresses.items():
             if blockchain.lower() == 'nano':
                 tasks.append(('nano', self.get_nano_balance(address)))
-            elif blockchain.lower() == 'dogecoin':
-                tasks.append(('dogecoin', self.get_doge_balance(address)))
+            elif blockchain.lower() == 'usdc':
+                # For USDC, address would be address_id (int)
+                tasks.append(('usdc', self.get_usdc_balance(int(address) if address.isdigit() else None)))
         
         if tasks:
             task_results = await asyncio.gather(*[task[1] for task in tasks], return_exceptions=True)
@@ -384,12 +494,12 @@ class BlockchainManager:
             tasks = [
                 self.nano_client.get_network_info(),
                 self.arweave_client.get_network_info(),
-                self.dogecoin_client.get_network_info()
+                # Add USDC network info when needed
             ]
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            for i, (blockchain, result) in enumerate(zip(['nano', 'arweave', 'dogecoin'], results)):
+            for i, (blockchain, result) in enumerate(zip(['nano', 'arweave'], results)):
                 if not isinstance(result, Exception):
                     info[blockchain] = result or {}
                 else:

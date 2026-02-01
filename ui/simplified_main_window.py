@@ -29,11 +29,13 @@ class SimplifiedMainWindow(QMainWindow):
         self.resize(1200, 800)
         self.setMinimumSize(800, 600)
         
-        # Initialize application service
-        self.init_app_service()
-        
-        # Setup UI
+        # Setup UI first
         self.setup_ui()
+        
+        # Delay app service initialization to ensure event loop is running
+        self.app_ready = False
+        self.init_worker = None
+        QTimer.singleShot(100, self.init_app_service)
         
         # Setup timers
         self.setup_timers()
@@ -53,6 +55,7 @@ class SimplifiedMainWindow(QMainWindow):
         worker.error.connect(self.on_init_error)
         worker.start()
         self.init_worker = worker
+        self.app_ready = False
     
     def setup_ui(self):
         """Setup the user interface."""
@@ -83,6 +86,8 @@ class SimplifiedMainWindow(QMainWindow):
     
     def create_main_interface(self):
         """Create the main authenticated interface."""
+        from services.arweave_post_service import arweave_post_service
+        
         main_widget = QWidget()
         main_layout = QHBoxLayout(main_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -98,10 +103,12 @@ class SimplifiedMainWindow(QMainWindow):
         
         # Marketplace page (index 0)
         self.marketplace_widget = AuctionListWidget(active_section="marketplace")
+        self.marketplace_widget.arweave_post_service = arweave_post_service
         self.content_stack.addWidget(self.marketplace_widget)
         
         # My Items page (index 1)
         self.my_items_widget = AuctionListWidget(active_section="my-items")
+        self.my_items_widget.arweave_post_service = arweave_post_service
         self.content_stack.addWidget(self.my_items_widget)
         
         # Activity page (index 2)
@@ -121,6 +128,10 @@ class SimplifiedMainWindow(QMainWindow):
         # Connect bid settings refresh interval to marketplace widget
         bid_settings_widget = self.dashboard_widget.get_bid_settings_widget()
         bid_settings_widget.refresh_interval_changed.connect(self.marketplace_widget.set_refresh_interval)
+        
+        # Store dev tools reference for signal connections
+        self._marketplace_widget = self.marketplace_widget
+        self._my_items_widget = self.my_items_widget
         
         # Connect dashboard logout button
         self.dashboard_widget.logout_btn.clicked.connect(self.logout)
@@ -142,21 +153,22 @@ class SimplifiedMainWindow(QMainWindow):
     
     def create_dev_tools_widget(self):
         """Create dev tools widget."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(24, 24, 24, 24)
+        from ui.arweave_dev_tools_widget import ArweaveDevToolsWidget
+        from services.arweave_post_service import arweave_post_service
         
-        title = QLabel("Developer Tools")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 16px;")
-        layout.addWidget(title)
+        dev_tools = ArweaveDevToolsWidget()
+        dev_tools.set_arweave_service(arweave_post_service)
         
-        # Add wallet widget for testing
-        wallet_widget = SimpleWalletWidget()
-        layout.addWidget(wallet_widget)
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         
-        layout.addStretch(1)
+        layout.addWidget(dev_tools)
         
-        return widget
+        self.arweave_dev_tools = dev_tools
+        
+        return container
     
     def apply_global_theme(self):
         """Apply global theming."""
@@ -291,6 +303,9 @@ class SimplifiedMainWindow(QMainWindow):
             if hasattr(self, 'dashboard_widget') and hasattr(self.dashboard_widget, 'wallet_overview_widget'):
                 self.dashboard_widget.wallet_overview_widget.load_wallet_data()
             
+            # Connect Arweave post signals to dev tools
+            self.connect_arweave_post_signals()
+            
             # Set default page to marketplace
             self.sidebar.set_active_page(0)
             self.content_stack.setCurrentIndex(0)
@@ -384,14 +399,39 @@ class SimplifiedMainWindow(QMainWindow):
                 self.width(), overlay_height
             )
     
+    def connect_arweave_post_signals(self):
+        """Connect Arweave post signals from auction widgets to dev tools."""
+        try:
+            if hasattr(self, 'arweave_dev_tools'):
+                print(f"[DEBUG] Connecting post signals to dev tools")
+                self.marketplace_widget.arweave_post_generated.connect(
+                    self.arweave_dev_tools.add_post_preview
+                )
+                self.my_items_widget.arweave_post_generated.connect(
+                    self.arweave_dev_tools.add_post_preview
+                )
+                print(f"[DEBUG] Post signals connected successfully")
+            else:
+                print(f"[DEBUG] arweave_dev_tools not found!")
+        except Exception as e:
+            print(f"Error connecting Arweave post signals: {e}")
+            import traceback
+            traceback.print_exc()
+    
     # Callback methods for app service events
     def on_app_initialized(self, result):
         """Handle app initialization completion."""
         print("Application initialized successfully")
+        self.app_ready = True
+        if hasattr(self, 'login_screen'):
+            self.login_screen.set_app_ready(True)
     
     def on_init_error(self, error):
         """Handle app initialization errors."""
         print(f"Application initialization error: {error}")
+        self.app_ready = False
+        if hasattr(self, 'login_screen'):
+            self.login_screen.set_app_ready(False)
         QMessageBox.critical(self, "Initialization Error", f"Failed to initialize application: {error}")
     
     def on_status_change(self, status):

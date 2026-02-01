@@ -27,27 +27,9 @@ class WalletService:
         """Create multi-currency wallet for user."""
         try:
             print(f"Creating wallet for user {user.username}")
-            print(f"User addresses - Nano: {user.nano_address}, DOGE: {user.doge_address}, Arweave: {user.arweave_address}")
+            print(f"User addresses - Nano: {user.nano_address}, Arweave: {user.arweave_address}")
             
             # If addresses are already set, we just need to ensure wallet structures exist
-            # For DOGE, create wallet structure if needed
-            if user.doge_address and not hasattr(user, 'doge_private_key_encrypted'):
-                try:
-                    doge_wallet = await self.blockchain.dogecoin_client.create_wallet(mnemonic)
-                    if doge_wallet:
-                        # Only update if we don't have an address or if the new wallet has the same address
-                        if not user.doge_address or user.doge_address == doge_wallet.address:
-                            user.doge_address = doge_wallet.address
-                            user.doge_private_key_encrypted = doge_wallet.private_key_encrypted
-                            user.doge_mnemonic_hash = doge_wallet.mnemonic_hash
-                            print(f"DOGE wallet created with address: {user.doge_address}")
-                        else:
-                            print(f"DOGE wallet address mismatch, keeping existing: {user.doge_address}")
-                    else:
-                        print("Failed to create DOGE wallet, but continuing with existing address")
-                except Exception as e:
-                    print(f"Error creating DOGE wallet: {e}, continuing with existing address")
-            
             # For Nano, ensure we have the public key if we have an address
             if user.nano_address and not hasattr(user, 'public_key'):
                 try:
@@ -81,15 +63,6 @@ class WalletService:
         try:
             balances = {}
             
-            # Get DOGE balance
-            if user.doge_address:
-                doge_balance = await self.blockchain.get_doge_balance(user.doge_address)
-                balances['DOGE'] = {
-                    'balance': doge_balance or 0.0,
-                    'formatted': f"{doge_balance or 0.0:.8f} DOGE",
-                    'usd_value': await self._get_usd_value('DOGE', doge_balance or 0.0)
-                }
-            
             # Get Nano balance
             if user.nano_address:
                 nano_balance_data = await self.blockchain.get_nano_balance(user.nano_address)
@@ -119,21 +92,7 @@ class WalletService:
                           currency: str, memo: str = "") -> Optional[str]:
         """Send payment in specified currency."""
         try:
-            if currency == "DOGE":
-                if not user.doge_address:
-                    return None
-                
-                # Validate DOGE address
-                if not self.blockchain.dogecoin_client.validate_address(to_address):
-                    return None
-                
-                # Send DOGE payment
-                tx_id = await self.blockchain.send_doge(to_address, amount)
-                if tx_id:
-                    self._notify_transaction(user, currency, amount, to_address, tx_id)
-                return tx_id
-            
-            elif currency == "NANO":
+            if currency == "NANO":
                 if not user.nano_address:
                     return None
                 
@@ -158,9 +117,7 @@ class WalletService:
     async def generate_receive_address(self, user: User, currency: str) -> Optional[str]:
         """Generate new receiving address for specified currency."""
         try:
-            if currency == "DOGE":
-                return await self.blockchain.generate_doge_address()
-            elif currency == "NANO":
+            if currency == "NANO":
                 # Nano uses account-based model, return existing address
                 return user.nano_address
             return None
@@ -182,9 +139,7 @@ class WalletService:
     async def validate_address(self, address: str, currency: str) -> bool:
         """Validate address for specified currency."""
         try:
-            if currency == "DOGE":
-                return self.blockchain.dogecoin_client.validate_address(address)
-            elif currency == "NANO":
+            if currency == "NANO":
                 return self.blockchain.nano_client.validate_address(address)
             return False
         except Exception as e:
@@ -194,10 +149,7 @@ class WalletService:
     async def estimate_fee(self, currency: str, amount: float) -> float:
         """Estimate transaction fee for specified currency and amount."""
         try:
-            if currency == "DOGE":
-                # DOGE has small fixed fees
-                return 0.01  # 0.01 DOGE fee
-            elif currency == "NANO":
+            if currency == "NANO":
                 # Nano is feeless
                 return 0.0
             return 0.0
@@ -210,7 +162,6 @@ class WalletService:
         try:
             # Mock conversion rates (in real implementation, use CoinGecko API)
             rates = {
-                "DOGE": 0.08,  # $0.08 per DOGE
                 "NANO": 1.20   # $1.20 per NANO
             }
             
@@ -223,7 +174,7 @@ class WalletService:
         """Format balance for display."""
         try:
             if decimals is None:
-                decimals = 8 if currency == "DOGE" else 6
+                decimals = 6
             
             return f"{amount:.{decimals}f} {currency}"
         except Exception:

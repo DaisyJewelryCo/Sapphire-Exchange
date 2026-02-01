@@ -75,12 +75,14 @@ class ApplicationService:
     async def initialize(self) -> bool:
         """Initialize the application service."""
         try:
-            print("Initializing Sapphire Exchange...")
+            print("[APP_INIT] Initializing Sapphire Exchange...")
             
             # Initialize blockchain manager
+            print("[APP_INIT] Initializing blockchain manager...")
             blockchain_success = await self.blockchain.initialize()
+            print(f"[APP_INIT] Blockchain manager initialization: {blockchain_success}")
             if not blockchain_success:
-                print("Warning: Some blockchain services failed to initialize")
+                print("[APP_INIT] Warning: Some blockchain services failed to initialize")
             
             # Initialize price service
             # Price service initialization is handled internally
@@ -88,11 +90,13 @@ class ApplicationService:
             # Mark as initialized
             self.is_initialized = True
             
-            print("Application service initialized successfully")
+            print("[APP_INIT] Application service initialized successfully")
             return True
             
         except Exception as e:
-            print(f"Error initializing application service: {e}")
+            print(f"[APP_INIT] Error initializing application service: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     # User Management
@@ -297,7 +301,7 @@ class ApplicationService:
         except Exception as e:
             return False, f"Auction creation error: {str(e)}", None
     
-    async def place_bid(self, item_id: str, amount: float, currency: str = "DOGE") -> Tuple[bool, str, Optional[Bid]]:
+    async def place_bid(self, item_id: str, amount: float, currency: str = "USDC") -> Tuple[bool, str, Optional[Bid]]:
         """Place a bid on an auction."""
         try:
             if not self.current_user:
@@ -309,11 +313,11 @@ class ApplicationService:
                 return False, "Auction not found", None
             
             # Validate bid
-            current_highest = float(item.current_bid_doge or item.starting_price_doge or "0")
+            current_highest = float(item.current_bid_usdc or item.starting_price_usdc or "0")
             bid_validation = Validator.validate_bid_data({
                 'item_id': item_id,
                 'bidder_id': self.current_user.id,
-                'amount_doge': amount
+                'amount_usdc': amount
             }, current_highest)
             
             if not bid_validation['valid']:
@@ -393,8 +397,11 @@ class ApplicationService:
             
             addresses = {
                 'nano': self.current_user.nano_address,
-                'dogecoin': self.current_user.doge_address
+                'arweave': self.current_user.arweave_address
             }
+            
+            if getattr(self.current_user, 'usdc_address', None):
+                addresses['usdc'] = self.current_user.usdc_address
             
             return await self.blockchain.batch_get_balances(addresses)
         except Exception as e:
@@ -421,11 +428,11 @@ class ApplicationService:
                 return {}
             
             addresses = {}
-            if self.current_user.nano_address:
+            if getattr(self.current_user, 'nano_address', None):
                 addresses['NANO'] = self.current_user.nano_address
-            if self.current_user.doge_address:
-                addresses['DOGE'] = self.current_user.doge_address
-            if self.current_user.arweave_address:
+            if getattr(self.current_user, 'usdc_address', None):
+                addresses['USDC'] = self.current_user.usdc_address
+            if getattr(self.current_user, 'arweave_address', None):
                 addresses['ARWEAVE'] = self.current_user.arweave_address
             
             return addresses

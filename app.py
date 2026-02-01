@@ -35,15 +35,25 @@ def main():
     # Set up exception handling
     sys.excepthook = handle_exception
     
-    # Set up asyncio event loop
+    # Set up asyncio event loop with qasync
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
+    print("[MAIN] QEventLoop created and set as default event loop")
+    
+    # IMPORTANT: For qasync to work properly with asyncio.get_running_loop(),
+    # we need to ensure the loop is in a state that asyncio recognizes.
+    # This is done by qasync's QEventLoop implementation, but we need to verify.
+    # When app.exec_() runs, the loop will be considered "running" by Qt.
     
     # Create and show the main window
     try:
         window = SimplifiedMainWindow()
         window.show()
+        print("[MAIN] Main window created and shown")
     except Exception as e:
+        print(f"[MAIN] Fatal error creating window: {e}")
+        import traceback
+        traceback.print_exc()
         QMessageBox.critical(
             None,
             "Fatal Error",
@@ -80,15 +90,19 @@ def main():
         
     app.aboutToQuit.connect(handle_quit)
     
-    # Run the application
+    # Run the application - this starts the event loop
+    print("[MAIN] Starting Qt event loop")
     try:
         return_code = app.exec_()
+        print(f"[MAIN] Qt event loop ended with code {return_code}")
         return return_code
     except KeyboardInterrupt:
         print("Application interrupted by user")
         return 0
     except Exception as e:
         print(f"Application error: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
     finally:
         # Ensure the loop is properly closed
