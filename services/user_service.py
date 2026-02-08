@@ -18,10 +18,10 @@ from security.security_manager import SecurityManager
 class UserService:
     """Service for managing users and authentication."""
     
-    def __init__(self, database=None, security_manager: SecurityManager = None):
+    def __init__(self, database=None, security_manager: SecurityManager = None, blockchain=None):
         """Initialize user service."""
         self.database = database
-        self.blockchain = blockchain_manager
+        self.blockchain = blockchain or blockchain_manager
         self.security = security_manager or SecurityManager()
         
         # Active sessions
@@ -39,7 +39,7 @@ class UserService:
             if not self._validate_user_data(username, password):
                 return None
             
-            # Check if user already exists
+            # Check if user already exists by username
             if await self.get_user_by_username(username):
                 print(f"User {username} already exists")
                 return None
@@ -234,7 +234,15 @@ class UserService:
             print(f"Error getting user by username: {e}")
             return None
     
-
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get user by email."""
+        try:
+            if self.database:
+                return await self.database.get_user_by_email(email)
+            return None
+        except Exception as e:
+            print(f"Error getting user by email: {e}")
+            return None
     
     async def update_user_profile(self, user: User, updates: Dict[str, Any]) -> bool:
         """Update user profile."""

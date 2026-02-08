@@ -18,22 +18,16 @@ class AuctionPostData:
     def __init__(self, item: Item):
         """Initialize from Item model."""
         self.item_id = item.id
+        self.sha_id = item.sha_id
         self.seller_id = item.seller_id
         self.title = item.title
         self.description = item.description
-        # Testing database implementation
         self.starting_price_usdc = item.starting_price_usdc
         self.current_bid_usdc = item.current_bid_usdc or item.starting_price_usdc
         
-        # Foundation code for real DOGE blockchain (commented out)
-        # self.starting_price_doge = item.starting_price_doge
-        # self.current_bid_doge = item.current_bid_doge or item.starting_price_doge
-        self.current_bidder = item.current_bidder
+        self.current_bidder = item.current_bidder_id
         self.auction_end = item.auction_end
         self.status = item.status
-        
-        self.auction_rsa_fingerprint = item.auction_rsa_fingerprint
-        self.auction_rsa_public_key = item.auction_rsa_public_key
         
         self.auction_nano_address = item.auction_nano_address
         self.auction_nano_public_key = item.auction_nano_public_key
@@ -49,16 +43,15 @@ class AuctionPostData:
         """Convert to dictionary for JSON serialization."""
         return {
             'item_id': self.item_id,
+            'sha_id': self.sha_id,
             'seller_id': self.seller_id,
             'title': self.title,
             'description': self.description,
-            'starting_price_usdc': self.starting_price_usdc,  # Testing database implementation
-            'current_bid_usdc': self.current_bid_usdc,  # Testing database implementation
+            'starting_price_usdc': self.starting_price_usdc,
+            'current_bid_usdc': self.current_bid_usdc,
             'current_bidder': self.current_bidder,
             'auction_end': self.auction_end,
             'status': self.status,
-            'auction_rsa_fingerprint': self.auction_rsa_fingerprint,
-            'auction_rsa_public_key': self.auction_rsa_public_key,
             'auction_nano_address': self.auction_nano_address,
             'auction_nano_public_key': self.auction_nano_public_key,
             'created_at': self.created_at,
@@ -99,7 +92,7 @@ class ArweavePostService:
         Create an Arweave post for a new auction.
         
         Post structure:
-        - Top section: Current auction details (title, description, prices, RSA fingerprint)
+        - Top section: Current auction details (title, description, prices, SHA ID)
         - Bottom section: All auctions expiring in next 24 hours + top bidders
         
         Args:
@@ -112,8 +105,11 @@ class ArweavePostService:
             Post data dictionary or None on failure
         """
         try:
-            if not item.auction_rsa_fingerprint or not item.auction_nano_address:
-                print("Error: Item must have RSA fingerprint and Nano address")
+            if not item.sha_id:
+                print(f"Error: Item must have SHA ID (got: '{item.sha_id}')")
+                return None
+            if not item.auction_nano_address:
+                print(f"Error: Item must have Nano address (got: '{item.auction_nano_address}')")
                 return None
             
             # Generate sequence number
@@ -137,16 +133,15 @@ class ArweavePostService:
                 # Top section: Current auction details
                 'auction': {
                     'item_id': item.id,
+                    'sha_id': item.sha_id,
                     'seller_id': item.seller_id,
                     'title': item.title,
                     'description': item.description,
                     'starting_price_usdc': item.starting_price_usdc,  # Testing database implementation
                     'current_bid_usdc': item.current_bid_usdc or item.starting_price_usdc,  # Testing database implementation
-                    'current_bidder': item.current_bidder,
+                    'current_bidder': item.current_bidder_id,
                     'auction_end': item.auction_end,
                     'status': item.status,
-                    'auction_rsa_fingerprint': item.auction_rsa_fingerprint,
-                    'auction_rsa_public_key': item.auction_rsa_public_key,
                     'auction_nano_address': item.auction_nano_address,
                     'auction_nano_public_key': item.auction_nano_public_key,
                 },
@@ -160,12 +155,12 @@ class ArweavePostService:
                 for expiring_item in expiring_auctions:
                     post_data['expiring_auctions'].append({
                         'item_id': expiring_item.id,
+                        'sha_id': expiring_item.sha_id,
                         'title': expiring_item.title,
                         'auction_end': expiring_item.auction_end,
                         'current_bid_usdc': expiring_item.current_bid_usdc or expiring_item.starting_price_usdc,  # Testing database implementation
-                        'current_bidder': expiring_item.current_bidder,
+                        'current_bidder': expiring_item.current_bidder_id,
                         'top_bidder_nano_address': expiring_item.auction_nano_address,
-                        'auction_rsa_fingerprint': expiring_item.auction_rsa_fingerprint,
                     })
             
             return post_data
@@ -187,16 +182,21 @@ class ArweavePostService:
             Arweave transaction ID or None on failure
         """
         try:
+            # Validate user has Arweave address
+            if not user.arweave_address:
+                print(f"Error: User {user.id} does not have an Arweave address")
+                return None
+            
             # Check AR balance
             balance_winston = await self.blockchain.arweave_client.get_balance(user.arweave_address)
             if balance_winston is None:
-                print("Could not get Arweave balance")
+                print(f"Could not get Arweave balance for address {user.arweave_address}")
                 return None
             
             balance_ar = self.blockchain.arweave_client.winston_to_ar(balance_winston)
             
             if balance_ar < 0.05:
-                print(f"Insufficient AR balance: {balance_ar:.6f}")
+                print(f"Insufficient AR balance: {balance_ar:.6f} AR (need >= 0.05 AR for auction post)")
                 return None
             
             # Create Arweave tags
@@ -206,12 +206,13 @@ class ArweavePostService:
                 ("Data-Type", "auction-post"),
                 ("Posted-By", user.id),
                 ("Sequence", str(post_data.get('sequence', 0))),
-                ("RSA-Fingerprint", post_data['auction'].get('auction_rsa_fingerprint', '')),
+                ("SHA-ID", post_data['auction'].get('sha_id', '')),
                 ("Item-ID", post_data['auction'].get('item_id', '')),
                 ("Auction-Status", post_data['auction'].get('status', 'active')),
             ]
             
             # Store on Arweave
+            print(f"Posting auction {post_data.get('auction', {}).get('item_id')} to Arweave...")
             tx_id = await self.blockchain.arweave_client.store_data(post_data, tags)
             
             if tx_id:
@@ -220,9 +221,12 @@ class ArweavePostService:
                 print(f"Auction post posted to Arweave: {tx_id}")
                 return tx_id
             
+            print(f"Arweave store_data returned None for auction {post_data.get('auction', {}).get('item_id')}")
             return None
         except Exception as e:
             print(f"Error posting to Arweave: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     async def search_auction_posts(self, sequence_start: int, sequence_end: int,

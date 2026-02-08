@@ -45,7 +45,7 @@ class ArweaveAuctionViewer:
         if auction:
             output.append("TOP SECTION: CURRENT AUCTION DETAILS")
             output.append("-" * 100)
-            output.append(f"RSA Fingerprint (ID): {auction.get('auction_rsa_fingerprint', 'N/A')[:32]}...")
+            output.append(f"SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
             output.append(f"Item ID: {auction.get('item_id', 'N/A')[:8]}...")
             output.append(f"Title: {auction.get('title', 'N/A')}")
             output.append(f"Seller: {auction.get('seller_id', 'N/A')[:8]}...")
@@ -80,7 +80,7 @@ class ArweaveAuctionViewer:
             for i, exp_auction in enumerate(expiring_auctions, 1):
                 output.append(f"  [{i}] {exp_auction.get('title', 'N/A')[:40]}")
                 output.append(f"      Item ID: {exp_auction.get('item_id', 'N/A')[:8]}...")
-                output.append(f"      RSA Fingerprint: {exp_auction.get('auction_rsa_fingerprint', 'N/A')[:20]}...")
+                output.append(f"      SHA ID: {exp_auction.get('sha_id', 'N/A')[:16]}...")
                 output.append(f"      Current Bid: {exp_auction.get('current_bid_doge', 'N/A')} DOGE")
                 output.append(f"      Current Bidder: {exp_auction.get('current_bidder', 'None')[:8] if exp_auction.get('current_bidder') else 'None'}...")
                 output.append(f"      Top Bidder Nano: {exp_auction.get('top_bidder_nano_address', 'N/A')[:20]}...")
@@ -142,7 +142,7 @@ class ArweaveAuctionViewer:
         output.append("│")
         output.append("├── auction (TOP SECTION)")
         auction = post_data.get('auction', {})
-        output.append("│   ├── auction_rsa_fingerprint: " + str(auction.get('auction_rsa_fingerprint', 'N/A')[:32]))
+        output.append("│   ├── sha_id: " + str(auction.get('sha_id', 'N/A')[:16]))
         output.append("│   ├── item_id: " + str(auction.get('item_id')))
         output.append("│   ├── title: " + str(auction.get('title', 'N/A')[:30]))
         output.append("│   ├── seller_id: " + str(auction.get('seller_id', 'N/A')[:8]))
@@ -194,7 +194,7 @@ class ArweaveAuctionViewer:
                 
                 auction = post.get('auction', {})
                 output.append(f"    Title: {auction.get('title', 'N/A')}")
-                output.append(f"    RSA FP: {auction.get('auction_rsa_fingerprint', 'N/A')[:20]}...")
+                output.append(f"    SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
                 output.append(f"    Current Bid: {auction.get('current_bid_doge', 'N/A')} DOGE")
                 output.append(f"    Expires: {auction.get('auction_end', 'N/A')}")
                 

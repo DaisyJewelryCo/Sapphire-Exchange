@@ -285,7 +285,7 @@ class ArweaveDevToolsWidget(QWidget):
         lines.append(f"  Item ID: {auction.get('item_id', 'N/A')[:16]}...")
         lines.append(f"  Title: {auction.get('title', 'N/A')}")
         lines.append(f"  Seller: {auction.get('seller_id', 'N/A')[:16]}...")
-        lines.append(f"  RSA Fingerprint: {auction.get('auction_rsa_fingerprint', 'N/A')[:32]}...")
+        lines.append(f"  SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
         lines.append("")
         
         expiring = post_data.get('expiring_auctions', [])

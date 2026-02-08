@@ -13,16 +13,15 @@ from config.app_config import app_config
 from services.arweave_post_service import arweave_post_service
 from services.auction_verification_service import auction_verification_service
 from utils.auction_wallet_manager import auction_wallet_manager
-from utils.rsa_utils import generate_auction_rsa_keys
 
 
 class AuctionService:
     """Service for managing auctions and bidding."""
     
-    def __init__(self, database=None):
+    def __init__(self, database=None, blockchain=None):
         """Initialize auction service."""
         self.database = database
-        self.blockchain = blockchain_manager
+        self.blockchain = blockchain or blockchain_manager
         
         # Event callbacks
         self.bid_placed_callbacks = []
@@ -37,74 +36,78 @@ class AuctionService:
             if not self._validate_item_data(item_data):
                 return None
             
-            # Create item
-            item = Item(
-                seller_id=seller.id,
-                title=item_data.get('title', ''),
-                description=item_data.get('description', ''),
-                starting_price_usdc=str(item_data.get('starting_price_usdc', 0.0)),
-                auction_end=item_data.get('auction_end', ''),
-                status='draft',
-                tags=item_data.get('tags', []),
-                category=item_data.get('category', ''),
-                shipping_required=item_data.get('shipping_required', False),
-                shipping_cost_usdc=str(item_data.get('shipping_cost_usdc', 0.0))
-            )
+            # Create item with optional created_at to maintain SHA ID integrity
+            item_kwargs = {
+                'seller_id': seller.id,
+                'title': item_data.get('title', ''),
+                'description': item_data.get('description', ''),
+                'starting_price_usdc': str(item_data.get('starting_price_usdc', 0.0)),
+                'auction_end': item_data.get('auction_end', ''),
+                'status': 'draft',
+                'tags': item_data.get('tags', []),
+                'category': item_data.get('category', ''),
+                'shipping_required': item_data.get('shipping_required', False),
+                'shipping_cost_usdc': str(item_data.get('shipping_cost_usdc', 0.0)),
+                'sha_id': item_data.get('sha_id', '')
+            }
             
-            # Calculate data hash for integrity
-            item.data_hash = item.calculate_data_hash()
+            # Only pass created_at if it was explicitly provided
+            if 'created_at' in item_data and item_data['created_at']:
+                item_kwargs['created_at'] = item_data['created_at']
             
-            # Check if wallet and RSA data were pre-generated (from dialog)
-            if item_data.get('auction_rsa_fingerprint'):
-                print(f"[DEBUG] Using pre-generated wallet/RSA data from item_data")
-                item.auction_rsa_private_key = item_data.get('auction_rsa_private_key', '')
-                item.auction_rsa_public_key = item_data.get('auction_rsa_public_key', '')
-                item.auction_rsa_fingerprint = item_data.get('auction_rsa_fingerprint', '')
+            item = Item(**item_kwargs)
+            
+            # Calculate data hash and ensure SHA ID is set
+            # If SHA ID was provided, verify it matches; otherwise generate it
+            if item.sha_id:
+                print(f"[AUCTION] SHA ID provided: {item.sha_id}")
+                # Verify SHA ID matches with current item data
+                item.data_hash = item.calculate_data_hash()
+                if item.sha_id == item.data_hash:
+                    print(f"[AUCTION] SHA ID verified - matches calculated hash")
+                else:
+                    print(f"[AUCTION] Warning: SHA ID may not match - provided: {item.sha_id[:16]}..., calculated: {item.data_hash[:16]}...")
+            else:
+                item.sha_id = item._generate_sha_id()
+                item.data_hash = item.calculate_data_hash()
+                print(f"[AUCTION] Generated SHA ID: {item.sha_id[:16]}...")
+            
+            # Use wallet data from item_data if available, otherwise create a new wallet if user seed provided
+            if item_data.get('auction_nano_address'):
                 item.auction_nano_address = item_data.get('auction_nano_address', '')
                 item.auction_nano_public_key = item_data.get('auction_nano_public_key', '')
                 item.auction_nano_private_key = item_data.get('auction_nano_private_key', '')
                 item.auction_nano_seed = item_data.get('auction_nano_seed', '')
                 item.auction_wallet_created_at = item_data.get('auction_wallet_created_at', datetime.now(timezone.utc).isoformat())
-                print(f"RSA fingerprint: {item.auction_rsa_fingerprint}")
-                print(f"Nano address: {item.auction_nano_address}")
-            else:
-                # Generate RSA keys for the auction if not provided
-                rsa_data = generate_auction_rsa_keys(seller.id, item.id)
-                if rsa_data:
-                    item.auction_rsa_private_key = rsa_data['private_key_base64']
-                    item.auction_rsa_public_key = rsa_data['public_key_base64']
-                    item.auction_rsa_fingerprint = rsa_data['fingerprint']
-                    print(f"RSA key pair generated for auction: {item.auction_rsa_fingerprint}")
-                
-                # Create auction-specific Nano wallet if user seed provided
-                if user_seed and auction_wallet_manager:
-                    wallet_data = auction_wallet_manager.create_auction_wallet(user_seed, item.id)
-                    if wallet_data:
-                        item.auction_nano_address = wallet_data['nano_address']
-                        item.auction_nano_public_key = wallet_data['nano_public_key']
-                        item.auction_nano_private_key = wallet_data['nano_private_key']
-                        item.auction_nano_seed = wallet_data['nano_seed']
-                        item.auction_wallet_created_at = datetime.now(timezone.utc).isoformat()
-                        print(f"Auction wallet created: {wallet_data['nano_address']}")
-                        
-                        # Send first transaction to auction wallet with RSA fingerprint as memo
-                        # This announces the item to the blockchain using the RSA fingerprint as the ID
-                        try:
-                            if seller.nano_address and item.auction_nano_address and item.auction_rsa_fingerprint:
-                                # Send minimal amount (0.000001 NANO) with RSA fingerprint as memo
-                                minimal_amount = self.blockchain.nano_client.nano_to_raw(0.000001)
-                                announcement_tx = await self.blockchain.send_nano(
-                                    seller.nano_address,
-                                    item.auction_nano_address,
-                                    minimal_amount,
-                                    memo=item.auction_rsa_fingerprint[:32].replace(':', '')
-                                )
-                                if announcement_tx:
-                                    print(f"Item announcement sent to auction wallet: {announcement_tx}")
-                                else:
-                                    print("Warning: Failed to send item announcement transaction")
-                        except Exception as e:
-                            print(f"Warning: Could not send item announcement transaction: {e}")
+                print(f"Auction wallet loaded from item_data: {item.auction_nano_address}")
+            elif user_seed and auction_wallet_manager:
+                wallet_data = auction_wallet_manager.create_auction_wallet(user_seed, item.id)
+                if wallet_data:
+                    item.auction_nano_address = wallet_data['nano_address']
+                    item.auction_nano_public_key = wallet_data['nano_public_key']
+                    item.auction_nano_private_key = wallet_data['nano_private_key']
+                    item.auction_nano_seed = wallet_data['nano_seed']
+                    item.auction_wallet_created_at = datetime.now(timezone.utc).isoformat()
+                    print(f"Auction wallet created: {wallet_data['nano_address']}")
+                    
+                    # Send first transaction to auction wallet with SHA ID as memo
+                    # This announces the item to the blockchain using the SHA ID as the identity
+                    try:
+                        if seller.nano_address and item.auction_nano_address and item.sha_id:
+                            # Send minimal amount (0.000001 NANO) with SHA ID as memo
+                            minimal_amount = self.blockchain.nano_client.nano_to_raw(0.000001)
+                            announcement_tx = await self.blockchain.send_nano(
+                                seller.nano_address,
+                                item.auction_nano_address,
+                                minimal_amount,
+                                memo=item.sha_id[:32]
+                            )
+                            if announcement_tx:
+                                print(f"Item announcement sent to auction wallet: {announcement_tx}")
+                            else:
+                                print("Warning: Failed to send item announcement transaction")
+                    except Exception as e:
+                        print(f"Warning: Could not send item announcement transaction: {e}")
             
             # Store on Arweave
             arweave_tags = [
@@ -112,34 +115,38 @@ class AuctionService:
                 ("App-Name", "Sapphire-Exchange"),
                 ("Data-Type", "auction-item"),
                 ("Seller-ID", seller.id),
-                ("Item-ID", item.id)
+                ("Item-ID", item.id),
+                ("SHA-ID", item.sha_id)
             ]
-            
-            # Tag auction with RSA fingerprint as the primary ID
-            if item.auction_rsa_fingerprint:
-                arweave_tags.append(("RSA-Fingerprint", item.auction_rsa_fingerprint))
             
             if item.auction_nano_address:
                 arweave_tags.append(("Auction-Nano-Address", item.auction_nano_address))
             
+            print(f"[AUCTION] Storing item {item.id} on Arweave with SHA ID: {item.sha_id}")
             tx_id = await self.blockchain.store_data(item.to_dict(), arweave_tags)
             if tx_id:
                 item.arweave_metadata_uri = tx_id
                 item.arweave_confirmed = True
                 item.status = 'active'
+                print(f"[AUCTION] Item {item.id} stored on Arweave: {tx_id}")
+            else:
+                print(f"[AUCTION] Warning: Arweave storage failed for item {item.id}, saving as draft")
+                item.status = 'draft'
+            
+            # Store in database regardless of Arweave success
+            if self.database:
+                await self.database.store_item(item)
+                print(f"Item stored in database with status: {item.status}")
+            
+            # Add auction to local cache and create Arweave post (only if Arweave succeeded)
+            if tx_id and arweave_post_service:
+                arweave_post_service.add_local_auction(item)
                 
-                # Store in database
-                if self.database:
-                    await self.database.store_item(item)
+                # Get expiring auctions to include in post
+                expiring = arweave_post_service.get_expiring_auctions(hours_until_expiry=24)
                 
-                # Add auction to local cache and create Arweave post
-                if arweave_post_service:
-                    arweave_post_service.add_local_auction(item)
-                    
-                    # Get expiring auctions to include in post
-                    expiring = arweave_post_service.get_expiring_auctions(hours_until_expiry=24)
-                    
-                    # Create individual auction post
+                # Create individual auction post
+                try:
                     post_data = await arweave_post_service.create_auction_post(
                         item, 
                         seller, 
@@ -148,17 +155,17 @@ class AuctionService:
                     
                     if post_data:
                         # Post to Arweave
-                        tx_id = await arweave_post_service.post_auction_to_arweave(post_data, seller)
-                        if tx_id:
-                            print(f"Auction posted to Arweave: {tx_id}")
+                        post_tx_id = await arweave_post_service.post_auction_to_arweave(post_data, seller)
+                        if post_tx_id:
+                            print(f"Auction posted to Arweave: {post_tx_id}")
                         else:
-                            print("Warning: Failed to post auction to Arweave")
+                            print(f"Warning: Failed to post auction to Arweave - check AR balance and address")
                     else:
-                        print("Warning: Failed to create auction post")
-                
-                return item
+                        print(f"Warning: Failed to create auction post - item may be missing SHA ID or auction address")
+                except Exception as e:
+                    print(f"Error creating/posting auction to Arweave: {e}")
             
-            return None
+            return item
         except Exception as e:
             print(f"Error creating auction: {e}")
             return None
@@ -210,13 +217,13 @@ class AuctionService:
                 # Send Nano transaction to auction wallet with bid info in memo
                 tx_hash = None
                 
-                if item.auction_nano_address and item.auction_rsa_fingerprint:
-                    # Send to auction wallet with RSA fingerprint and bid amount in memo
-                    # Format: rsa_fp:bid_amount (limited to 32 chars)
-                    memo_data = f"{item.auction_rsa_fingerprint[:16]}:{bid_amount_usdc}".replace(':', '')[:32]
+                if item.auction_nano_address and item.sha_id:
+                    # Send to auction wallet with SHA ID and bid amount in memo
+                    # Format: sha_id:bid_amount (limited to 32 chars)
+                    memo_data = f"{item.sha_id[:16]}:{bid_amount_usdc}".replace(':', '')[:32]
                     tx_hash = await self.blockchain.send_nano(
                         bidder.nano_address,
-                        item.auction_nano_address,  # Send to auction wallet
+                        item.auction_nano_address,
                         amount_raw,
                         memo=memo_data
                     )
@@ -275,9 +282,9 @@ class AuctionService:
                 ("Currency", currency)
             ]
             
-            # Tag bid with RSA fingerprint for master post correlation
-            if item.auction_rsa_fingerprint:
-                bid_tags.append(("RSA-Fingerprint", item.auction_rsa_fingerprint))
+            # Tag bid with SHA ID for master post correlation
+            if item.sha_id:
+                bid_tags.append(("SHA-ID", item.sha_id))
             
             if item.auction_nano_address:
                 bid_tags.append(("Nano-Address", item.auction_nano_address))

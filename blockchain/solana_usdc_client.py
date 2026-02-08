@@ -4,38 +4,40 @@ Handles USDC token operations on Solana blockchain.
 """
 import asyncio
 import base58
-from typing import Dict, Optional, List, Any, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Optional, Any, Union, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime
-
-if TYPE_CHECKING:
-    from solders.pubkey import Pubkey
-
-AsyncClient = None
-AsyncToken = None
-TOKEN_PROGRAM_ID = None
-Pubkey = None
 
 try:
     from solana.rpc.async_api import AsyncClient
     from solana.rpc.commitment import Confirmed
-    from solana.transaction import Transaction
-    from solana.account import Account
-    from solders.pubkey import Pubkey
-    from solders.signature import Signature
+    from solana.transaction import Transaction  # type: ignore
+    from solders.pubkey import Pubkey as SoldersPubkey
+    SOLANA_AVAILABLE = True
 except ImportError:
-    pass
+    AsyncClient = None
+    Confirmed = None
+    Transaction = None
+    SoldersPubkey = None
+    SOLANA_AVAILABLE = False
 
 try:
-    from spl.token.client import Token, Client as SplClient
     from spl.token.instructions import (
-        create_associated_token_account,
         transfer_checked,
         get_associated_token_address
     )
     from spl.token.constants import TOKEN_PROGRAM_ID
+    SPL_TOKEN_AVAILABLE = True
 except ImportError:
-    pass
+    transfer_checked = None
+    get_associated_token_address = None
+    TOKEN_PROGRAM_ID = None
+    SPL_TOKEN_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from solders.pubkey import Pubkey
+else:
+    Pubkey = SoldersPubkey
 
 
 @dataclass
@@ -71,20 +73,19 @@ class SolanaUsdcClient:
         self.usdc_mint = self.USDC_MINT_DEVNET if self.is_testnet else self.USDC_MINT_MAINNET
         
         # Client
-        self.client: Optional[AsyncClient] = None
-        self.token_client: Optional[AsyncToken] = None
+        self.client: Optional[Any] = None
         
         # Lock for thread-safe operations
         self._lock: Optional[asyncio.Lock] = None
         
         # Current wallet
         self.current_wallet: Optional[SolanaWallet] = None
-        self.keypair: Optional[Account] = None
+        self.keypair: Optional[Any] = None
     
     async def initialize(self) -> bool:
         """Initialize the Solana USDC client."""
         try:
-            if AsyncClient is None:
+            if not AsyncClient or not Confirmed:
                 print("Warning: solana-py not installed. Install with: pip install solana")
                 return False
             
@@ -131,15 +132,17 @@ class SolanaUsdcClient:
     async def get_balance(self, address: str) -> Optional[Dict[str, Any]]:
         """Get SOL and USDC balance for an address."""
         try:
-            if not self.client:
+            if not self.client or not Pubkey:
                 return None
             
             # Convert address string to Pubkey
             try:
-                pubkey = Pubkey(address)
-            except:
-                # Try base58 decode
                 pubkey = Pubkey(base58.b58decode(address))
+            except Exception:
+                try:
+                    pubkey = Pubkey(address.encode())
+                except Exception:
+                    return None
             
             # Get SOL balance
             balance_response = await self.client.get_balance(pubkey)
@@ -163,13 +166,16 @@ class SolanaUsdcClient:
     async def _get_token_balance(self, owner: Union[str, "Pubkey"]) -> float:
         """Get USDC token balance for an owner."""
         try:
-            if not self.client:
+            if not self.client or not Pubkey:
                 return 0.0
+            
+            owner_pubkey = owner if isinstance(owner, Pubkey) else Pubkey(base58.b58decode(owner))
+            mint_pubkey = Pubkey(base58.b58decode(self.usdc_mint))
             
             # Get token accounts for owner
             response = await self.client.get_token_accounts_by_owner(
-                owner,
-                {"mint": Pubkey(self.usdc_mint)}
+                owner_pubkey,
+                {"mint": mint_pubkey}
             )
             
             if not response.value or len(response.value) == 0:
@@ -177,8 +183,9 @@ class SolanaUsdcClient:
             
             # Get the first token account balance
             token_account = response.value[0]
+            token_account_pubkey = Pubkey(base58.b58decode(token_account.pubkey))
             account_info = await self.client.get_token_account_balance(
-                Pubkey(token_account.pubkey)
+                token_account_pubkey
             )
             
             if account_info.value:
@@ -195,19 +202,41 @@ class SolanaUsdcClient:
                        keypair_bytes: Optional[bytes] = None) -> Optional[str]:
         """Send USDC tokens from one address to another."""
         try:
-            if not self.client or not keypair_bytes:
+            if not self.client or not keypair_bytes or not Pubkey:
                 return None
             
             # Reconstruct keypair from bytes
-            from solders.keypair import Keypair
-            keypair = Keypair.from_secret_key(keypair_bytes)
+            keypair = None
+            try:
+                from solders.keypair import Keypair
+                keypair = Keypair(keypair_bytes)  # type: ignore
+            except Exception:
+                pass
             
-            from_pubkey_obj = Pubkey(from_pubkey)
-            to_pubkey_obj = Pubkey(to_pubkey)
-            usdc_mint_obj = Pubkey(self.usdc_mint)
+            if not keypair:
+                try:
+                    from solders.keypair import Keypair
+                    keypair = Keypair.from_secret_key(keypair_bytes)  # type: ignore
+                except Exception:
+                    pass
             
-            # Get or create associated token accounts
-            from spl.token.instructions import create_associated_token_account
+            if not keypair:
+                try:
+                    from nacl.signing import SigningKey
+                    signing_key = SigningKey(keypair_bytes)
+                    keypair = signing_key.verify_key
+                except Exception:
+                    pass
+            
+            if not keypair:
+                return None
+            
+            from_pubkey_obj = Pubkey(base58.b58decode(from_pubkey))
+            to_pubkey_obj = Pubkey(base58.b58decode(to_pubkey))
+            usdc_mint_obj = Pubkey(base58.b58decode(self.usdc_mint))
+            
+            if not transfer_checked or not TOKEN_PROGRAM_ID or not Transaction:
+                return None
             
             # Get the sender's USDC token account
             from_token_account = await self._get_associated_token_account(
@@ -216,25 +245,40 @@ class SolanaUsdcClient:
             
             # Get or create the receiver's USDC token account
             to_token_account = await self._get_or_create_associated_token_account(
-                to_pubkey_obj, usdc_mint_obj, keypair
+                to_pubkey_obj, usdc_mint_obj
             )
             
             if not from_token_account or not to_token_account:
                 return None
             
             # Create transfer instruction
-            from spl.token.instructions import transfer_checked
+            transfer_ix = None
+            try:
+                transfer_ix = transfer_checked(
+                    program_id=TOKEN_PROGRAM_ID,  # type: ignore
+                    source=from_token_account,  # type: ignore
+                    mint=usdc_mint_obj,  # type: ignore
+                    dest=to_token_account,  # type: ignore
+                    owner=from_pubkey_obj,  # type: ignore
+                    amount=int(amount * 1e6),  # type: ignore
+                    decimals=6,  # type: ignore
+                    signers=[keypair] if keypair else []  # type: ignore
+                )
+            except (TypeError, AttributeError):
+                try:
+                    transfer_ix = transfer_checked(
+                        source=from_token_account,  # type: ignore
+                        mint=usdc_mint_obj,  # type: ignore
+                        dest=to_token_account,  # type: ignore
+                        owner=from_pubkey_obj,  # type: ignore
+                        amount=int(amount * 1e6),  # type: ignore
+                        decimals=6  # type: ignore
+                    )
+                except (TypeError, AttributeError):
+                    return None
             
-            transfer_ix = transfer_checked(
-                program_id=TOKEN_PROGRAM_ID,
-                source=from_token_account,
-                mint=usdc_mint_obj,
-                dest=to_token_account,
-                owner=from_pubkey_obj,
-                amount=int(amount * 1e6),  # USDC has 6 decimals
-                decimals=6,
-                signers=[keypair] if keypair else []
-            )
+            if not transfer_ix:
+                return None
             
             # Build and send transaction
             recent_blockhash = await self.client.get_latest_blockhash()
@@ -261,28 +305,25 @@ class SolanaUsdcClient:
     async def _get_associated_token_account(self, owner: Pubkey, mint: Pubkey) -> Optional[Pubkey]:
         """Get the associated token account for an owner and mint."""
         try:
-            from spl.token.instructions import get_associated_token_address
+            if not get_associated_token_address:
+                return None
             return get_associated_token_address(owner, mint)
         except Exception as e:
             print(f"Error getting associated token account: {e}")
             return None
     
-    async def _get_or_create_associated_token_account(self, owner: Pubkey, mint: Pubkey, 
-                                                      payer_keypair) -> Optional[Pubkey]:
+    async def _get_or_create_associated_token_account(self, owner: Pubkey, mint: Pubkey) -> Optional[Pubkey]:
         """Get or create the associated token account for an owner and mint."""
         try:
-            from spl.token.instructions import get_associated_token_address
+            if not get_associated_token_address:
+                return None
             ata = get_associated_token_address(owner, mint)
             
-            # Check if account exists
             if self.client:
                 account_info = await self.client.get_account_info(ata)
                 if account_info.value and account_info.value.owner == TOKEN_PROGRAM_ID:
                     return ata
             
-            # Create associated token account if it doesn't exist
-            # This would require additional transaction building logic
-            # For now, return the address
             return ata
             
         except Exception as e:

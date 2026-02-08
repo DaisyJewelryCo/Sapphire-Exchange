@@ -271,11 +271,13 @@ class ApplicationService:
     async def create_auction(self, item_data: Dict[str, Any]) -> Tuple[bool, str, Optional[Item]]:
         """Create a new auction."""
         try:
-            print(f"[DEBUG] create_auction called, current_user: {self.current_user}")
-            print(f"[DEBUG] is_user_logged_in(): {self.is_user_logged_in()}")
-            print(f"[DEBUG] item_data received: {item_data}")
+            print(f"[APP] create_auction called, current_user: {self.current_user}")
+            print(f"[APP] is_user_logged_in(): {self.is_user_logged_in()}")
+            print(f"[APP] item_data keys: {list(item_data.keys())}")
+            print(f"[APP] SHA ID: {item_data.get('sha_id', 'NOT PROVIDED')}")
+            print(f"[APP] Auction Nano Address: {item_data.get('auction_nano_address', 'NOT PROVIDED')}")
             if not self.current_user:
-                print(f"[DEBUG] No current user found, returning error")
+                print(f"[APP] No current user found, returning error")
                 return False, "Must be logged in to create auction", None
             
             # Convert auction_duration_hours to auction_end if needed
@@ -284,21 +286,28 @@ class ApplicationService:
                 duration_hours = item_data.get('auction_duration_hours', 168)  # Default to 7 days
                 auction_end = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
                 item_data['auction_end'] = auction_end.isoformat()
-                print(f"[DEBUG] Converted duration {duration_hours}h to auction_end: {item_data['auction_end']}")
+                print(f"[APP] Converted duration {duration_hours}h to auction_end: {item_data['auction_end']}")
             
             # Validate item data
             validation = Validator.validate_item_data(item_data)
             if not validation['valid']:
+                print(f"[APP] Validation errors: {validation['errors']}")
                 return False, '; '.join(validation['errors']), None
             
             # Create auction
+            print(f"[APP] Calling auction_service.create_auction for user {self.current_user.id}")
             item = await self.auction_service.create_auction(self.current_user, item_data)
             if item:
+                print(f"[APP] Auction created successfully: {item.id} with status {item.status}")
                 return True, "Auction created successfully", item
             else:
+                print(f"[APP] auction_service.create_auction returned None")
                 return False, "Failed to create auction", None
                 
         except Exception as e:
+            print(f"[APP] Auction creation error: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False, f"Auction creation error: {str(e)}", None
     
     async def place_bid(self, item_id: str, amount: float, currency: str = "USDC") -> Tuple[bool, str, Optional[Bid]]:

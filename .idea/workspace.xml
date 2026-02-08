@@ -4,9 +4,24 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="1.41">
+    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="1.5 (Blockchain)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Ideas.md" beforeDir="false" afterPath="$PROJECT_DIR$/Ideas.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.zencoder/rules/repo.md" beforeDir="false" afterPath="$PROJECT_DIR$/.zencoder/rules/repo.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TODO.md" beforeDir="false" afterPath="$PROJECT_DIR$/TODO.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blockchain/solana_usdc_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/blockchain/solana_usdc_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/repositories/database_adapter.py" beforeDir="false" afterPath="$PROJECT_DIR$/repositories/database_adapter.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/repositories/item_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/repositories/item_repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/application_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/application_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/arweave_post_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/arweave_post_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/auction_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/auction_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/user_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/user_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_unified_system.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_unified_system.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/arweave_dev_tools_widget.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/arweave_dev_tools_widget.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/auction_widget.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/auction_widget.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/authentication_status_popup.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/authentication_status_popup.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/arweave_auction_viewer.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/arweave_auction_viewer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/arweave_post_viewer.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/arweave_post_viewer.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -106,8 +121,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-PY-251.26927.90" />
-        <option value="bundled-python-sdk-41e8cd69c857-64d779b69b7a-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26927.90" />
+        <option value="bundled-python-sdk-7e47963ff851-f0eec537fc84-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.23892.515" />
       </set>
     </attachedChunks>
   </component>
@@ -326,7 +340,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754942035165</updated>
     </task>
-    <option name="localTasksCounter" value="26" />
+    <task id="LOCAL-00026" summary="1.5 (Blockchain)">
+      <option name="closed" value="true" />
+      <created>1769934720622</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1769934720622</updated>
+    </task>
+    <option name="localTasksCounter" value="27" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -363,7 +385,8 @@
     <MESSAGE value="1.35" />
     <MESSAGE value="1.4" />
     <MESSAGE value="1.41" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.41" />
+    <MESSAGE value="1.5 (Blockchain)" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.5 (Blockchain)" />
   </component>
   <component name="ai.zencoder.plugin.mcp">
     <option name="internalToolsState" value="{&quot;fetch_webpage&quot;:true,&quot;web_search&quot;:true,&quot;ExecuteShellCommand&quot;:true,&quot;file_search&quot;:true,&quot;str_replace_editor&quot;:true,&quot;list_resources&quot;:true,&quot;FileDiagnosticsTool&quot;:true,&quot;fulltext_search&quot;:true,&quot;read_resource&quot;:true,&quot;RequirementsTool&quot;:true}" />

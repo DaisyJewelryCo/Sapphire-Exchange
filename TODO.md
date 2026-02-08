@@ -1,3 +1,5 @@
+FIX GIT HUB
+
 CHance the RSA id to an SHA hash of the item infromation, implement a verification when loading the item from arweave to sha hash the item infromation and cress reference with the item id
 
 change the catagories to cards like magic pokemon and sports cards

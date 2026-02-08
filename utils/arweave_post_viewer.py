@@ -77,9 +77,8 @@ class ArweavePostViewer:
         """Format a single auction for display."""
         lines = []
         
-        # RSA fingerprint is the primary ID in the master post
-        if auction.auction_rsa_fingerprint:
-            lines.append(f"RSA Fingerprint (Auction ID): {auction.auction_rsa_fingerprint}")
+        if auction.sha_id:
+            lines.append(f"SHA ID: {auction.sha_id[:16]}...")
         
         lines.append(f"Item ID: {auction.item_id}")
         lines.append(f"Title: {auction.title}")
@@ -99,9 +98,7 @@ class ArweavePostViewer:
             if auction.auction_nano_public_key:
                 lines.append(f"  Public Key: {auction.auction_nano_public_key[:16]}...")
         
-        # RSA public key for verification
-        if auction.auction_rsa_public_key:
-            lines.append(f"RSA Public Key: {auction.auction_rsa_public_key[:32]}...")
+
         
         if auction.winner:
             lines.append(f"Winner: {auction.winner[:8]}...")
@@ -210,16 +207,14 @@ class ArweavePostViewer:
         output.append("")
         
         if wallets_with_addresses:
-            output.append("NANO WALLET ADDRESSES (organized by RSA Fingerprint)")
+            output.append("NANO WALLET ADDRESSES (organized by SHA ID)")
             output.append("-" * 80)
             for auction in wallets_with_addresses:
-                output.append(f"RSA Fingerprint (ID): {auction.auction_rsa_fingerprint}")
+                output.append(f"SHA ID: {auction.sha_id[:16]}...")
                 output.append(f"Item: {auction.item_id[:8]}... ({auction.title[:30]}...)")
                 output.append(f"  Nano Address: {auction.auction_nano_address}")
                 output.append(f"  Nano Public Key: {auction.auction_nano_public_key[:20]}...")
-                if auction.auction_rsa_public_key:
-                    output.append(f"  RSA Public Key: {auction.auction_rsa_public_key[:32]}...")
-                output.append(f"  Current Bid: {auction.current_bid_doge} DOGE")
+                output.append(f"  Current Bid: {auction.current_bid_usdc} USDC")
                 output.append("")
         
         output.append("=" * 80)
@@ -227,7 +222,7 @@ class ArweavePostViewer:
     
     def display_auction_summary_table(self) -> str:
         """
-        Display auctions as a summary table, organized by RSA Fingerprint.
+        Display auctions as a summary table, organized by SHA ID.
         
         Returns:
             Formatted table string

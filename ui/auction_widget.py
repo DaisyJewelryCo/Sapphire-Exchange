@@ -397,10 +397,10 @@ class AuctionItemWidget(QWidget):
         # Check various authentication factors
         has_arweave = bool(self.item.arweave_metadata_uri)
         has_nano_wallet = bool(self.item.auction_nano_address)
-        has_rsa = bool(self.item.auction_rsa_public_key)
+        has_sha_id = bool(self.item.sha_id)
         has_data_hash = bool(self.item.data_hash)
         
-        verified_count = sum([has_arweave, has_nano_wallet, has_rsa, has_data_hash])
+        verified_count = sum([has_arweave, has_nano_wallet, has_sha_id, has_data_hash])
         
         if verified_count >= 3:
             return 'verified'
@@ -1294,7 +1294,7 @@ class AddItemDialog(QDialog):
         wallet_layout = QVBoxLayout(wallet_group)
         
         # Generate wallet button
-        self.generate_wallet_btn = QPushButton("Generate RSA and Wallet")
+        self.generate_wallet_btn = QPushButton("Generate SHA and Wallet")
         self.generate_wallet_btn.setStyleSheet("""
             QPushButton {
                 background-color: #10b981;
@@ -1336,10 +1336,10 @@ class AddItemDialog(QDialog):
         """)
         wallet_form_layout.addRow("Auction Wallet Address:", self.wallet_address_edit)
         
-        # RSA fingerprint display (read-only)
+        # SHA ID display (read-only)
         self.rsa_fingerprint_edit = QLineEdit()
         self.rsa_fingerprint_edit.setReadOnly(True)
-        self.rsa_fingerprint_edit.setPlaceholderText("RSA fingerprint will be generated")
+        self.rsa_fingerprint_edit.setPlaceholderText("SHA ID will be generated")
         self.rsa_fingerprint_edit.setStyleSheet("""
             QLineEdit {
                 background-color: #f8f9fa;
@@ -1351,7 +1351,7 @@ class AddItemDialog(QDialog):
                 font-size: 10px;
             }
         """)
-        wallet_form_layout.addRow("RSA Fingerprint:", self.rsa_fingerprint_edit)
+        wallet_form_layout.addRow("SHA ID:", self.rsa_fingerprint_edit)
         
         wallet_layout.addLayout(wallet_form_layout)
         layout.addWidget(wallet_group)
@@ -1396,22 +1396,35 @@ class AddItemDialog(QDialog):
         layout.addLayout(button_layout)
     
     def generate_wallet_and_rsa(self):
-        """Generate wallet and RSA keys for the auction."""
+        """Generate SHA ID and wallet for the auction."""
         try:
-            # Import the wallet generation utilities
             import asyncio
             import uuid
-            from utils.auction_wallet_utils import generate_auction_wallet_and_rsa
+            import hashlib
+            from datetime import datetime, timezone
+            from blockchain.nano_client import NanoClient
+            from blockchain.blockchain_manager import blockchain_manager
             
             # Disable the button during generation
             self.generate_wallet_btn.setEnabled(False)
             self.generate_wallet_btn.setText("Generating...")
             
-            # Generate a temporary auction ID for wallet generation
-            temp_auction_id = str(uuid.uuid4())
+            # Get item data from form
+            from services.application_service import app_service
+            if not app_service.current_user:
+                raise Exception("Must be logged in to generate wallet")
             
-            # For now, use a placeholder user ID (in real implementation, get from current user)
-            user_id = "current_user_id"  # This should come from the current logged-in user
+            seller_id = app_service.current_user.id
+            title = self.name_edit.text().strip()
+            description = self.description_edit.toPlainText().strip()
+            created_at = datetime.now(timezone.utc).isoformat()
+            
+            # Calculate SHA ID from item information
+            hash_data = f"{seller_id}{title}{description}{created_at}"
+            sha_id = hashlib.sha256(hash_data.encode()).hexdigest()
+            
+            # Generate temporary auction ID for wallet generation
+            temp_auction_id = str(uuid.uuid4())
             
             # Create event loop if needed
             try:
@@ -1420,21 +1433,34 @@ class AddItemDialog(QDialog):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             
-            # Generate wallet and RSA keys
-            self.wallet_data = loop.run_until_complete(
-                generate_auction_wallet_and_rsa(user_id, temp_auction_id)
-            )
+            # Generate NANO wallet
+            nano_client = blockchain_manager.nano_client
+            seed = nano_client.generate_seed()
+            private_key = nano_client.seed_to_private_key(seed, 0)
+            public_key = nano_client.private_key_to_public_key(private_key)
+            nano_address = nano_client.public_key_to_address(public_key)
+            
+            # Store wallet data
+            self.wallet_data = {
+                'nano_address': nano_address,
+                'nano_public_key': public_key.hex(),
+                'nano_private_key': private_key.hex(),
+                'nano_seed': seed.hex(),
+                'sha_id': sha_id,
+                'created_at': created_at,
+                'wallet_type': 'auction_item'
+            }
             
             if self.wallet_data and self.wallet_data.get('nano_address'):
-                # Update UI with generated wallet info
+                # Update UI with generated wallet and SHA ID
                 self.wallet_address_edit.setText(self.wallet_data['nano_address'])
-                self.rsa_fingerprint_edit.setText(self.wallet_data['rsa_fingerprint'])
+                self.rsa_fingerprint_edit.setText(self.wallet_data['sha_id'][:32])
                 
                 # Enable the create auction button
                 self.create_btn.setEnabled(True)
                 
                 # Update button text and style
-                self.generate_wallet_btn.setText("✓ Wallet Generated")
+                self.generate_wallet_btn.setText("✓ Generated")
                 self.generate_wallet_btn.setStyleSheet("""
                     QPushButton {
                         background-color: #059669;
@@ -1448,17 +1474,16 @@ class AddItemDialog(QDialog):
                     }
                 """)
                 
-                # Wallet generated successfully - no popup needed
             else:
                 raise Exception("Failed to generate wallet data")
                 
         except Exception as e:
             QMessageBox.critical(self, "Generation Failed", 
-                               f"Failed to generate wallet and RSA keys:\n\n{str(e)}")
+                               f"Failed to generate SHA ID and wallet:\n\n{str(e)}")
             
             # Re-enable the button
             self.generate_wallet_btn.setEnabled(True)
-            self.generate_wallet_btn.setText("Generate RSA and Wallet")
+            self.generate_wallet_btn.setText("Generate SHA and Wallet")
     
     def create_auction(self):
         """Create the auction with the provided data."""
@@ -1473,7 +1498,7 @@ class AddItemDialog(QDialog):
         
         # Check if wallet has been generated
         if not self.wallet_data:
-            QMessageBox.warning(self, "Missing Wallet", "Please generate a wallet and RSA keys first.")
+            QMessageBox.warning(self, "Missing Wallet", "Please generate a SHA ID and wallet first.")
             return
         
         # Parse duration
@@ -1493,16 +1518,15 @@ class AddItemDialog(QDialog):
             'tags': tags
         }
         
-        # Add wallet and RSA data if available
+        # Add wallet and SHA ID data if available
         if self.wallet_data:
             item_data.update({
                 'auction_nano_address': self.wallet_data.get('nano_address', ''),
                 'auction_nano_public_key': self.wallet_data.get('nano_public_key', ''),
                 'auction_nano_private_key': self.wallet_data.get('nano_private_key', ''),
                 'auction_nano_seed': self.wallet_data.get('nano_seed', ''),
-                'auction_rsa_private_key': self.wallet_data.get('rsa_private_key', ''),
-                'auction_rsa_public_key': self.wallet_data.get('rsa_public_key', ''),
-                'auction_rsa_fingerprint': self.wallet_data.get('rsa_fingerprint', ''),
+                'sha_id': self.wallet_data.get('sha_id', ''),
+                'created_at': self.wallet_data.get('created_at', ''),
                 'auction_wallet_created_at': self.wallet_data.get('created_at', ''),
             })
         
@@ -1908,7 +1932,7 @@ class CreateAuctionDialog(QDialog):
         wallet_layout = QVBoxLayout(wallet_group)
         
         # Generate wallet button
-        self.generate_wallet_btn = QPushButton("Generate RSA and Wallet")
+        self.generate_wallet_btn = QPushButton("Generate SHA and Wallet")
         self.generate_wallet_btn.setStyleSheet("""
             QPushButton {
                 background-color: #10b981;
@@ -1950,10 +1974,10 @@ class CreateAuctionDialog(QDialog):
         """)
         wallet_form_layout.addRow("Auction Wallet Address:", self.wallet_address_edit)
         
-        # RSA fingerprint display (read-only)
+        # SHA ID display (read-only)
         self.rsa_fingerprint_edit = QLineEdit()
         self.rsa_fingerprint_edit.setReadOnly(True)
-        self.rsa_fingerprint_edit.setPlaceholderText("RSA fingerprint will be generated")
+        self.rsa_fingerprint_edit.setPlaceholderText("SHA ID will be generated")
         self.rsa_fingerprint_edit.setStyleSheet("""
             QLineEdit {
                 background-color: #f8f9fa;
@@ -1965,7 +1989,7 @@ class CreateAuctionDialog(QDialog):
                 font-size: 10px;
             }
         """)
-        wallet_form_layout.addRow("RSA Fingerprint:", self.rsa_fingerprint_edit)
+        wallet_form_layout.addRow("SHA ID:", self.rsa_fingerprint_edit)
         
         wallet_layout.addLayout(wallet_form_layout)
         layout.addWidget(wallet_group)
@@ -2040,17 +2064,23 @@ class CreateAuctionDialog(QDialog):
             # Import the wallet generation utilities
             import asyncio
             import uuid
+            import hashlib
+            from datetime import datetime, timezone
             from utils.auction_wallet_utils import generate_auction_wallet_and_rsa
+            from services.application_service import app_service
             
             # Disable the button during generation
             self.generate_wallet_btn.setEnabled(False)
             self.generate_wallet_btn.setText("Generating...")
             
+            # Get current user
+            if not app_service.current_user:
+                raise Exception("Must be logged in to generate wallet")
+            
+            user_id = app_service.current_user.id
+            
             # Generate a temporary auction ID for wallet generation
             temp_auction_id = str(uuid.uuid4())
-            
-            # For now, use a placeholder user ID (in real implementation, get from current user)
-            user_id = "current_user_id"  # This should come from the current logged-in user
             
             # Create event loop if needed
             try:
@@ -2063,6 +2093,19 @@ class CreateAuctionDialog(QDialog):
             self.wallet_data = loop.run_until_complete(
                 generate_auction_wallet_and_rsa(user_id, temp_auction_id)
             )
+            
+            # Generate SHA ID for consistency with first dialog
+            if self.wallet_data:
+                title = self.title_edit.text().strip()
+                description = self.description_edit.toPlainText().strip()
+                created_at = self.wallet_data.get('created_at', datetime.now(timezone.utc).isoformat())
+                
+                # Calculate SHA ID from item information
+                hash_data = f"{user_id}{title}{description}{created_at}"
+                sha_id = hashlib.sha256(hash_data.encode()).hexdigest()
+                
+                self.wallet_data['sha_id'] = sha_id
+                self.wallet_data['user_id'] = user_id
             
             if self.wallet_data and self.wallet_data.get('nano_address'):
                 # Update UI with generated wallet info
@@ -2114,7 +2157,7 @@ class CreateAuctionDialog(QDialog):
         
         # Check if wallet has been generated
         if not self.wallet_data:
-            QMessageBox.warning(self, "Missing Wallet", "Please generate a wallet and RSA keys first.")
+            QMessageBox.warning(self, "Missing Wallet", "Please generate a SHA ID and wallet first.")
             return
         
         # Validate tags
@@ -2155,16 +2198,15 @@ class CreateAuctionDialog(QDialog):
             'shipping_cost_doge': self.shipping_cost_edit.text() if self.shipping_required_checkbox.isChecked() else "0"
         }
         
-        # Add wallet and RSA data if available
+        # Add wallet and SHA ID data if available
         if self.wallet_data:
             auction_data.update({
                 'auction_nano_address': self.wallet_data.get('nano_address', ''),
                 'auction_nano_public_key': self.wallet_data.get('nano_public_key', ''),
                 'auction_nano_private_key': self.wallet_data.get('nano_private_key', ''),
                 'auction_nano_seed': self.wallet_data.get('nano_seed', ''),
-                'auction_rsa_private_key': self.wallet_data.get('rsa_private_key', ''),
-                'auction_rsa_public_key': self.wallet_data.get('rsa_public_key', ''),
-                'auction_rsa_fingerprint': self.wallet_data.get('rsa_fingerprint', ''),
+                'sha_id': self.wallet_data.get('sha_id', ''),
+                'created_at': self.wallet_data.get('created_at', ''),
                 'auction_wallet_created_at': self.wallet_data.get('created_at', ''),
             })
         

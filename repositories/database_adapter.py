@@ -153,18 +153,23 @@ class DatabaseAdapter:
     async def store_item(self, item: Item) -> bool:
         """Store an item."""
         try:
+            is_new = item.id not in self._items
             self._items[item.id] = item
             
-            # Update indexes
-            if item.seller_id not in self._items_by_seller_index:
-                self._items_by_seller_index[item.seller_id] = []
-            self._items_by_seller_index[item.seller_id].append(item.id)
+            # Update seller index (only add if new)
+            if is_new:
+                if item.seller_id not in self._items_by_seller_index:
+                    self._items_by_seller_index[item.seller_id] = []
+                self._items_by_seller_index[item.seller_id].append(item.id)
             
-            if item.status not in self._items_by_status_index:
-                self._items_by_status_index[item.status] = []
-            self._items_by_status_index[item.status].append(item.id)
+            # Update status index
+            if is_new:
+                if item.status not in self._items_by_status_index:
+                    self._items_by_status_index[item.status] = []
+                self._items_by_status_index[item.status].append(item.id)
             
-            if item.category:
+            # Update category index (only add if new)
+            if is_new and item.category:
                 if item.category not in self._items_by_category_index:
                     self._items_by_category_index[item.category] = []
                 self._items_by_category_index[item.category].append(item.id)

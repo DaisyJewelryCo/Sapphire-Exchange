@@ -42,10 +42,14 @@ class TestUnifiedArchitecture(unittest.TestCase):
         
         self.user_service = UserService(
             database=self.mock_database,
-            security_manager=self.security_manager
+            security_manager=self.security_manager,
+            blockchain=self.mock_blockchain
         )
         
-        self.auction_service = AuctionService(database=self.mock_database)
+        self.auction_service = AuctionService(
+            database=self.mock_database,
+            blockchain=self.mock_blockchain
+        )
         self.wallet_service = WalletService()
         
         # Initialize repositories
@@ -89,7 +93,9 @@ class TestUnifiedArchitecture(unittest.TestCase):
         user = User(
             username='testuser',
             email='test@example.com',
-            password_hash='hashed_password'
+            password_hash='hashed_password',
+            nano_address='nano_test_addr',
+            arweave_address='arweave_test_addr'
         )
         
         self.assertIsNotNone(user.id)
@@ -249,6 +255,7 @@ class TestUnifiedArchitecture(unittest.TestCase):
         self.mock_blockchain.generate_nano_address = AsyncMock(return_value='nano_test_address')
         self.mock_blockchain.generate_arweave_address = AsyncMock(return_value='arweave_test_address')
         self.mock_blockchain.generate_doge_address = AsyncMock(return_value='doge_test_address')
+        self.mock_blockchain.generate_usdc_address = AsyncMock(return_value='usdc_test_address')
         self.mock_blockchain.store_data = AsyncMock(return_value='test_tx_id')
         
         # Mock database methods
@@ -259,7 +266,6 @@ class TestUnifiedArchitecture(unittest.TestCase):
         # Test user creation
         user = await self.user_service.create_user(
             username='testuser',
-            email='test@example.com',
             password='SecurePass123!'
         )
         
@@ -289,7 +295,9 @@ class TestUnifiedArchitecture(unittest.TestCase):
         test_user = User(
             username='seller',
             email='seller@example.com',
-            password_hash='hashed'
+            password_hash='hashed',
+            nano_address='nano_seller_addr',
+            arweave_address='arweave_seller_addr'
         )
         
         # Mock blockchain operations
@@ -309,7 +317,9 @@ class TestUnifiedArchitecture(unittest.TestCase):
         bidder = User(
             username='bidder',
             email='bidder@example.com',
-            password_hash='hashed'
+            password_hash='hashed',
+            nano_address='nano_bidder_addr',
+            arweave_address='arweave_bidder_addr'
         )
         
         # Mock blockchain operations for bidding
@@ -331,7 +341,9 @@ class TestUnifiedArchitecture(unittest.TestCase):
         test_user = User(
             username='repouser',
             email='repo@example.com',
-            password_hash='hashed'
+            password_hash='hashed',
+            nano_address='nano_repo_addr',
+            arweave_address='arweave_repo_addr'
         )
         
         # Mock blockchain and database operations
@@ -394,12 +406,13 @@ class TestUnifiedArchitecture(unittest.TestCase):
             self.mock_blockchain.generate_nano_address = AsyncMock(return_value='nano_test')
             self.mock_blockchain.generate_arweave_address = AsyncMock(return_value='arweave_test')
             self.mock_blockchain.generate_doge_address = AsyncMock(return_value='doge_test')
+            self.mock_blockchain.generate_usdc_address = AsyncMock(return_value='usdc_test')
             self.mock_blockchain.store_data = AsyncMock(return_value='tx_id')
             self.mock_database.get_user_by_username = AsyncMock(return_value=None)
             self.mock_database.get_user_by_email = AsyncMock(return_value=None)
             self.mock_database.store_user = AsyncMock(return_value=True)
             
-            user = await self.user_service.create_user('integrationuser', 'int@example.com', 'SecurePass123!')
+            user = await self.user_service.create_user('integrationuser', 'SecurePass123!')
             self.assertIsNotNone(user)
             
             # 2. Create auction
@@ -409,13 +422,10 @@ class TestUnifiedArchitecture(unittest.TestCase):
             self.assertIsNotNone(item)
             
             # 3. Place bid
-            bidder_data = {
-                'username': 'bidder',
-                'email': 'bidder@example.com',
-                'password': 'BidderPass123!'
-            }
-            
-            bidder = await self.user_service.create_user(**bidder_data)
+            bidder = await self.user_service.create_user(
+                username='bidder',
+                password='BidderPass123!'
+            )
             self.assertIsNotNone(bidder)
             
             self.mock_blockchain.send_doge = AsyncMock(return_value='bid_tx')

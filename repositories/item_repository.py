@@ -56,7 +56,7 @@ class ItemRepository(ArweaveRepository):
             return None
     
     async def get_by_id(self, item_id: str) -> Optional[Item]:
-        """Get item by ID."""
+        """Get item by ID with SHA hash verification."""
         try:
             # Check cache first
             cache_key = self._get_cache_key("item", item_id)
@@ -68,9 +68,14 @@ class ItemRepository(ArweaveRepository):
             if self.database:
                 item = await self.database.get_item(item_id)
                 if item:
-                    # Cache the result
-                    self._cache_entity(cache_key, item)
-                    return item
+                    is_valid, verification_message = item.verify_integrity()
+                    if is_valid:
+                        print(f"[VERIFICATION] {verification_message}")
+                        self._cache_entity(cache_key, item)
+                        return item
+                    else:
+                        print(f"[VERIFICATION_FAILED] {verification_message}")
+                        return None
             
             return None
         except Exception as e:
@@ -152,8 +157,22 @@ class ItemRepository(ArweaveRepository):
             print(f"Error listing items: {e}")
             return []
     
+    def _verify_items_integrity(self, items: List[Item]) -> List[Item]:
+        """Verify integrity of multiple items by checking SHA hash.
+        
+        Items that fail verification are logged but not returned.
+        """
+        verified_items = []
+        for item in items:
+            is_valid, verification_message = item.verify_integrity()
+            if is_valid:
+                verified_items.append(item)
+            else:
+                print(f"[VERIFICATION_FAILED] Item {item.item_id}: {verification_message}")
+        return verified_items
+    
     async def get_by_status(self, status: str, limit: int = 20, offset: int = 0) -> List[Item]:
-        """Get items by status."""
+        """Get items by status with SHA hash verification."""
         try:
             limit, offset = self._validate_pagination(limit, offset)
             
@@ -166,13 +185,14 @@ class ItemRepository(ArweaveRepository):
             
             if self.database:
                 items = await self.database.get_items_by_status(status, limit, offset)
+                verified_items = self._verify_items_integrity(items)
                 
                 # Cache active items
                 if status == 'active' and offset == 0:
                     cache_key = self._get_cache_key("items_active", f"{limit}_{offset}")
-                    self._cache_entity(cache_key, items, ttl_seconds=60)  # Short TTL for active items
+                    self._cache_entity(cache_key, verified_items, ttl_seconds=60)
                 
-                return items
+                return verified_items
             return []
         except Exception as e:
             print(f"Error getting items by status: {e}")
@@ -180,19 +200,20 @@ class ItemRepository(ArweaveRepository):
     
     async def get_by_seller(self, seller_id: str, limit: int = 20, offset: int = 0, 
                            status: Optional[str] = None) -> List[Item]:
-        """Get items by seller."""
+        """Get items by seller with SHA hash verification."""
         try:
             limit, offset = self._validate_pagination(limit, offset)
             
             if self.database:
-                return await self.database.get_items_by_seller(seller_id, limit, offset, status)
+                items = await self.database.get_items_by_seller(seller_id, limit, offset, status)
+                return self._verify_items_integrity(items)
             return []
         except Exception as e:
             print(f"Error getting items by seller: {e}")
             return []
     
     async def get_by_category(self, category: str, limit: int = 20, offset: int = 0) -> List[Item]:
-        """Get items by category."""
+        """Get items by category with SHA hash verification."""
         try:
             limit, offset = self._validate_pagination(limit, offset)
             
@@ -204,11 +225,12 @@ class ItemRepository(ArweaveRepository):
             
             if self.database:
                 items = await self.database.get_items_by_category(category, limit, offset)
+                verified_items = self._verify_items_integrity(items)
                 
                 # Cache the results
-                self._cache_entity(cache_key, items, ttl_seconds=300)
+                self._cache_entity(cache_key, verified_items, ttl_seconds=300)
                 
-                return items
+                return verified_items
             return []
         except Exception as e:
             print(f"Error getting items by category: {e}")
@@ -216,19 +238,20 @@ class ItemRepository(ArweaveRepository):
     
     async def search_items(self, query: str, category: Optional[str] = None, 
                           tags: Optional[List[str]] = None, limit: int = 20) -> List[Item]:
-        """Search items by query, category, and tags."""
+        """Search items by query, category, and tags with SHA hash verification."""
         try:
             limit, _ = self._validate_pagination(limit, 0)
             
             if self.database:
-                return await self.database.search_items(query, category, tags, limit)
+                items = await self.database.search_items(query, category, tags, limit)
+                return self._verify_items_integrity(items)
             return []
         except Exception as e:
             print(f"Error searching items: {e}")
             return []
     
     async def get_ending_soon(self, hours: int = 24, limit: int = 20) -> List[Item]:
-        """Get items ending soon."""
+        """Get items ending soon with SHA hash verification."""
         try:
             limit, _ = self._validate_pagination(limit, 0)
             
@@ -240,18 +263,19 @@ class ItemRepository(ArweaveRepository):
             
             if self.database:
                 items = await self.database.get_items_ending_soon(hours, limit)
+                verified_items = self._verify_items_integrity(items)
                 
                 # Cache with short TTL since these change frequently
-                self._cache_entity(cache_key, items, ttl_seconds=300)
+                self._cache_entity(cache_key, verified_items, ttl_seconds=300)
                 
-                return items
+                return verified_items
             return []
         except Exception as e:
             print(f"Error getting items ending soon: {e}")
             return []
     
     async def get_popular_items(self, limit: int = 20, time_period: str = '24h') -> List[Item]:
-        """Get popular items based on bid activity."""
+        """Get popular items based on bid activity with SHA hash verification."""
         try:
             limit, _ = self._validate_pagination(limit, 0)
             
@@ -263,18 +287,19 @@ class ItemRepository(ArweaveRepository):
             
             if self.database:
                 items = await self.database.get_popular_items(limit, time_period)
+                verified_items = self._verify_items_integrity(items)
                 
                 # Cache with medium TTL
-                self._cache_entity(cache_key, items, ttl_seconds=600)
+                self._cache_entity(cache_key, verified_items, ttl_seconds=600)
                 
-                return items
+                return verified_items
             return []
         except Exception as e:
             print(f"Error getting popular items: {e}")
             return []
     
     async def get_featured_items(self, limit: int = 10) -> List[Item]:
-        """Get featured items."""
+        """Get featured items with SHA hash verification."""
         try:
             limit, _ = self._validate_pagination(limit, 0)
             
@@ -286,11 +311,12 @@ class ItemRepository(ArweaveRepository):
             
             if self.database:
                 items = await self.database.get_featured_items(limit)
+                verified_items = self._verify_items_integrity(items)
                 
                 # Cache with longer TTL since featured items change less frequently
-                self._cache_entity(cache_key, items, ttl_seconds=1800)
+                self._cache_entity(cache_key, verified_items, ttl_seconds=1800)
                 
-                return items
+                return verified_items
             return []
         except Exception as e:
             print(f"Error getting featured items: {e}")

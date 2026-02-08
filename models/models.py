@@ -3,7 +3,7 @@ Data models for the Sapphire Exchange auction platform.
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import uuid
 
 @dataclass
@@ -13,6 +13,7 @@ class User:
     password_hash: str
     nano_address: str
     arweave_address: str
+    email: Optional[str] = None
     usdc_address: Optional[str] = None
     
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -46,6 +47,7 @@ class User:
             'password_hash': self.password_hash,
             'nano_address': self.nano_address,
             'arweave_address': self.arweave_address,
+            'email': self.email,
             'usdc_address': self.usdc_address,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
@@ -81,6 +83,7 @@ class User:
             password_hash=data['password_hash'],
             nano_address=data['nano_address'],
             arweave_address=data['arweave_address'],
+            email=data.get('email'),
             usdc_address=data.get('usdc_address'),
             created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
             updated_at=data.get('updated_at'),
@@ -115,15 +118,13 @@ class Item:
     shipping_required: bool = False
     shipping_cost_usdc: str = "0.0"
     
-    item_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    item_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    
+    sha_id: str = ""
     
     current_bid_usdc: Optional[str] = None
     current_bidder_id: Optional[str] = None
-    
-    auction_rsa_private_key: str = ""
-    auction_rsa_public_key: str = ""
-    auction_rsa_fingerprint: str = ""
     
     auction_nano_address: str = ""
     auction_nano_public_key: str = ""
@@ -136,6 +137,21 @@ class Item:
     
     data_hash: Optional[str] = None
     metadata: Dict = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Generate SHA hash-based secondary ID and data hash."""
+        if not self.sha_id:
+            self.sha_id = self._generate_sha_id()
+        self.data_hash = self.calculate_data_hash()
+    
+    def _generate_sha_id(self) -> str:
+        """Generate SHA256 hash-based secondary ID from item information.
+        
+        This serves as the item's second ID for integrity verification and deduplication.
+        """
+        import hashlib
+        hash_data = f"{self.seller_id}{self.title}{self.description}{self.created_at}"
+        return hashlib.sha256(hash_data.encode()).hexdigest()
     
     @property
     def id(self) -> str:
@@ -154,15 +170,30 @@ class Item:
             return False
     
     def calculate_data_hash(self) -> str:
-        """Calculate hash of item data for integrity checking."""
+        """Calculate hash of item data for integrity checking.
+        Uses the same data as item_id generation for verification.
+        """
         import hashlib
-        data_str = f"{self.item_id}{self.title}{self.seller_id}{self.created_at}"
+        data_str = f"{self.seller_id}{self.title}{self.description}{self.created_at}"
         return hashlib.sha256(data_str.encode()).hexdigest()
+    
+    def verify_integrity(self) -> Tuple[bool, str]:
+        """Verify item integrity by checking if sha_id matches the hash of item information.
+        
+        Returns:
+            Tuple of (is_valid, message)
+        """
+        calculated_hash = self.calculate_data_hash()
+        if self.sha_id == calculated_hash:
+            return True, "Item integrity verified: SHA ID matches data hash"
+        else:
+            return False, f"Item integrity check failed: SHA ID {self.sha_id} does not match calculated hash {calculated_hash}"
     
     def to_dict(self) -> dict:
         """Convert item to dictionary for storage."""
         return {
             'item_id': self.item_id,
+            'sha_id': self.sha_id,
             'seller_id': self.seller_id,
             'title': self.title,
             'description': self.description,
@@ -176,9 +207,6 @@ class Item:
             'created_at': self.created_at,
             'current_bid_usdc': self.current_bid_usdc,
             'current_bidder_id': self.current_bidder_id,
-            'auction_rsa_private_key': self.auction_rsa_private_key,
-            'auction_rsa_public_key': self.auction_rsa_public_key,
-            'auction_rsa_fingerprint': self.auction_rsa_fingerprint,
             'auction_nano_address': self.auction_nano_address,
             'auction_nano_public_key': self.auction_nano_public_key,
             'auction_nano_private_key': self.auction_nano_private_key,
@@ -195,6 +223,7 @@ class Item:
         """Create Item from dictionary."""
         return cls(
             item_id=data.get('item_id', str(uuid.uuid4())),
+            sha_id=data.get('sha_id', ''),
             seller_id=data.get('seller_id', ''),
             title=data.get('title', data.get('name', '')),
             description=data.get('description', ''),
@@ -208,9 +237,6 @@ class Item:
             created_at=data.get('created_at', datetime.now(timezone.utc).isoformat()),
             current_bid_usdc=data.get('current_bid_usdc', data.get('current_bid')),
             current_bidder_id=data.get('current_bidder_id', data.get('current_bidder')),
-            auction_rsa_private_key=data.get('auction_rsa_private_key', ''),
-            auction_rsa_public_key=data.get('auction_rsa_public_key', ''),
-            auction_rsa_fingerprint=data.get('auction_rsa_fingerprint', ''),
             auction_nano_address=data.get('auction_nano_address', ''),
             auction_nano_public_key=data.get('auction_nano_public_key', ''),
             auction_nano_private_key=data.get('auction_nano_private_key', ''),

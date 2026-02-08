@@ -335,13 +335,12 @@ class AuthenticationStatusPopup(QWidget):
         self.update_status_display('nano')
     
     def check_rsa_status(self):
-        """Check RSA signature status."""
+        """Check Nano wallet and SHA verification status."""
         try:
-            # Check if item has RSA keys
-            if self.item.auction_rsa_public_key and self.item.auction_rsa_fingerprint:
-                self.auth_status['rsa'] = {
+            if self.item.auction_nano_public_key and self.item.sha_id:
+                self.auth_status['nano'] = {
                     'status': 'verified',
-                    'message': 'RSA signature verified'
+                    'message': 'Nano wallet verified'
                 }
             else:
                 self.auth_status['rsa'] = {

@@ -1,0 +1,100 @@
+{
+  "summary": {
+    "total_tests": 6,
+    "passed": 6,
+    "failed": 0,
+    "success_rate": 100.0,
+    "timestamp": "2026-02-07T17:00:17.326489+00:00"
+  },
+  "tests": [
+    {
+      "test": "SHA ID Generation",
+      "passed": true,
+      "details": {
+        "sha_id": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec",
+        "expected": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec",
+        "matches": true,
+        "item_data": {
+          "title": "Vintage Motorcycle",
+          "seller_id": "aad3ff7e-d36e-4452-a349-cd571298e001",
+          "created_at": "2026-02-07T17:00:17.322536+00:00",
+          "description": "1970s Harley-Davidson in excellent condition..."
+        }
+      }
+    },
+    {
+      "test": "SHA Encryption/Decryption",
+      "passed": true,
+      "details": {
+        "original_sha": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec",
+        "decrypted_sha": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec",
+        "matches": true,
+        "encryption_successful": true,
+        "vault_key_id": "861b4926-a3e3-4f27-998e-9541dc41c019",
+        "stored_keys": [
+          "861b4926-a3e3-4f27-998e-9541dc41c019"
+        ]
+      }
+    },
+    {
+      "test": "Item Data Encryption",
+      "passed": true,
+      "details": {
+        "encryption_successful": true,
+        "decryption_successful": true,
+        "data_integrity": true,
+        "original_size": 981,
+        "encrypted_size": 1994,
+        "algorithm": "AES-256-GCM",
+        "matched_fields": {
+          "sha_id": true,
+          "item_id": true,
+          "title": true,
+          "seller_id": true
+        }
+      }
+    },
+    {
+      "test": "Authenticity Verification",
+      "passed": true,
+      "details": {
+        "original_valid": true,
+        "original_message": "Item integrity verified: SHA ID matches data hash",
+        "tampered_detected": true,
+        "tampered_message": "Item integrity check failed: SHA ID 713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec does not match calculated hash 4f9738ef9d74cd8c51b9e56a2e18a26401392a2b9e0f3c390cc398dd409a6e94",
+        "authenticity_check_working": true,
+        "original_sha_id": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec",
+        "calculated_hash": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec"
+      }
+    },
+    {
+      "test": "Arweave Post Integrity",
+      "passed": true,
+      "details": {
+        "post_structure": {
+          "item_id": "861b4926-a3e3-4f27-998e-9541dc41c019",
+          "sha_id": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec",
+          "content_hash": "713021572f0ef67d3d3664e5f759ea4064955bf2f58cd39185d8d49719990aec"
+        },
+        "post_checksum": "2e19951e6891e970d2d7559e72ab5ebbaeaf68effbb889ae9c1bd0db91501559",
+        "checksum_match": true,
+        "integrity_verified": true,
+        "sha_id_intact": true,
+        "authenticity_valid": true,
+        "post_size_bytes": 689
+      }
+    },
+    {
+      "test": "Vault Export/Import",
+      "passed": true,
+      "details": {
+        "export_successful": true,
+        "import_successful": true,
+        "keys_preserved": true,
+        "sha_restored": true,
+        "vault_size_bytes": 571
+      }
+    }
+  ],
+  "verdict": "\u2713 ALL TESTS PASSED - SHA verification system is secure and functional"
+}
