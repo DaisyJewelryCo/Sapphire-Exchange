@@ -16,6 +16,7 @@ from ui.dialogs.wallet_management import CreateWalletDialog, ImportWalletDialog,
 from ui.dialogs.transaction_dialogs import SendTransactionDialog, ReceiveDialog, TransactionHistoryDialog
 from ui.dialogs.backup_dialogs import MnemonicDisplayDialog, BackupWizardDialog, RecoveryWizardDialog
 from ui.dialogs.settings_dialog import SettingsDialog
+from ui.dialogs.wallet_details_dialog import WalletDetailsDialog
 from ui.custom_widgets import (
     AddressDisplayWidget, BalanceWidget, QRCodeWidget,
     TransactionListWidget, WalletTileWidget, StatusIndicatorWidget
@@ -144,7 +145,23 @@ class EnhancedWalletWidget(QWidget):
         
         layout.addLayout(action_layout)
         
-        layout.addStretch()
+        layout.addSpacing(20)
+        
+        wallets_label = QLabel("Wallet Manager")
+        wallets_label.setFont(QFont("Arial", 12, QFont.Bold))
+        layout.addWidget(wallets_label)
+        
+        self.dashboard_wallets_scroll = QScrollArea()
+        self.dashboard_wallets_scroll.setWidgetResizable(True)
+        self.dashboard_wallets_scroll.setMinimumHeight(250)
+        self.dashboard_wallets_grid = QGridLayout()
+        self.dashboard_wallets_grid.setSpacing(10)
+        
+        wallets_container = QWidget()
+        wallets_container.setLayout(self.dashboard_wallets_grid)
+        self.dashboard_wallets_scroll.setWidget(wallets_container)
+        
+        layout.addWidget(self.dashboard_wallets_scroll)
         
         return widget
     
@@ -260,6 +277,7 @@ class EnhancedWalletWidget(QWidget):
         self.current_wallet = wallet_info
         self.wallet_changed.emit(wallet_info.__dict__)
         self.update_wallet_tiles()
+        self.update_dashboard_wallets()
         
         QMessageBox.information(
             self,
@@ -273,6 +291,7 @@ class EnhancedWalletWidget(QWidget):
         self.current_wallet = wallet_info
         self.wallet_changed.emit(wallet_info.__dict__)
         self.update_wallet_tiles()
+        self.update_dashboard_wallets()
         
         QMessageBox.information(
             self,
@@ -281,7 +300,7 @@ class EnhancedWalletWidget(QWidget):
         )
     
     def update_wallet_tiles(self):
-        """Update wallet tile display."""
+        """Update wallet tile display in Wallets tab."""
         while self.wallets_grid.count():
             item = self.wallets_grid.takeAt(0)
             if item.widget():
@@ -299,13 +318,49 @@ class EnhancedWalletWidget(QWidget):
             col = i % 2
             self.wallets_grid.addWidget(tile, row, col)
     
+    def update_dashboard_wallets(self):
+        """Update wallet tile display in Dashboard tab."""
+        while self.dashboard_wallets_grid.count():
+            item = self.dashboard_wallets_grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        for i, wallet in enumerate(self.wallets):
+            tile = WalletTileWidget({
+                'name': wallet.name,
+                'balance': '$0.00',
+                'status': 'Ready'
+            })
+            tile.clicked.connect(self.on_wallet_tile_clicked)
+            
+            row = i // 2
+            col = i % 2
+            self.dashboard_wallets_grid.addWidget(tile, row, col)
+    
     def on_wallet_tile_clicked(self, wallet_info):
         """Handle wallet tile click."""
-        QMessageBox.information(
-            self,
-            "Wallet Selected",
-            f"Selected wallet: {wallet_info.get('name', 'Unknown')}"
-        )
+        if not wallet_info:
+            QMessageBox.warning(self, "Error", "Invalid wallet information")
+            return
+        
+        wallet_name = wallet_info.get('name', '') if isinstance(wallet_info, dict) else str(wallet_info)
+        
+        wallet = None
+        for w in self.wallets:
+            if w.name == wallet_name:
+                wallet = w
+                break
+        
+        if wallet:
+            dialog = WalletDetailsDialog(wallet, parent=self)
+            dialog.send_clicked.connect(self.on_send_from_details)
+            dialog.receive_clicked.connect(self.on_receive_from_details)
+            dialog.backup_clicked.connect(self.on_backup_from_details)
+            dialog.recover_clicked.connect(self.on_recover_from_details)
+            dialog.delete_clicked.connect(lambda: self.on_wallet_deleted(wallet))
+            dialog.exec_()
+        else:
+            QMessageBox.warning(self, "Error", f"Wallet '{wallet_name}' not found")
     
     def open_send_dialog(self):
         """Open send transaction dialog."""
@@ -351,6 +406,44 @@ class EnhancedWalletWidget(QWidget):
         dialog = SettingsDialog(self.settings, parent=self)
         dialog.settings_changed.connect(self.on_settings_changed)
         dialog.exec_()
+    
+    def on_send_from_details(self, wallet_name):
+        """Handle send from wallet details dialog."""
+        for w in self.wallets:
+            if w.name == wallet_name:
+                self.current_wallet = w
+                break
+        self.open_send_dialog()
+    
+    def on_receive_from_details(self, wallet_name):
+        """Handle receive from wallet details dialog."""
+        for w in self.wallets:
+            if w.name == wallet_name:
+                self.current_wallet = w
+                break
+        self.open_receive_dialog()
+    
+    def on_backup_from_details(self):
+        """Handle backup from wallet details dialog."""
+        self.open_backup_wizard()
+    
+    def on_recover_from_details(self):
+        """Handle recover from wallet details dialog."""
+        self.open_recovery_wizard()
+    
+    def on_wallet_deleted(self, wallet):
+        """Handle wallet deletion."""
+        self.wallets = [w for w in self.wallets if w.name != wallet.name]
+        if self.current_wallet == wallet:
+            self.current_wallet = self.wallets[0] if self.wallets else None
+        self.update_wallet_tiles()
+        self.update_dashboard_wallets()
+        
+        QMessageBox.information(
+            self,
+            "Wallet Removed",
+            f"Wallet '{wallet.name}' has been removed successfully."
+        )
     
     def on_transaction_sent(self, transaction_data):
         """Handle transaction sent."""

@@ -85,16 +85,16 @@ class BalanceWidget(QWidget):
         
         header_layout.addStretch()
         
-        balance_label = QLabel(self.balance)
-        balance_label.setFont(QFont("Arial", 12, QFont.Bold))
-        header_layout.addWidget(balance_label)
+        self.balance_label = QLabel(self.balance)
+        self.balance_label.setFont(QFont("Arial", 12, QFont.Bold))
+        header_layout.addWidget(self.balance_label)
         
         layout.addLayout(header_layout)
         
-        usd_label = QLabel(self.usd_value)
-        usd_label.setFont(QFont("Arial", 10))
-        usd_label.setStyleSheet("color: #666;")
-        layout.addWidget(usd_label)
+        self.usd_label = QLabel(self.usd_value)
+        self.usd_label.setFont(QFont("Arial", 10))
+        self.usd_label.setStyleSheet("color: #666;")
+        layout.addWidget(self.usd_label)
         
         self.setStyleSheet("""
             QWidget {
@@ -294,7 +294,7 @@ class WalletTileWidget(QFrame):
     def mousePressEvent(self, event):
         """Handle mouse press."""
         self.clicked.emit(self.wallet_info)
-        super().mousePressEvent(event)
+        event.accept()
 
 
 class StatusIndicatorWidget(QWidget):

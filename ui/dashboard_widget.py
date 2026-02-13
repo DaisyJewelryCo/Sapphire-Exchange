@@ -14,6 +14,7 @@ from PyQt5.QtGui import QFont, QPalette
 
 from services.application_service import app_service
 from utils.async_worker import AsyncWorker
+from ui.funding_manager_widget import FundingManagerWidget
 
 
 class BidSettingsWidget(QWidget):
@@ -532,6 +533,58 @@ class UserProfileWidget(QWidget):
         
         layout.addWidget(connection_group)
         
+        # Account Backup section
+        backup_group = QGroupBox("Account Backup")
+        backup_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #e2e8f0;
+                border-radius: 8px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
+        backup_layout = QVBoxLayout(backup_group)
+        
+        # Backup description
+        backup_desc = QLabel("Store an encrypted backup of your account offline.\nYou can recover your account by providing your Nano mnemonic.")
+        backup_desc.setStyleSheet("color: #64748b; font-size: 12px; line-height: 1.5;")
+        backup_desc.setWordWrap(True)
+        backup_layout.addWidget(backup_desc)
+        
+        # Store backup button
+        self.store_backup_btn = QPushButton("💾  Store Account Backup Offline")
+        self.store_backup_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                border: none;
+                padding: 10px 16px;
+                border-radius: 6px;
+                font-weight: 500;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+            QPushButton:disabled {
+                background-color: #9ca3af;
+                color: #6b7280;
+            }
+        """)
+        self.store_backup_btn.clicked.connect(self.export_account_backup)
+        backup_layout.addWidget(self.store_backup_btn)
+        
+        layout.addWidget(backup_group)
+        
         # Add stretch to push content to top
         layout.addStretch()
     
@@ -593,6 +646,80 @@ class UserProfileWidget(QWidget):
         self.update_username_btn.setEnabled(True)
         self.update_username_btn.setText("Update")
         QMessageBox.critical(self, "Error", f"Error updating username: {error}")
+    
+    def export_account_backup(self):
+        """Export encrypted account backup to file."""
+        try:
+            # Check if user is logged in
+            if not app_service.is_user_logged_in():
+                QMessageBox.warning(self, "Not Logged In", "Please log in first.")
+                return
+            
+            user = app_service.get_current_user()
+            if not user or not user.nano_address:
+                QMessageBox.warning(self, "Error", "Unable to retrieve your account information.")
+                return
+            
+            # Open file save dialog
+            from PyQt5.QtWidgets import QFileDialog
+            file_dialog = QFileDialog()
+            default_filename = f"sapphire_backup_{user.username}_{user.nano_address[:10]}.account.enc"
+            file_path, _ = file_dialog.getSaveFileName(
+                self,
+                "Save Account Backup",
+                default_filename,
+                "Encrypted Backup Files (*.account.enc);;All Files (*)"
+            )
+            
+            if not file_path:
+                return  # User cancelled
+            
+            # Disable button during export
+            self.store_backup_btn.setEnabled(False)
+            self.store_backup_btn.setText("Exporting...")
+            
+            # Export backup via app service
+            worker = AsyncWorker(self.export_backup_async(user.nano_address, file_path))
+            worker.finished.connect(self.on_backup_exported)
+            worker.error.connect(self.on_backup_export_error)
+            worker.start()
+            self.backup_worker = worker
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to export backup: {str(e)}")
+            self.store_backup_btn.setEnabled(True)
+            self.store_backup_btn.setText("💾  Store Account Backup Offline")
+    
+    async def export_backup_async(self, nano_address: str, file_path: str):
+        """Async export of account backup."""
+        try:
+            from security.account_backup_manager import account_backup_manager
+            success, message = await account_backup_manager.export_backup_to_file(nano_address, file_path)
+            return success, message
+        except Exception as e:
+            return False, str(e)
+    
+    def on_backup_exported(self, result):
+        """Handle backup export completion."""
+        success, message = result
+        self.store_backup_btn.setEnabled(True)
+        self.store_backup_btn.setText("💾  Store Account Backup Offline")
+        
+        if success:
+            QMessageBox.information(
+                self,
+                "Backup Exported",
+                f"Account backup saved successfully!\n\n{message}\n\n"
+                "Keep this file safe. You can restore your account using your Nano mnemonic."
+            )
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to export backup: {message}")
+    
+    def on_backup_export_error(self, error):
+        """Handle backup export error."""
+        self.store_backup_btn.setEnabled(True)
+        self.store_backup_btn.setText("💾  Store Account Backup Offline")
+        QMessageBox.critical(self, "Error", f"Error exporting backup: {error}")
 
 
 class WalletOverviewWidget(QWidget):
@@ -929,7 +1056,33 @@ class WalletOverviewWidget(QWidget):
             btn.setText(f"{currency} - Error loading")
     
     def show_wallet_details(self, currency):
-        """Show transaction history for selected wallet."""
+        """Show wallet details dialog and transaction history for selected wallet."""
+        from ui.dialogs.wallet_details_dialog import WalletDetailsDialog
+        from ui.dialogs.wallet_management import WalletInfo
+        
+        # Get the address for the selected currency
+        address_label = self.wallet_addresses.get(currency, None)
+        address = address_label.text() if (address_label and hasattr(address_label, 'text')) else ''
+        
+        # Create wallet info with ONLY the selected currency's address
+        wallet_info = WalletInfo(
+            name=f"{currency} Wallet",
+            mnemonic=""
+        )
+        
+        # Set only the relevant address based on selected currency
+        if currency == 'NANO':
+            wallet_info.address_nano = address
+        elif currency == 'USDC':
+            wallet_info.address_solana = address
+        elif currency == 'ARWEAVE':
+            wallet_info.address_arweave = address
+        
+        # Open dialog with currency specified
+        dialog = WalletDetailsDialog(wallet_info, parent=self, currency=currency)
+        dialog.exec_()
+        
+        # Update transaction history
         self.current_wallet = currency
         self.current_wallet_label.setText(f"Transaction History - {currency}")
         
@@ -1035,6 +1188,51 @@ class DashboardWidget(QWidget):
         
         layout.addLayout(header_layout)
         
+        # Scrollable content area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background-color: #f3f4f6;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #cbd5e1;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #94a3b8;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        """)
+        
+        # Container widget for scrollable content
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(16)
+        
+        # Funding Manager Widget (top priority section)
+        self.funding_manager_widget = FundingManagerWidget()
+        self.funding_manager_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        scroll_layout.addWidget(self.funding_manager_widget)
+        
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        scroll_layout.addWidget(separator)
+        
         # Main content layout (45% left, 55% right)
         content_layout = QHBoxLayout()
         content_layout.setSpacing(20)
@@ -1049,7 +1247,12 @@ class DashboardWidget(QWidget):
         self.wallet_overview_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         content_layout.addWidget(self.wallet_overview_widget, 55)
         
-        layout.addLayout(content_layout)
+        scroll_layout.addLayout(content_layout)
+        scroll_layout.addStretch()
+        
+        # Add scroll widget to scroll area
+        scroll_area.setWidget(scroll_widget)
+        layout.addWidget(scroll_area)
         
         # Connect signals
         self.user_profile_widget.username_changed.connect(self.on_username_changed)

@@ -16,7 +16,7 @@ class ArweaveAuctionViewer:
     
     def preview_auction_post(self, post_data: Dict[str, Any], verbose: bool = False) -> str:
         """
-        Display a formatted preview of an auction post before posting.
+        Display a formatted preview of an auction post or inventory post before posting.
         
         Args:
             post_data: The post data dictionary
@@ -27,68 +27,102 @@ class ArweaveAuctionViewer:
         """
         output = []
         output.append("=" * 100)
-        output.append("ARWEAVE AUCTION POST PREVIEW (Before Posting to Network)")
+        
+        # Determine post type
+        post_type = post_data.get('type', 'auction')
+        
+        if post_type == 'inventory':
+            output.append("ARWEAVE INVENTORY POST PREVIEW (Before Posting to Network)")
+        else:
+            output.append("ARWEAVE AUCTION POST PREVIEW (Before Posting to Network)")
         output.append("=" * 100)
         output.append("")
         
         # Post metadata
         output.append("POST METADATA")
         output.append("-" * 100)
+        output.append(f"Type: {post_type.upper()}")
         output.append(f"Version: {post_data.get('version', 'N/A')}")
         output.append(f"Sequence Number: {post_data.get('sequence', 'N/A')}")
         output.append(f"Posted By: {post_data.get('posted_by', 'N/A')[:8]}...")
         output.append(f"Created At: {post_data.get('created_at', 'N/A')}")
+        
+        if post_type == 'inventory':
+            output.append(f"Seller Nano Address: {post_data.get('seller_nano_address', 'N/A')[:20]}...")
+            output.append(f"Seller Arweave Address: {post_data.get('seller_arweave_address', 'N/A')[:16]}...")
+            if post_data.get('previous_inventory_uri'):
+                output.append(f"Previous Inventory URI: {post_data.get('previous_inventory_uri')[:16]}...")
         output.append("")
         
-        # Top section: Current auction details
-        auction = post_data.get('auction', {})
-        if auction:
-            output.append("TOP SECTION: CURRENT AUCTION DETAILS")
+        # Handle inventory posts
+        if post_type == 'inventory':
+            items = post_data.get('items', [])
+            output.append("INVENTORY ITEMS")
             output.append("-" * 100)
-            output.append(f"SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
-            output.append(f"Item ID: {auction.get('item_id', 'N/A')[:8]}...")
-            output.append(f"Title: {auction.get('title', 'N/A')}")
-            output.append(f"Seller: {auction.get('seller_id', 'N/A')[:8]}...")
-            output.append(f"Status: {auction.get('status', 'N/A')}")
+            output.append(f"Total Items: {post_data.get('item_count', len(items))}")
             output.append("")
             
-            if verbose and auction.get('description'):
-                output.append(f"Description: {auction.get('description')[:200]}...")
-                output.append("")
-            
-            output.append(f"Starting Price: {auction.get('starting_price_doge', 'N/A')} DOGE")
-            output.append(f"Current Bid: {auction.get('current_bid_doge', 'N/A')} DOGE")
-            output.append(f"Current Bidder: {auction.get('current_bidder', 'None')[:8] if auction.get('current_bidder') else 'None'}...")
-            output.append(f"Auction Ends: {auction.get('auction_end', 'N/A')}")
+            if items:
+                for i, item in enumerate(items, 1):
+                    output.append(f"  [{i}] {item.get('title', 'N/A')[:50]}")
+                    output.append(f"      Item ID: {item.get('item_id', 'N/A')[:8]}...")
+                    output.append(f"      SHA ID: {item.get('sha_id', 'N/A')[:16]}...")
+                    output.append(f"      Status: {item.get('status', 'N/A')}")
+                    output.append(f"      Starting Price (USDC): {item.get('starting_price_usdc', 'N/A')}")
+                    if verbose and item.get('description'):
+                        output.append(f"      Description: {item.get('description')[:100]}...")
+                    output.append("")
             output.append("")
-            
-            output.append("NANO WALLET INFO (for bids)")
-            output.append("-" * 100)
-            output.append(f"Nano Address: {auction.get('auction_nano_address', 'N/A')[:20]}...")
-            output.append(f"Nano Public Key: {auction.get('auction_nano_public_key', 'N/A')[:20]}...")
-            output.append("")
-        
-        # Bottom section: Expiring auctions
-        expiring_auctions = post_data.get('expiring_auctions', [])
-        output.append("BOTTOM SECTION: AUCTIONS EXPIRING IN NEXT 24 HOURS")
-        output.append("-" * 100)
-        
-        if expiring_auctions:
-            output.append(f"Total Expiring Auctions: {len(expiring_auctions)}")
-            output.append("")
-            
-            for i, exp_auction in enumerate(expiring_auctions, 1):
-                output.append(f"  [{i}] {exp_auction.get('title', 'N/A')[:40]}")
-                output.append(f"      Item ID: {exp_auction.get('item_id', 'N/A')[:8]}...")
-                output.append(f"      SHA ID: {exp_auction.get('sha_id', 'N/A')[:16]}...")
-                output.append(f"      Current Bid: {exp_auction.get('current_bid_doge', 'N/A')} DOGE")
-                output.append(f"      Current Bidder: {exp_auction.get('current_bidder', 'None')[:8] if exp_auction.get('current_bidder') else 'None'}...")
-                output.append(f"      Top Bidder Nano: {exp_auction.get('top_bidder_nano_address', 'N/A')[:20]}...")
-                output.append(f"      Expires: {exp_auction.get('auction_end', 'N/A')}")
-                output.append("")
         else:
-            output.append("No auctions expiring in next 24 hours")
-            output.append("")
+            # Handle auction posts
+            auction = post_data.get('auction', {})
+            if auction:
+                output.append("TOP SECTION: CURRENT AUCTION DETAILS")
+                output.append("-" * 100)
+                output.append(f"SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
+                output.append(f"Item ID: {auction.get('item_id', 'N/A')[:8]}...")
+                output.append(f"Title: {auction.get('title', 'N/A')}")
+                output.append(f"Seller: {auction.get('seller_id', 'N/A')[:8]}...")
+                output.append(f"Status: {auction.get('status', 'N/A')}")
+                output.append("")
+                
+                if verbose and auction.get('description'):
+                    output.append(f"Description: {auction.get('description')[:200]}...")
+                    output.append("")
+                
+                output.append(f"Starting Price: {auction.get('starting_price_doge', 'N/A')} DOGE")
+                output.append(f"Current Bid: {auction.get('current_bid_doge', 'N/A')} DOGE")
+                output.append(f"Current Bidder: {auction.get('current_bidder', 'None')[:8] if auction.get('current_bidder') else 'None'}...")
+                output.append(f"Auction Ends: {auction.get('auction_end', 'N/A')}")
+                output.append("")
+                
+                output.append("NANO WALLET INFO (for bids)")
+                output.append("-" * 100)
+                output.append(f"Nano Address: {auction.get('auction_nano_address', 'N/A')[:20]}...")
+                output.append(f"Nano Public Key: {auction.get('auction_nano_public_key', 'N/A')[:20]}...")
+                output.append("")
+            
+            # Bottom section: Expiring auctions
+            expiring_auctions = post_data.get('expiring_auctions', [])
+            output.append("BOTTOM SECTION: AUCTIONS EXPIRING IN NEXT 24 HOURS")
+            output.append("-" * 100)
+            
+            if expiring_auctions:
+                output.append(f"Total Expiring Auctions: {len(expiring_auctions)}")
+                output.append("")
+                
+                for i, exp_auction in enumerate(expiring_auctions, 1):
+                    output.append(f"  [{i}] {exp_auction.get('title', 'N/A')[:40]}")
+                    output.append(f"      Item ID: {exp_auction.get('item_id', 'N/A')[:8]}...")
+                    output.append(f"      SHA ID: {exp_auction.get('sha_id', 'N/A')[:16]}...")
+                    output.append(f"      Current Bid: {exp_auction.get('current_bid_doge', 'N/A')} DOGE")
+                    output.append(f"      Current Bidder: {exp_auction.get('current_bidder', 'None')[:8] if exp_auction.get('current_bidder') else 'None'}...")
+                    output.append(f"      Top Bidder Nano: {exp_auction.get('top_bidder_nano_address', 'N/A')[:20]}...")
+                    output.append(f"      Expires: {exp_auction.get('auction_end', 'N/A')}")
+                    output.append("")
+            else:
+                output.append("No auctions expiring in next 24 hours")
+                output.append("")
         
         # Posting cost estimate
         output.append("POSTING COST ESTIMATE")

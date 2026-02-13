@@ -200,6 +200,37 @@ class ArweaveDevToolsWidget(QWidget):
         if service:
             self.viewer = ArweaveAuctionViewer(service)
     
+    def load_pending_inventory_posts(self, user_id: str):
+        """Load pending inventory posts from the Arweave service."""
+        if not self.arweave_post_service:
+            return
+        
+        pending = self.arweave_post_service.get_pending_inventory(user_id)
+        if pending:
+            self.update_or_add_pending_post(pending)
+    
+    def update_or_add_pending_post(self, post_data: dict):
+        """Update existing pending inventory post or add if new."""
+        title = f"[PENDING] Inventory - {post_data.get('item_count', 0)} items"
+        
+        if post_data.get('type') == 'inventory':
+            pending_index = None
+            for i, p in enumerate(self.posts):
+                if p.get('type') == 'inventory' and p.get('posted_by') == post_data.get('posted_by'):
+                    pending_index = i
+                    break
+            
+            if pending_index is not None:
+                self.posts[pending_index] = post_data
+                item = self.posts_list.item(pending_index)
+                if item:
+                    item.setText(title)
+                if self.current_post_index == pending_index:
+                    self.update_display()
+                return
+        
+        self.add_post_preview(post_data, title)
+    
     def add_post_preview(self, post_data: dict, title: str = None):
         """Add a new post preview to the list."""
         if post_data not in self.posts:
@@ -280,16 +311,20 @@ class ArweaveDevToolsWidget(QWidget):
         lines.append(f"Created At: {post_data.get('created_at', 'N/A')}")
         lines.append("")
         
-        auction = post_data.get('auction', {})
-        lines.append("TOP SECTION AUCTION:")
-        lines.append(f"  Item ID: {auction.get('item_id', 'N/A')[:16]}...")
-        lines.append(f"  Title: {auction.get('title', 'N/A')}")
-        lines.append(f"  Seller: {auction.get('seller_id', 'N/A')[:16]}...")
-        lines.append(f"  SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
-        lines.append("")
-        
-        expiring = post_data.get('expiring_auctions', [])
-        lines.append(f"BOTTOM SECTION: {len(expiring)} Expiring Auctions")
+        post_type = post_data.get('type', 'auction')
+        if post_type == 'inventory':
+            lines.append(f"INVENTORY POST ({post_data.get('item_count', 0)} items)")
+        else:
+            auction = post_data.get('auction', {})
+            lines.append("TOP SECTION AUCTION:")
+            lines.append(f"  Item ID: {auction.get('item_id', 'N/A')[:16]}...")
+            lines.append(f"  Title: {auction.get('title', 'N/A')}")
+            lines.append(f"  Seller: {auction.get('seller_id', 'N/A')[:16]}...")
+            lines.append(f"  SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
+            lines.append("")
+            
+            expiring = post_data.get('expiring_auctions', [])
+            lines.append(f"BOTTOM SECTION: {len(expiring)} Expiring Auctions")
         
         lines.append("")
         lines.append("=" * 80)
@@ -303,8 +338,13 @@ class ArweaveDevToolsWidget(QWidget):
             return
         
         post_data = self.posts[self.current_post_index]
-        auction = post_data.get('auction', {})
-        title = auction.get('title', 'untitled').replace(' ', '_').lower()
+        post_type = post_data.get('type', 'auction')
+        
+        if post_type == 'inventory':
+            title = f"inventory_{post_data.get('item_count', 0)}_items"
+        else:
+            auction = post_data.get('auction', {})
+            title = auction.get('title', 'untitled').replace(' ', '_').lower()
         
         filename = f"/tmp/arweave_post_{title}_{self.current_post_index}.txt"
         

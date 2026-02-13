@@ -355,7 +355,6 @@ class AuctionItemWidget(QWidget):
                 QPushButton:hover {
                     background-color: #059669;
                     outline: 1px solid #059669;
-                    transform: scale(1.1);
                 }
             """)
         elif is_verified == 'warning':
@@ -369,7 +368,6 @@ class AuctionItemWidget(QWidget):
                 QPushButton:hover {
                     background-color: #d97706;
                     outline: 1px solid #d97706;
-                    transform: scale(1.1);
                 }
             """)
         else:
@@ -383,7 +381,6 @@ class AuctionItemWidget(QWidget):
                 QPushButton:hover {
                     background-color: #dc2626;
                     outline: 1px solid #dc2626;
-                    transform: scale(1.1);
                 }
             """)
         
@@ -472,6 +469,9 @@ class AuctionItemWidget(QWidget):
     
     def update_countdown(self):
         """Update the countdown display."""
+        if not hasattr(self, 'countdown_label'):
+            return
+        
         if not self.item.auction_end:
             self.countdown_label.setText("No end time")
             self.countdown_label.setStyleSheet("color: #666;")
@@ -484,7 +484,8 @@ class AuctionItemWidget(QWidget):
             if now >= end_time:
                 self.countdown_label.setText("ENDED")
                 self.countdown_label.setStyleSheet("color: red; font-weight: bold;")
-                self.countdown_timer.stop()
+                if hasattr(self, 'countdown_timer'):
+                    self.countdown_timer.stop()
                 return
             
             time_left = end_time - now
@@ -1566,30 +1567,19 @@ class AddItemDialog(QDialog):
         if success:
             QMessageBox.information(self, "Success", f"Auction created successfully!\n\n{message}")
             
-            print(f"[DEBUG] on_auction_created: arweave_post_service={self.arweave_post_service is not None}, item={item is not None}")
-            if self.arweave_post_service and item:
-                try:
-                    import asyncio
-                    from services.application_service import app_service
-                    print(f"[DEBUG] Generating Arweave post for: {item.title}")
-                    loop = asyncio.get_event_loop() if asyncio.get_event_loop().is_running() else asyncio.new_event_loop()
-                    if not loop.is_running():
-                        asyncio.set_event_loop(loop)
-                    post_data = loop.run_until_complete(
-                        self.arweave_post_service.create_auction_post(item, app_service.current_user)
-                    )
-                    print(f"[DEBUG] Post data generated: {post_data is not None}")
-                    if post_data:
-                        print(f"[DEBUG] Emitting post_generated signal")
-                        self.post_generated.emit(post_data, item.title)
-                    else:
-                        print(f"[DEBUG] Post data is None - check arweave_post_service.create_auction_post")
-                except Exception as e:
-                    print(f"Error generating Arweave post: {e}")
-                    import traceback
-                    traceback.print_exc()
-            else:
-                print(f"[DEBUG] Skipping post generation: arweave_post_service={self.arweave_post_service}, item={item}")
+            # Load pending inventory posts in devtools
+            try:
+                from services.application_service import app_service
+                if app_service.current_user:
+                    # Find and update devtools if available
+                    window = self.parent()
+                    while window and not hasattr(window, 'arweave_dev_tools'):
+                        window = window.parent() if hasattr(window, 'parent') else None
+                    
+                    if window and hasattr(window, 'arweave_dev_tools'):
+                        window.arweave_dev_tools.load_pending_inventory_posts(app_service.current_user.id)
+            except Exception as e:
+                print(f"Error loading pending inventory posts: {e}")
             
             self.accept()
         else:

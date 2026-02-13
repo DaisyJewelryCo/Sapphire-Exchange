@@ -138,32 +138,53 @@ class AuctionService:
                 await self.database.store_item(item)
                 print(f"Item stored in database with status: {item.status}")
             
-            # Add auction to local cache and create Arweave post (only if Arweave succeeded)
+            # Add auction to local cache and create/update Arweave inventory post (only if Arweave succeeded)
             if tx_id and arweave_post_service:
                 arweave_post_service.add_local_auction(item)
                 
-                # Get expiring auctions to include in post
-                expiring = arweave_post_service.get_expiring_auctions(hours_until_expiry=24)
-                
-                # Create individual auction post
+                # Get all items for this seller to include in inventory post
                 try:
-                    post_data = await arweave_post_service.create_auction_post(
-                        item, 
-                        seller, 
-                        expiring_auctions=expiring
-                    )
+                    # Get all active items for the seller
+                    seller_items = []
+                    if self.database:
+                        seller_items = await self.database.get_items_by_seller(seller.id, limit=100, status='active')
                     
-                    if post_data:
-                        # Post to Arweave
-                        post_tx_id = await arweave_post_service.post_auction_to_arweave(post_data, seller)
-                        if post_tx_id:
-                            print(f"Auction posted to Arweave: {post_tx_id}")
+                    print(f"[INVENTORY] Found {len(seller_items)} active items for seller {seller.id}")
+                    
+                    # If no items found via database query, use the current item
+                    if not seller_items:
+                        print(f"[INVENTORY] No items from DB query, using current item: {item.id}")
+                        seller_items = [item]
+                    
+                    if seller_items:
+                        # Check if seller already has an inventory post
+                        if seller.arweave_inventory_uri:
+                            print(f"[INVENTORY] Updating existing inventory post: {seller.arweave_inventory_uri}")
+                            # Update existing inventory post with all current items
+                            post_data = await arweave_post_service.update_inventory_post(
+                                seller,
+                                seller_items,
+                                seller.arweave_inventory_uri
+                            )
                         else:
-                            print(f"Warning: Failed to post auction to Arweave - check AR balance and address")
-                    else:
-                        print(f"Warning: Failed to create auction post - item may be missing SHA ID or auction address")
+                            print(f"[INVENTORY] Creating new inventory post for seller {seller.id}")
+                            # Create new inventory post (first time)
+                            post_data = await arweave_post_service.create_inventory_post(
+                                seller,
+                                seller_items
+                            )
+                        
+                        if post_data:
+                            # Store as pending - user will post to Arweave later when ready
+                            arweave_post_service.store_pending_inventory(seller.id, post_data)
+                            print(f"[INVENTORY] Inventory post stored as pending - user can post later")
+                        else:
+                            print(f"Warning: Failed to create inventory post")
+                        
                 except Exception as e:
-                    print(f"Error creating/posting auction to Arweave: {e}")
+                    print(f"Error creating/updating inventory post: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             return item
         except Exception as e:

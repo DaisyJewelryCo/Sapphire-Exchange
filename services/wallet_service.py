@@ -5,10 +5,12 @@ Handles multi-currency wallet operations and management.
 import asyncio
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from models.models import User
 from blockchain.blockchain_manager import blockchain_manager
 from config.app_config import app_config
+from services.transaction_tracker import get_transaction_tracker
 
 
 class WalletService:
@@ -212,6 +214,130 @@ class WalletService:
                 callback(user, currency, amount, to_address, tx_id)
             except Exception as e:
                 print(f"Error in transaction callback: {e}")
+    
+    async def track_outgoing_transaction(
+        self,
+        user: User,
+        currency: str,
+        amount: str,
+        to_address: str,
+        tx_hash: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ) -> Optional[str]:
+        """Track an outgoing transaction."""
+        try:
+            tracker = await get_transaction_tracker()
+            
+            tx = tracker.create_transaction(
+                user_id=user.id,
+                currency=currency,
+                tx_type="send",
+                amount=amount,
+                from_address=self._get_user_address(user, currency),
+                to_address=to_address,
+                tx_hash=tx_hash,
+                metadata=metadata
+            )
+            
+            # Start monitoring
+            await tracker.track_pending_transaction(tx)
+            
+            print(f"Tracking outgoing {currency} transaction: {tx.id}")
+            return tx.id
+        except Exception as e:
+            print(f"Error tracking outgoing transaction: {e}")
+            return None
+    
+    async def track_incoming_transaction(
+        self,
+        user: User,
+        currency: str,
+        amount: str,
+        from_address: str,
+        tx_hash: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ) -> Optional[str]:
+        """Track an incoming transaction (e.g., USDC deposit)."""
+        try:
+            tracker = await get_transaction_tracker()
+            
+            tx = tracker.create_transaction(
+                user_id=user.id,
+                currency=currency,
+                tx_type="receive",
+                amount=amount,
+                from_address=from_address,
+                to_address=self._get_user_address(user, currency),
+                tx_hash=tx_hash,
+                metadata=metadata
+            )
+            
+            # Start monitoring
+            await tracker.track_pending_transaction(tx)
+            
+            print(f"Tracking incoming {currency} transaction: {tx.id}")
+            return tx.id
+        except Exception as e:
+            print(f"Error tracking incoming transaction: {e}")
+            return None
+    
+    def get_pending_transactions(self, user: User, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get pending transactions for user."""
+        try:
+            import asyncio
+            # Note: This is synchronous, ideally should be async
+            # For now, return empty list - caller should use async version
+            return []
+        except Exception as e:
+            print(f"Error getting pending transactions: {e}")
+            return []
+    
+    async def get_pending_transactions_async(
+        self,
+        user: User,
+        currency: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Get pending transactions for user (async)."""
+        try:
+            tracker = await get_transaction_tracker()
+            txs = tracker.get_pending_transactions(user_id=user.id, currency=currency)
+            return [tx.to_dict() for tx in txs]
+        except Exception as e:
+            print(f"Error getting pending transactions: {e}")
+            return []
+    
+    async def get_transaction_history(
+        self,
+        user: User,
+        currency: Optional[str] = None,
+        limit: int = 50,
+        days: int = 30
+    ) -> List[Dict[str, Any]]:
+        """Get transaction history for user."""
+        try:
+            tracker = await get_transaction_tracker()
+            txs = tracker.get_transaction_history(
+                user_id=user.id,
+                currency=currency,
+                limit=limit,
+                days=days
+            )
+            return [tx.to_dict() for tx in txs]
+        except Exception as e:
+            print(f"Error getting transaction history: {e}")
+            return []
+    
+    def _get_user_address(self, user: User, currency: str) -> str:
+        """Get user address for currency."""
+        if currency == "USDC":
+            return user.usdc_address or ""
+        elif currency == "ARWEAVE":
+            return user.arweave_address or ""
+        elif currency == "NANO":
+            return user.nano_address or ""
+        elif currency == "DOGE":
+            return getattr(user, 'dogecoin_address', '') or ""
+        return ""
 
 
 # Global wallet service instance

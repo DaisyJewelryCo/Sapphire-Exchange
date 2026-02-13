@@ -63,11 +63,14 @@ class SolanaUsdcClient:
         """Initialize Solana USDC client with configuration."""
         self.config = config
         
-        # Network configuration
-        self.is_testnet = config.get('testnet', False)
-        self.rpc_url = config.get('solana', {}).get('rpc_url', 
-            'https://api.devnet.solana.com' if self.is_testnet else 'https://api.mainnet-beta.solana.com'
-        )
+        solana_cfg = config.get('solana', {})
+        self.is_testnet = solana_cfg.get('testnet', config.get('testnet', False))
+        rpc_url = solana_cfg.get('rpc_url')
+        if not rpc_url:
+            rpc_url = 'https://api.devnet.solana.com' if self.is_testnet else 'https://api.mainnet-beta.solana.com'
+        self.rpc_url = rpc_url
+        self.fallback_rpcs = self._normalize_url_list(solana_cfg.get('fallback_rpcs', []))
+        self.default_fallback_rpcs = self._get_default_fallback_rpcs()
         
         # USDC mint address
         self.usdc_mint = self.USDC_MINT_DEVNET if self.is_testnet else self.USDC_MINT_MAINNET
@@ -82,6 +85,38 @@ class SolanaUsdcClient:
         self.current_wallet: Optional[SolanaWallet] = None
         self.keypair: Optional[Any] = None
     
+    def _normalize_url_list(self, value) -> list:
+        if isinstance(value, str):
+            parts = [p.strip() for p in value.split(',') if p.strip()]
+            return parts
+        if isinstance(value, (list, tuple)):
+            return [str(v).strip() for v in value if str(v).strip()]
+        return []
+    
+    def _get_default_fallback_rpcs(self) -> list:
+        if self.is_testnet:
+            return [
+                "https://api.devnet.solana.com",
+                "https://devnet.helius-rpc.com",
+            ]
+        return [
+            "https://solana-rpc.publicnode.com",
+            "https://api.mainnet-beta.solana.com"
+        ]
+    
+    def _get_candidate_rpcs(self) -> list:
+        candidates = []
+        if self.rpc_url:
+            candidates.append(self.rpc_url)
+        for url in self.fallback_rpcs:
+            if url not in candidates:
+                candidates.append(url)
+        for url in self.default_fallback_rpcs:
+            if url not in candidates:
+                candidates.append(url)
+        print(f"Solana RPC candidates (in order): {candidates}")
+        return candidates
+    
     async def initialize(self) -> bool:
         """Initialize the Solana USDC client."""
         try:
@@ -89,18 +124,55 @@ class SolanaUsdcClient:
                 print("Warning: solana-py not installed. Install with: pip install solana")
                 return False
             
-            # Try to create the lock
             try:
                 self._lock = asyncio.Lock()
             except RuntimeError:
                 self._lock = None
             
-            # Create async client
-            self.client = AsyncClient(self.rpc_url, commitment=Confirmed)
-            
-            print(f"Solana USDC client initialized (testnet={self.is_testnet})")
-            return True
-            
+            candidates = self._get_candidate_rpcs()
+            if not candidates:
+                print("No RPC endpoints configured for Solana USDC")
+                return False
+            last_error = None
+            for rpc in candidates:
+                if self.client:
+                    try:
+                        await self.client.close()
+                    except Exception:
+                        pass
+                    self.client = None
+                self.rpc_url = rpc
+                print(f"Initializing Solana USDC client with RPC: {rpc} (testnet={self.is_testnet})")
+                try:
+                    self.client = AsyncClient(rpc, commitment=Confirmed)
+                    print(f"AsyncClient created successfully for {rpc}")
+                except Exception as client_error:
+                    print(f"Failed to create AsyncClient: {client_error}")
+                    print(f"Note: Ensure RPC endpoint is valid: {rpc}")
+                    last_error = client_error
+                    continue
+                try:
+                    print(f"Performing Solana RPC health check for {rpc}...")
+                    health_ok = await asyncio.wait_for(self.check_health(), timeout=10.0)
+                    if health_ok:
+                        print(f"✓ Solana USDC client initialized successfully with {rpc}")
+                        return True
+                    else:
+                        print(f"✗ Solana RPC health check failed for {rpc} - endpoint may be down or unresponsive")
+                        last_error = "health check failed"
+                        continue
+                except asyncio.TimeoutError as timeout_error:
+                    print(f"✗ Solana RPC health check timeout for {rpc} - endpoint is not responding within 10 seconds")
+                    last_error = timeout_error
+                    continue
+                except Exception as health_error:
+                    print(f"✗ Error during Solana health check for {rpc}: {health_error}")
+                    last_error = health_error
+                    continue
+            print(f"Solana USDC client failed to initialize after trying {len(candidates)} endpoint(s)")
+            if last_error:
+                print(f"Last error: {last_error}")
+            return False
         except Exception as e:
             print(f"Error initializing Solana USDC client: {e}")
             import traceback
@@ -119,11 +191,23 @@ class SolanaUsdcClient:
         """Check if the Solana network is accessible."""
         try:
             if not self.client:
+                print("Solana health check failed: client not initialized")
                 return False
             
-            # Try to get cluster version
-            response = await self.client.get_version()
-            return response.value is not None
+            try:
+                response = await asyncio.wait_for(self.client.get_version(), timeout=5.0)
+                is_healthy = response.value is not None
+                if is_healthy:
+                    print(f"Solana health check passed: {response.value}")
+                else:
+                    print("Solana health check failed: no version returned")
+                return is_healthy
+            except asyncio.TimeoutError:
+                print("Solana health check failed: RPC request timeout")
+                return False
+            except Exception as rpc_error:
+                print(f"Solana RPC error during health check: {rpc_error}")
+                return False
             
         except Exception as e:
             print(f"Solana health check failed: {e}")

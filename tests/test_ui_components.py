@@ -11,6 +11,7 @@ from ui.dialogs.wallet_management import CreateWalletDialog, ImportWalletDialog,
 from ui.dialogs.transaction_dialogs import SendTransactionDialog, ReceiveDialog
 from ui.dialogs.backup_dialogs import MnemonicDisplayDialog, BackupWizardDialog, RecoveryWizardDialog
 from ui.dialogs.settings_dialog import SettingsDialog
+from ui.dialogs.wallet_details_dialog import WalletDetailsDialog
 from ui.custom_widgets import (
     AddressDisplayWidget, BalanceWidget, QRCodeWidget,
     TransactionListWidget, WalletTileWidget, StatusIndicatorWidget
@@ -345,6 +346,57 @@ class TestAsyncTaskManager:
         assert len(results) == 2
         assert results[0].success
         assert results[1].success
+
+
+class TestWalletDetailsDialog:
+    """Test wallet details dialog."""
+    
+    def test_dialog_initialization(self, qapp):
+        """Test dialog initializes with wallet info."""
+        wallet = WalletInfo(
+            name="Test Wallet",
+            mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            address_solana="So1dDKkGkDmWpA8gUqLa8e7i9xdA3b4c5e6f7g8h9i",
+            address_nano="nano_1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+            address_arweave="arweave_test_address_1a2b3c4d5e6f"
+        )
+        
+        dialog = WalletDetailsDialog(wallet)
+        assert dialog.windowTitle() == "Wallet Details - Test Wallet"
+        dialog.deleteLater()
+    
+    def test_wallet_details_signals(self, qapp):
+        """Test wallet details dialog signals."""
+        wallet = WalletInfo(
+            name="Test Wallet",
+            mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            address_solana="So1dDKkGkDmWpA8gUqLa8e7i9xdA3b4c5e6f7g8h9i"
+        )
+        
+        dialog = WalletDetailsDialog(wallet)
+        
+        assert hasattr(dialog, 'send_clicked')
+        assert hasattr(dialog, 'receive_clicked')
+        assert hasattr(dialog, 'backup_clicked')
+        assert hasattr(dialog, 'recover_clicked')
+        assert hasattr(dialog, 'delete_clicked')
+        
+        dialog.deleteLater()
+    
+    def test_dialog_contains_addresses(self, qapp):
+        """Test dialog displays wallet addresses."""
+        wallet = WalletInfo(
+            name="Test Wallet",
+            mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            address_solana="So1dDKkGkDmWpA8gUqLa8e7i9xdA3b4c5e6f7g8h9i",
+            address_nano="nano_1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+        )
+        
+        dialog = WalletDetailsDialog(wallet)
+        dialog.show()
+        
+        assert dialog.isVisible()
+        dialog.deleteLater()
 
 
 class TestWalletInfo:

@@ -28,6 +28,7 @@ class User:
     bid_credits: float = 0.0
     
     arweave_profile_uri: Optional[str] = None
+    arweave_inventory_uri: Optional[str] = None
     data_hash: Optional[str] = None
     
     bio: str = ""
@@ -58,6 +59,7 @@ class User:
             'total_purchases': self.total_purchases,
             'bid_credits': self.bid_credits,
             'arweave_profile_uri': self.arweave_profile_uri,
+            'arweave_inventory_uri': self.arweave_inventory_uri,
             'data_hash': self.data_hash,
             'bio': self.bio,
             'location': self.location,
@@ -94,6 +96,7 @@ class User:
             total_purchases=data.get('total_purchases', 0),
             bid_credits=data.get('bid_credits', 0.0),
             arweave_profile_uri=data.get('arweave_profile_uri'),
+            arweave_inventory_uri=data.get('arweave_inventory_uri'),
             data_hash=data.get('data_hash'),
             bio=data.get('bio', ''),
             location=data.get('location', ''),

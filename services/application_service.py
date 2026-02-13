@@ -122,8 +122,18 @@ class ApplicationService:
         except Exception as e:
             return False, f"Registration error: {str(e)}", None
     
-    async def register_user_with_seed(self, seed_phrase: str) -> Tuple[bool, str, Optional[User]]:
-        """Register a new user with a seed phrase."""
+    async def register_user_with_seed(self, seed_phrase: str, wallet_data: Dict[str, Any] = None) -> Tuple[bool, str, Optional[User]]:
+        """
+        Register a new user with a seed phrase.
+        Creates account and encrypted backup using Nano mnemonic.
+        
+        Args:
+            seed_phrase: BIP39 Nano mnemonic phrase
+            wallet_data: Pre-generated wallet data (optional)
+        
+        Returns:
+            Tuple of (success, message, user)
+        """
         try:
             print(f"[DEBUG] register_user_with_seed called with seed_phrase length: {len(seed_phrase) if seed_phrase else 0}")
             # For now, we'll create a simple username based on the seed phrase
@@ -151,6 +161,15 @@ class ApplicationService:
             user = await self.user_service.create_user(username, password)
             if user:
                 print(f"[DEBUG] User registered successfully: {user.username}")
+                
+                # Create encrypted account backup after Arweave post
+                if wallet_data:
+                    backup_success, backup_path = await self.user_service.create_account_backup_for_user(
+                        user, seed_phrase, wallet_data
+                    )
+                    if backup_success:
+                        print(f"[DEBUG] Account backup created: {backup_path}")
+                
                 # Automatically log in the newly registered user
                 self.current_user = user
                 # Note: We don't have a session token from registration, but we'll set the user
@@ -208,6 +227,30 @@ class ApplicationService:
         except Exception as e:
             print(f"[DEBUG] Login error: {str(e)}")
             return False, f"Login error: {str(e)}", None
+    
+    async def recover_user_from_mnemonic(self, nano_mnemonic: str) -> Optional[Tuple[User, str, Dict[str, Any]]]:
+        """
+        Recover user account from Nano mnemonic.
+        Delegates to user_service which handles backup retrieval and decryption.
+        
+        Args:
+            nano_mnemonic: BIP39 Nano mnemonic phrase
+        
+        Returns:
+            Tuple of (user, session_token, wallet_data) or None if no backup found
+        """
+        try:
+            result = await self.user_service.recover_user_from_mnemonic(nano_mnemonic)
+            if result:
+                user, session_token, wallet_data = result
+                self.current_user = user
+                self.current_session = session_token
+                print(f"User recovered from backup: {user.username}")
+                return user, session_token, wallet_data
+            return None
+        except Exception as e:
+            print(f"Error recovering user from mnemonic: {e}")
+            return None
     
     async def logout_user(self) -> bool:
         """Logout the current user."""
@@ -588,6 +631,49 @@ class ApplicationService:
                 callback('auction_ended', {'item': item})
             except Exception as e:
                 print(f"Error in auction update callback: {e}")
+    
+    async def post_pending_inventory(self) -> Tuple[bool, str]:
+        """
+        Post pending inventory to Arweave when user is ready.
+        
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            if not self.current_user:
+                return False, "Must be logged in to post inventory"
+            
+            # Get pending inventory from service
+            from services.arweave_post_service import arweave_post_service
+            pending_post = arweave_post_service.get_pending_inventory(self.current_user.id)
+            
+            if not pending_post:
+                return False, "No pending inventory to post"
+            
+            print(f"[POST_INVENTORY] Posting pending inventory for user {self.current_user.id}")
+            
+            # Post to Arweave
+            tx_id = await arweave_post_service.post_inventory_to_arweave(pending_post, self.current_user)
+            
+            if tx_id:
+                # Update user's inventory post URI
+                self.current_user.arweave_inventory_uri = tx_id
+                if self.database:
+                    await self.database.update_user(self.current_user)
+                
+                # Clear pending inventory
+                arweave_post_service.clear_pending_inventory(self.current_user.id)
+                
+                print(f"[POST_INVENTORY] Inventory posted successfully: {tx_id}")
+                return True, f"Inventory posted to Arweave: {tx_id}"
+            else:
+                return False, "Failed to post inventory to Arweave (check AR balance)"
+                
+        except Exception as e:
+            print(f"Error posting pending inventory: {e}")
+            import traceback
+            traceback.print_exc()
+            return False, f"Error posting inventory: {str(e)}"
     
     async def shutdown(self):
         """Shutdown the application service."""

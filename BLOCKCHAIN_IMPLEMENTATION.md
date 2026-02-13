@@ -673,3 +673,180 @@ Future extensibility for exchange/DEX integration, with compliance and security 
 Continuous security testing, audits, and user feedback to adapt to evolving threats and user needs.
 
 By following these principles and leveraging the referenced libraries and best practices, developers can deliver a wallet that is both secure and usable, empowering users to safely manage their digital assets in a rapidly evolving ecosystem.
+
+At‑a‑glance flow (one line)
+Prepare wallet and RPC → 2. Create/verify ATA for USDC and target token → 3. Request a Jupiter quote (USDC → wrapped‑AR token or AR proxy) → 4. Build swap transaction from Jupiter response → 5. Sign & send with your private key → 6. Confirm receipt and redeem wrapped token to native AR if required.
+
+Preconditions and important facts
+USDC mint on Solana: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v. Verify this mint in your wallet and on a block explorer before any action. 
+
+Aggregator: Jupiter is the primary Solana DEX aggregator and exposes quote and swap endpoints you can call programmatically. Use Jupiter’s quote endpoint to get the best route and the swap endpoint (or the SDK) to build the transaction payload. 
+
+Liquidity note: Arweave liquidity on Solana may be via a wrapped/bridge token (wAR) or via specific pools; the swap may return a wrapped AR token which you must redeem off‑chain or via a bridge contract to receive native AR. Confirm the exact output mint returned by Jupiter before swapping. 
+
+Step‑by‑step procedure (detailed)
+1. Environment and safety checklist (do this first)
+Use a secure machine and a dedicated RPC (QuickNode/Alchemy/your node).
+
+Never paste your private key into unknown web pages. Use a local script or a hardware wallet signer.
+
+Test with a tiny amount (e.g., $5–$20 USDC) end‑to‑end before moving larger sums.
+
+Record the exact token mints and token account addresses you will use; double‑check them on Solana Explorer. 
+
+2. Confirm wallet state and token accounts
+Confirm your wallet address and Solana RPC endpoint.
+
+Confirm you have a USDC associated token account (ATA) for the USDC mint. If not, create one. On Solana, SPL tokens are held in ATAs derived from your wallet + mint. Use getOrCreateAssociatedTokenAccount from @solana/spl-token or the equivalent. 
+
+Command (JS / web3.js + spl‑token):
+
+javascript
+// pseudocode: create/get ATA
+const { getOrCreateAssociatedTokenAccount } = require('@solana/spl-token');
+const usdcAta = await getOrCreateAssociatedTokenAccount(connection, payer, USDC_MINT, ownerPubkey);
+3. Identify the target token mint Jupiter will return
+Decide target: Jupiter may route to a wrapped AR SPL token (if one exists) or to another intermediary token. Use the Jupiter quote endpoint to discover the exact outputMint and route. Do not assume the output is native AR (Arweave native is not an SPL token). 
+
+4. Request a quote from Jupiter
+Endpoint: use Jupiter’s /swap/v1/quote (or the Metis quote endpoint) with inputMint, outputMint (or request best output), amount, and slippageBps. The quote returns route steps, expected output, price impact, and estimated fees. Respect Jupiter rate limits. 
+
+Example HTTP request (conceptual):
+
+http
+GET https://quote-api.jup.ag/v1/quote?inputMint=EPjF...&outputMint=<targetMint>&amount=1000000&slippageBps=100
+Interpret: amount is in smallest units (USDC has 6 decimals). slippageBps=100 = 1% slippage cap.
+
+5. Inspect the quote and validate route
+Check: expected output amount, price impact, gas/compute budget, and the route steps.
+
+Reject any route with excessive price impact or suspicious intermediate mints. If liquidity is poor, split the trade into smaller chunks.
+
+Decide whether to accept the outputMint (wrapped AR) or to pick a different output token to later bridge/redeem.
+
+6. Build the swap transaction
+Jupiter returns either:
+
+Serialized transaction instructions you can sign locally (preferred), or
+
+A set of instructions you must assemble into a transaction using @solana/web3.js and the SPL token helpers.
+
+Use Jupiter’s /swap/v1/swap or the SDK to get the exact transaction bytes for the route. The response will include the swapTransaction (base64) you can decode, sign, and send. 
+
+High‑level code pattern:
+
+javascript
+// fetch swap payload from Jupiter
+const swapResponse = await fetch('https://quote-api.jup.ag/v1/swap', { method: 'POST', body: JSON.stringify({...}) });
+const { swapTransaction } = await swapResponse.json();
+// decode base64 tx, sign with your keypair, send
+const tx = Transaction.from(Buffer.from(swapTransaction, 'base64'));
+tx.sign(yourKeypair);
+const sig = await connection.sendRawTransaction(tx.serialize());
+await connection.confirmTransaction(sig);
+7. Sign and send the transaction (locally)
+Simulate first: call simulateTransaction on the built transaction to catch runtime errors (insufficient funds, compute limits).
+
+Sign with your private key (or hardware wallet). Do not expose the private key to remote services.
+
+Send the signed transaction and wait for confirmation. Record the transaction signature.
+
+8. Verify the swap result
+Check your token accounts: confirm the USDC decreased and the output token ATA increased. Use getTokenAccountsByOwner or a block explorer.
+
+If the output is wrapped AR (wAR): note the outputMint and the contract/project that issued it. You will likely need to redeem or use the bridge operator’s instructions to convert wAR → native AR.
+
+9. Redeem wrapped AR to native AR (if applicable)
+Read the wrapped‑AR project docs for the exact burn/redeem flow. Typical pattern:
+
+Call a burn or withdraw instruction on the wrapped token program with your native Arweave address as a parameter.
+
+The bridge operator watches for the burn event and releases native AR to the provided Arweave address.
+
+Timing: redemption may be asynchronous and take minutes to hours depending on the bridge operator. Monitor the bridge’s status/events. (This step is token/bridge specific — confirm with the wrapped token project docs.)
+
+10. Post‑swap checks and cleanup
+Confirm native AR receipt in your Arweave wallet (if you redeemed).
+
+Revoke or limit allowances if you created any temporary approvals (not typical on Solana but relevant if you used any program that holds funds).
+
+Log tx signatures, amounts, and receipts for auditing.
+
+Example Node.js skeleton using Jupiter (conceptual)
+Important: this is a template to adapt and test. Replace endpoints, mints, RPC, and error handling for production. Test with tiny amounts.
+
+javascript
+// conceptual skeleton (not drop-in)
+const fetch = require('node-fetch');
+const { Connection, Keypair, Transaction } = require('@solana/web3.js');
+
+const RPC = "https://api.mainnet-beta.solana.com";
+const connection = new Connection(RPC, 'confirmed');
+const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.SECRET_KEY)));
+
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const AMOUNT_USDC = 10 * 1e6; // 10 USDC (6 decimals)
+const SLIPPAGE_BPS = 100; // 1%
+
+async function getQuote() {
+  const url = `https://quote-api.jup.ag/v1/quote?inputMint=${USDC_MINT}&amount=${AMOUNT_USDC}&slippageBps=${SLIPPAGE_BPS}`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function getSwapTransaction(quote) {
+  const body = {
+    route: quote.routes[0],
+    userPublicKey: payer.publicKey.toBase58()
+  };
+  const res = await fetch('https://quote-api.jup.ag/v1/swap', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  return res.json(); // contains swapTransaction (base64)
+}
+
+(async () => {
+  const quote = await getQuote();
+  if (!quote || !quote.routes || quote.routes.length === 0) throw new Error('No route');
+  const swap = await getSwapTransaction(quote);
+  const tx = Transaction.from(Buffer.from(swap.swapTransaction, 'base64'));
+  // simulate
+  const sim = await connection.simulateTransaction(tx);
+  if (sim.value.err) throw new Error('Simulation failed: ' + JSON.stringify(sim.value.err));
+  // sign & send
+  tx.sign(payer);
+  const sig = await connection.sendRawTransaction(tx.serialize());
+  await connection.confirmTransaction(sig);
+  console.log('Swap tx:', sig);
+})();
+Operational tips and risk mitigations
+Simulate every transaction before sending.
+
+Slippage: set a conservative slippage (0.5–1%) and split large trades.
+
+Rate limits: Jupiter public APIs have rate limits; cache quotes and respect limits. 
+
+Bridge/Redemption risk: wrapped tokens and bridge operators carry counterparty and smart‑contract risk. Use audited bridges and test small amounts.
+
+Monitoring: watch for failed swaps, partial fills, or unexpected output mints; log everything.
+
+References and docs to consult
+Solana token mint docs (how to find/verify mint addresses). 
+
+Jupiter developer docs (quote and swap endpoints, SDK usage). 
+
+Solscan / block explorer for verifying token mints and transactions. 
+
+If you want, I will now produce a copy‑pasteable Node.js script configured for your RPC and secret key that:
+
+requests a Jupiter quote for a specified USDC amount,
+
+builds and simulates the swap transaction,
+
+signs and sends it with your private key,
+
+and returns the swap signature and resulting output mint.
+
+Tell me the RPC URL you use and confirm you want the script to sign locally with the secret key (I will include the exact environment variable names and the minimal dependencies).

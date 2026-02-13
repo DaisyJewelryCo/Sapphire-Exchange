@@ -13,6 +13,8 @@ from models.models import User
 from blockchain.blockchain_manager import blockchain_manager
 from config.app_config import app_config
 from security.security_manager import SecurityManager
+from security.account_backup_manager import account_backup_manager
+from blockchain.unified_wallet_generator import UnifiedWalletGenerator
 
 
 class UserService:
@@ -23,6 +25,7 @@ class UserService:
         self.database = database
         self.blockchain = blockchain or blockchain_manager
         self.security = security_manager or SecurityManager()
+        self.wallet_generator = UnifiedWalletGenerator()
         
         # Active sessions
         self.active_sessions = {}
@@ -140,6 +143,12 @@ class UserService:
                 except Exception as e:
                     print(f"Error creating wallet for user {user.username}: {e}")
                 
+                # Create encrypted account backup using Nano mnemonic (placeholder - will be set during login)
+                try:
+                    print(f"Account backup will be created after user sets up their wallet")
+                except Exception as e:
+                    print(f"Error preparing account backup: {e}")
+                
                 # Notify callbacks
                 self._notify_user_created(user)
                 
@@ -243,6 +252,138 @@ class UserService:
         except Exception as e:
             print(f"Error getting user by email: {e}")
             return None
+    
+    async def recover_user_from_mnemonic(self, nano_mnemonic: str) -> Optional[Tuple[User, str, Dict[str, Any]]]:
+        """
+        Recover user account from Nano mnemonic.
+        Derives Nano address from mnemonic and retrieves encrypted backup.
+        
+        Args:
+            nano_mnemonic: BIP39 Nano mnemonic phrase
+        
+        Returns:
+            Tuple of (user, session_token, wallet_data) or None if recovery fails
+        """
+        try:
+            # Validate mnemonic
+            is_valid, message = self.wallet_generator.validate_mnemonic(nano_mnemonic)
+            if not is_valid:
+                print(f"Invalid mnemonic: {message}")
+                return None
+            
+            # Generate wallets from mnemonic to get Nano address
+            success, wallet_data = self.wallet_generator.generate_from_mnemonic(nano_mnemonic)
+            if not success or 'nano' not in wallet_data:
+                print("Failed to generate wallets from mnemonic")
+                return None
+            
+            nano_address = wallet_data['nano'].get('address')
+            if not nano_address:
+                print("Failed to derive Nano address")
+                return None
+            
+            print(f"Recovered Nano address: {nano_address}")
+            
+            # Try to restore account from backup
+            success, account_data = await account_backup_manager.restore_account_from_backup(
+                nano_address, nano_mnemonic
+            )
+            
+            if not success or account_data is None:
+                print(f"No backup found for Nano address: {nano_address}")
+                return None
+            
+            print(f"Account backup found for user: {account_data.get('username')}")
+            
+            # Reconstruct User object from account data
+            user = User.from_dict({
+                'id': account_data.get('user_id'),
+                'username': account_data.get('username'),
+                'password_hash': '',
+                'nano_address': account_data.get('nano_address'),
+                'arweave_address': account_data.get('arweave_address'),
+                'usdc_address': account_data.get('usdc_address'),
+                'email': account_data.get('email'),
+                'created_at': account_data.get('created_at'),
+                'updated_at': account_data.get('updated_at'),
+                'is_active': True,
+                'reputation_score': account_data.get('reputation_score', 0.0),
+                'total_sales': account_data.get('total_sales', 0),
+                'total_purchases': account_data.get('total_purchases', 0),
+                'bio': account_data.get('bio', ''),
+                'location': account_data.get('location', ''),
+                'website': account_data.get('website', ''),
+                'avatar_url': account_data.get('avatar_url'),
+                'preferences': account_data.get('preferences', {}),
+                'inventory': account_data.get('inventory', []),
+                'metadata': account_data.get('metadata', {}),
+                'arweave_profile_uri': account_data.get('arweave_profile_uri'),
+            })
+            
+            # Create session token
+            session_token = self._create_session(user)
+            
+            # Update last login
+            user.last_login = datetime.now(timezone.utc).isoformat()
+            if self.database:
+                await self.database.update_user(user)
+            
+            # Notify callbacks
+            self._notify_user_login(user)
+            
+            # Return recovered user with wallet data
+            recovered_wallet_data = account_data.get('wallets', wallet_data)
+            return user, session_token, recovered_wallet_data
+        
+        except Exception as e:
+            print(f"Error recovering user from mnemonic: {e}")
+            return None
+    
+    async def create_account_backup_for_user(self, user: User, nano_mnemonic: str, 
+                                            wallet_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Create encrypted account backup after user setup.
+        Called after Arweave profile post and wallet creation.
+        Includes all private keys for full account recovery.
+        
+        Args:
+            user: User object
+            nano_mnemonic: Nano mnemonic (used as encryption key)
+            wallet_data: Wallet information for all blockchains
+        
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            # Extract private keys from wallet_data for backup
+            private_keys = {}
+            
+            # Wallet data format from unified_wallet_generator
+            if isinstance(wallet_data, dict):
+                # If it's the new format with chain/address structure
+                for chain, chain_data in wallet_data.items():
+                    if isinstance(chain_data, dict):
+                        if 'private_key' in chain_data:
+                            private_keys[chain] = chain_data['private_key']
+                        if 'seed' in chain_data:
+                            private_keys[f'{chain}_seed'] = chain_data['seed']
+            
+            print(f"Extracted private keys for backup: {list(private_keys.keys())}")
+            
+            success, backup_path = await account_backup_manager.create_account_backup(
+                user, user.nano_address, nano_mnemonic, wallet_data, private_keys, user.arweave_profile_uri
+            )
+            
+            if success:
+                print(f"Account backup created with {len(private_keys)} private keys: {backup_path}")
+            else:
+                print(f"Failed to create account backup: {backup_path}")
+            
+            return success, backup_path
+        
+        except Exception as e:
+            print(f"Error creating account backup: {e}")
+            return False, str(e)
     
     async def update_user_profile(self, user: User, updates: Dict[str, Any]) -> bool:
         """Update user profile."""

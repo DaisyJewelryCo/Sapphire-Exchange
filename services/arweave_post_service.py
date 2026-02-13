@@ -84,6 +84,9 @@ class ArweavePostService:
         
         # Cached Arweave post data
         self.cached_posts: Dict[str, Dict[str, Any]] = {}
+        
+        # Pending inventory posts (user_id -> post_data) - waiting for user to post to Arweave
+        self.pending_inventory_posts: Dict[str, Dict[str, Any]] = {}
     
     async def create_auction_post(self, item: Item, user: User, 
                                  expiring_auctions: Optional[List[Item]] = None,
@@ -383,6 +386,208 @@ class ArweavePostService:
                 del self.local_auctions[item_id]
         except Exception as e:
             print(f"Error removing local auction: {e}")
+    
+    async def create_inventory_post(self, user: User, items: List[Item]) -> Optional[Dict[str, Any]]:
+        """
+        Create an Arweave inventory post for all user items.
+        
+        Used when a user creates their first item to consolidate all items
+        into a single Arweave post instead of creating individual posts.
+        
+        Args:
+            user: The user/seller
+            items: List of items to include in inventory
+            
+        Returns:
+            Inventory post data or None on failure
+        """
+        try:
+            if not items:
+                print("Error: Cannot create inventory post with no items")
+                return None
+            
+            # Generate sequence number for inventory post
+            sequence = await self.sequence_generator.get_next_available_sequence(
+                user.id, 
+                user.nano_address
+            )
+            
+            if sequence is None:
+                print("Error: Could not generate sequence number for inventory post")
+                return None
+            
+            now = datetime.now(timezone.utc)
+            
+            # Build inventory post data with all items
+            post_data = {
+                'version': '1.0',
+                'type': 'inventory',
+                'sequence': sequence,
+                'created_at': now.isoformat(),
+                'posted_by': user.id,
+                'seller_nano_address': user.nano_address,
+                'seller_arweave_address': user.arweave_address,
+                'items': [item.to_dict() for item in items],
+                'item_count': len(items)
+            }
+            
+            return post_data
+            
+        except Exception as e:
+            print(f"Error creating inventory post: {e}")
+            return None
+    
+    async def post_inventory_to_arweave(self, post_data: Dict[str, Any], 
+                                        user: User) -> Optional[str]:
+        """
+        Post inventory data to Arweave.
+        
+        Args:
+            post_data: The inventory post data
+            user: The user posting (for AR balance check)
+            
+        Returns:
+            Arweave transaction ID or None on failure
+        """
+        try:
+            # Validate user has Arweave address
+            if not user.arweave_address:
+                print(f"Error: User {user.id} does not have an Arweave address")
+                return None
+            
+            # Check AR balance
+            balance_winston = await self.blockchain.arweave_client.get_balance(user.arweave_address)
+            if balance_winston is None:
+                print(f"Could not get Arweave balance for address {user.arweave_address}")
+                return None
+            
+            balance_ar = self.blockchain.arweave_client.winston_to_ar(balance_winston)
+            
+            if balance_ar < 0.05:
+                print(f"Insufficient AR balance: {balance_ar:.6f} AR (need >= 0.05 AR for inventory post)")
+                return None
+            
+            # Create Arweave tags
+            tags = [
+                ("Content-Type", "application/json"),
+                ("App-Name", "Sapphire-Exchange"),
+                ("Data-Type", "inventory"),
+                ("Posted-By", user.id),
+                ("Sequence", str(post_data.get('sequence', 0))),
+                ("Item-Count", str(post_data.get('item_count', 0))),
+            ]
+            
+            # Store on Arweave
+            print(f"Posting inventory post for {user.username} to Arweave...")
+            tx_id = await self.blockchain.arweave_client.store_data(post_data, tags)
+            
+            if tx_id:
+                # Cache the post
+                self.cached_posts[tx_id] = post_data
+                print(f"Inventory post posted to Arweave: {tx_id}")
+                return tx_id
+            
+            print(f"Arweave store_data returned None for inventory post")
+            return None
+        except Exception as e:
+            print(f"Error posting inventory to Arweave: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    async def update_inventory_post(self, user: User, items: List[Item], 
+                                    inventory_post_uri: str) -> Optional[Dict[str, Any]]:
+        """
+        Update an existing inventory post by creating a new one with all current items.
+        
+        Arweave is immutable, so updates are done by posting a new transaction
+        that references the previous one. The client can follow the chain to get
+        the latest inventory.
+        
+        Args:
+            user: The user/seller
+            items: List of current items to include
+            inventory_post_uri: TX ID of the previous inventory post
+            
+        Returns:
+            Updated inventory post data or None on failure
+        """
+        try:
+            if not items:
+                print("Error: Cannot update inventory post with no items")
+                return None
+            
+            # Generate sequence number for updated inventory
+            sequence = await self.sequence_generator.get_next_available_sequence(
+                user.id, 
+                user.nano_address
+            )
+            
+            if sequence is None:
+                print("Error: Could not generate sequence number for inventory post update")
+                return None
+            
+            now = datetime.now(timezone.utc)
+            
+            # Build updated inventory post
+            post_data = {
+                'version': '1.0',
+                'type': 'inventory',
+                'sequence': sequence,
+                'created_at': now.isoformat(),
+                'posted_by': user.id,
+                'seller_nano_address': user.nano_address,
+                'seller_arweave_address': user.arweave_address,
+                'previous_inventory_uri': inventory_post_uri,
+                'items': [item.to_dict() for item in items],
+                'item_count': len(items)
+            }
+            
+            return post_data
+            
+        except Exception as e:
+            print(f"Error updating inventory post: {e}")
+            return None
+    
+    def store_pending_inventory(self, user_id: str, post_data: Dict[str, Any]) -> None:
+        """
+        Store inventory post as pending (waiting for user to post to Arweave).
+        
+        Args:
+            user_id: The user's ID
+            post_data: The inventory post data
+        """
+        try:
+            self.pending_inventory_posts[user_id] = post_data
+            print(f"[PENDING] Inventory post stored for user {user_id}")
+        except Exception as e:
+            print(f"Error storing pending inventory: {e}")
+    
+    def get_pending_inventory(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get pending inventory post for user.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            Pending inventory post data or None
+        """
+        return self.pending_inventory_posts.get(user_id)
+    
+    def clear_pending_inventory(self, user_id: str) -> None:
+        """
+        Clear pending inventory post after successful posting.
+        
+        Args:
+            user_id: The user's ID
+        """
+        try:
+            if user_id in self.pending_inventory_posts:
+                del self.pending_inventory_posts[user_id]
+                print(f"[PENDING] Cleared pending inventory for user {user_id}")
+        except Exception as e:
+            print(f"Error clearing pending inventory: {e}")
 
 
 # Global Arweave post service instance

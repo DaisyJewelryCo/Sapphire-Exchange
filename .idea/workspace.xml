@@ -4,25 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="1.5 (Blockchain)">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.zencoder/rules/repo.md" beforeDir="false" afterPath="$PROJECT_DIR$/.zencoder/rules/repo.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/TODO.md" beforeDir="false" afterPath="$PROJECT_DIR$/TODO.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/blockchain/solana_usdc_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/blockchain/solana_usdc_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/repositories/database_adapter.py" beforeDir="false" afterPath="$PROJECT_DIR$/repositories/database_adapter.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/repositories/item_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/repositories/item_repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/application_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/application_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/arweave_post_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/arweave_post_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/auction_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/auction_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/user_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/user_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_unified_system.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_unified_system.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/arweave_dev_tools_widget.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/arweave_dev_tools_widget.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/auction_widget.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/auction_widget.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/authentication_status_popup.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/authentication_status_popup.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/arweave_auction_viewer.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/arweave_auction_viewer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/arweave_post_viewer.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/arweave_post_viewer.py" afterDir="false" />
-    </list>
+    <list default="true" id="d45dbb69-0ce7-484b-9ddb-31defcd79763" name="Changes" comment="1.5 (Blockchain)" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

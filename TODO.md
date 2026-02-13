@@ -17,3 +17,7 @@ create a funding system for runnig swaps and creating wallets, create a download
 change the initial log in from BIP32 encoded nano wallet to a different mnomonic system (check copilot)
 
 implement a comperssion system for the AR weave posts. 
+
+create methid for oclly storing the account infromation before the first ARweave post to allow for reloggin in i give the nano menemonic and all other wallets and accound data is recovered.
+
+create a save mnomonic button on cerate acount screen then have the user type a password

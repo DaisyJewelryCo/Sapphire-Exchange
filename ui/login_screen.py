@@ -252,12 +252,30 @@ class LoginScreen(QWidget):
             QMessageBox.critical(self, "Login Error", f"Failed to login: {str(e)}")
     
     async def login_async(self, seed_phrase):
-        """Async login process with wallet generation."""
+        """Async login process with wallet generation and account recovery."""
         try:
             # Validate mnemonic
             is_valid, message = self.wallet_generator.validate_mnemonic(seed_phrase)
             if not is_valid:
                 return False, f"Invalid mnemonic phrase: {message}", None
+            
+            # Try to recover existing account from backup
+            recovery_result = await app_service.recover_user_from_mnemonic(seed_phrase)
+            
+            if recovery_result is not None:
+                # Account recovered from backup
+                user, session_token, wallet_data = recovery_result
+                app_service.current_user = user
+                app_service.current_session = session_token
+                return True, f"Account recovered: {user.username}", {
+                    'user': user,
+                    'wallets': wallet_data,
+                    'mnemonic': seed_phrase,
+                    'session_token': session_token
+                }
+            
+            # No backup found - create new account with this mnemonic
+            print("No backup found, creating new account with this mnemonic")
             
             # Generate wallets for all supported blockchains
             success, wallet_data = self.wallet_generator.generate_from_mnemonic(
@@ -268,15 +286,10 @@ class LoginScreen(QWidget):
             if not success:
                 return False, "Failed to generate wallets from mnemonic", None
             
-            # Proceed with user registration or login
-            if self.is_new_user:
-                # Register new user with seed phrase
-                success, message, user = await app_service.register_user_with_seed(seed_phrase)
-            else:
-                # Login existing user with seed phrase
-                success, message, user = await app_service.login_user_with_seed(seed_phrase)
+            # Register new user with seed phrase
+            success, message, user = await app_service.register_user_with_seed(seed_phrase, wallet_data)
             
-            # Attach wallet data to user
+            # Attach wallet data and mnemonic to user
             if success and user:
                 if isinstance(user, dict):
                     user['wallets'] = wallet_data

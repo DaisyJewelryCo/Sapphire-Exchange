@@ -6,6 +6,12 @@ import os
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 
 @dataclass
 class NanoConfig:
@@ -138,6 +144,14 @@ class BlockchainConfig:
             default_chain=os.getenv('USDC_DEFAULT_CHAIN', 'ethereum')
         )
         
+        # Solana USDC RPC configuration
+        fallback_rpcs = [u.strip() for u in os.getenv('SOLANA_FALLBACK_RPCS', '').split(',') if u.strip()]
+        self.solana = {
+            "testnet": os.getenv('SOLANA_TESTNET', 'false').lower() == 'true',
+            "rpc_url": os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'),
+            "fallback_rpcs": fallback_rpcs
+        }
+        
         # Foundation code for real DOGE blockchain (commented out)
         """
         # Dogecoin configuration
@@ -225,6 +239,11 @@ class BlockchainConfig:
                 "decimals": self.usdc.decimals,
                 "symbol": self.usdc.symbol
             },
+            "solana": {
+                "testnet": self.solana.get("testnet", False),
+                "rpc_url": self.solana.get("rpc_url", "https://api.mainnet-beta.solana.com"),
+                "fallback_rpcs": self.solana.get("fallback_rpcs", [])
+            },
             "mock_mode": self.mock_usdc
         }
 
@@ -309,7 +328,8 @@ class BlockchainConfig:
         return {
             "nano": self.get_nano_config(),
             "arweave": self.get_arweave_config(),
-            "usdc": self.get_usdc_config(),  # Testing database implementation
+            "usdc": self.get_usdc_config(),
+            "solana": self.solana,
             # "dogecoin": self.get_dogecoin_config(),  # Foundation code for real DOGE blockchain
             "conversion_formulas": self.get_conversion_formulas(),
             "api_endpoints": self.get_api_endpoints()
@@ -333,6 +353,9 @@ class BlockchainConfig:
             assert self.usdc.decimals == 6
             assert len(self.usdc.symbol) > 0
             
+            # Validate Solana configuration
+            assert self.solana.get('rpc_url', '').startswith(('http://', 'https://'))
+            
             # Foundation code for real DOGE blockchain validation (commented out)
             """
             # Validate Dogecoin configuration
@@ -344,6 +367,21 @@ class BlockchainConfig:
             return True
         except (AssertionError, ValueError):
             return False
+    
+    def diagnose_rpc_config(self) -> Dict[str, Any]:
+        """Diagnose RPC configuration issues."""
+        return {
+            "solana_rpc_url": self.solana.get("rpc_url", "NOT SET"),
+            "solana_testnet": self.solana.get("testnet", False),
+            "nano_rpc_endpoint": self.nano.rpc_endpoint,
+            "arweave_gateway": self.arweave.gateway_url,
+            "environment_vars": {
+                "SOLANA_RPC_URL": os.getenv('SOLANA_RPC_URL', 'NOT SET'),
+                "SOLANA_TESTNET": os.getenv('SOLANA_TESTNET', 'NOT SET'),
+                "NANO_NODE_URL": os.getenv('NANO_NODE_URL', 'NOT SET'),
+                "ARWEAVE_GATEWAY_URL": os.getenv('ARWEAVE_GATEWAY_URL', 'NOT SET')
+            }
+        }
 
 
 # Global configuration instance

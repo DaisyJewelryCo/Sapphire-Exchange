@@ -336,18 +336,32 @@ class SimplifiedMainWindow(QMainWindow):
     
     def logout(self):
         """Logout current user."""
+        print("[DEBUG] Logout button clicked")
         worker = AsyncWorker(app_service.logout_user())
         worker.finished.connect(self.on_logout_complete)
+        worker.error.connect(self.on_logout_error)
         worker.start()
         self.logout_worker = worker
     
     def on_logout_complete(self, success):
         """Handle logout completion."""
+        print(f"[DEBUG] on_logout_complete called with success={success}")
         if success:
+            print("[DEBUG] Logout successful, switching to login screen")
             # Hide sidebar and switch to login screen
             self.sidebar.setVisible(False)
             self.stacked_widget.setCurrentWidget(self.login_screen)
             self.login_screen.reset_form()
+            # Update status
+            self.status_label.setText("Logged out successfully")
+        else:
+            print("[DEBUG] Logout failed")
+            QMessageBox.warning(self, "Logout Failed", "Failed to logout. Please try again.")
+    
+    def on_logout_error(self, error):
+        """Handle logout errors."""
+        print(f"[DEBUG] Logout error: {error}")
+        QMessageBox.critical(self, "Error", f"Logout error: {error}")
     
     def toggle_activity_overlay(self):
         """Toggle activity log overlay."""
