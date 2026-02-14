@@ -35,8 +35,21 @@ class UserService:
         self.user_login_callbacks = []
         self.user_logout_callbacks = []
     
-    async def create_user(self, username: str, password: str) -> Optional[User]:
-        """Create a new user account."""
+    async def create_user(self, username: str, password: str, 
+                         nano_address: str = None, arweave_address: str = None, 
+                         usdc_address: str = None) -> Optional[User]:
+        """Create a new user account.
+        
+        Args:
+            username: Username for the account
+            password: Password for the account
+            nano_address: Optional pre-generated Nano address
+            arweave_address: Optional pre-generated Arweave address
+            usdc_address: Optional pre-generated USDC address
+        
+        Returns:
+            User object if successful, None otherwise
+        """
         try:
             # Validate input
             if not self._validate_user_data(username, password):
@@ -47,40 +60,46 @@ class UserService:
                 print(f"User {username} already exists")
                 return None
             
-            # Generate blockchain addresses sequentially with delays to avoid pool contention
-            nano_address = None
-            arweave_address = None
-            usdc_address = None
-            
+            # Use provided addresses or generate new ones
             try:
-                # Generate Nano address
-                nano_address = await self.blockchain.generate_nano_address()
-                if not nano_address:
-                    raise RuntimeError("Failed to generate Nano address")
-                print(f"Generated Nano address: {nano_address}")
+                if not nano_address or not arweave_address:
+                    # Generate blockchain addresses sequentially with delays to avoid pool contention
+                    if not nano_address:
+                        nano_address = await self.blockchain.generate_nano_address()
+                        if not nano_address:
+                            raise RuntimeError("Failed to generate Nano address")
+                        print(f"Generated Nano address: {nano_address}")
+                    else:
+                        print(f"[CREATE_USER] Using provided Nano address: {nano_address}")
                 
-                # Delay to ensure pool connection is fully released
-                try:
-                    await asyncio.sleep(0.5)
-                except RuntimeError:
-                    pass
-                
-                # Generate Arweave address
-                arweave_address = await self.blockchain.generate_arweave_address()
-                if not arweave_address:
-                    raise RuntimeError("Failed to generate Arweave address")
-                print(f"Generated Arweave address: {arweave_address}")
-                
-                # Delay to ensure pool connection is fully released
-                try:
-                    await asyncio.sleep(0.5)
-                except RuntimeError:
-                    pass
-                
-                # Generate USDC address (optional)
-                usdc_address = await self.blockchain.generate_usdc_address()
-                if usdc_address:
-                    print(f"Generated USDC address: {usdc_address}")
+                    # Delay to ensure pool connection is fully released
+                    try:
+                        await asyncio.sleep(0.5)
+                    except RuntimeError:
+                        pass
+                    
+                    # Generate Arweave address
+                    if not arweave_address:
+                        arweave_address = await self.blockchain.generate_arweave_address()
+                        if not arweave_address:
+                            raise RuntimeError("Failed to generate Arweave address")
+                        print(f"Generated Arweave address: {arweave_address}")
+                    else:
+                        print(f"[CREATE_USER] Using provided Arweave address: {arweave_address}")
+                    
+                    # Delay to ensure pool connection is fully released
+                    try:
+                        await asyncio.sleep(0.5)
+                    except RuntimeError:
+                        pass
+                    
+                    # Generate USDC address (optional)
+                    if not usdc_address:
+                        usdc_address = await self.blockchain.generate_usdc_address()
+                        if usdc_address:
+                            print(f"Generated USDC address: {usdc_address}")
+                    else:
+                        print(f"[CREATE_USER] Using provided USDC address: {usdc_address}")
                 
             except Exception as e:
                 print(f"Failed to generate blockchain addresses: {e}")
@@ -268,32 +287,73 @@ class UserService:
             # Validate mnemonic
             is_valid, message = self.wallet_generator.validate_mnemonic(nano_mnemonic)
             if not is_valid:
-                print(f"Invalid mnemonic: {message}")
+                print(f"❌ [RECOVERY] Invalid mnemonic: {message}")
                 return None
+            
+            print(f"✓ [RECOVERY] Mnemonic validated")
+            print(f"[RECOVERY] Mnemonic word count: {len(nano_mnemonic.split())}")
             
             # Generate wallets from mnemonic to get Nano address
             success, wallet_data = self.wallet_generator.generate_from_mnemonic(nano_mnemonic)
-            if not success or 'nano' not in wallet_data:
-                print("Failed to generate wallets from mnemonic")
+            print(f"[RECOVERY] Wallet generation: success={success}, wallets_present={list(wallet_data.keys()) if wallet_data else 'None'}")
+            
+            # Log the derived address
+            if success and wallet_data and 'nano' in wallet_data:
+                derived_nano = wallet_data['nano'].get('address')
+                print(f"[RECOVERY] Derived Nano address: {derived_nano}")
+            
+            if not success:
+                print(f"❌ [RECOVERY] Wallet generation failed (success=False)")
+                return None
+            
+            if not wallet_data:
+                print(f"❌ [RECOVERY] Wallet generation returned empty data")
+                return None
+                
+            if 'nano' not in wallet_data:
+                print(f"❌ [RECOVERY] Nano wallet not in generated data. Available: {list(wallet_data.keys())}")
                 return None
             
             nano_address = wallet_data['nano'].get('address')
             if not nano_address:
-                print("Failed to derive Nano address")
+                print(f"❌ [RECOVERY] Failed to derive Nano address from wallet data")
                 return None
             
-            print(f"Recovered Nano address: {nano_address}")
+            print(f"✓ [RECOVERY] Recovered Nano address: {nano_address}")
             
             # Try to restore account from backup
+            print(f"\n{'='*60}")
+            print(f"[RECOVERY] Attempting to restore backup for address: {nano_address}")
+            print(f"[RECOVERY] Backup directory: {account_backup_manager.backup_dir}")
+            
+            # List all available backups
+            try:
+                all_backups = list(account_backup_manager.backup_dir.glob("*.account.enc"))
+                print(f"[RECOVERY] Total backups in directory: {len(all_backups)}")
+                if all_backups:
+                    print(f"[RECOVERY] Available backups:")
+                    for backup in all_backups[:10]:  # Show first 10
+                        print(f"  • {backup.name}")
+                    if len(all_backups) > 10:
+                        print(f"  ... and {len(all_backups) - 10} more")
+            except Exception as e:
+                print(f"[RECOVERY] Error listing backups: {e}")
+            
+            print(f"{'='*60}\n")
+            
             success, account_data = await account_backup_manager.restore_account_from_backup(
                 nano_address, nano_mnemonic
             )
             
-            if not success or account_data is None:
-                print(f"No backup found for Nano address: {nano_address}")
+            if not success:
+                print(f"❌ [RECOVERY] Backup restoration failed (success=False)")
                 return None
             
-            print(f"Account backup found for user: {account_data.get('username')}")
+            if account_data is None:
+                print(f"❌ [RECOVERY] Backup restoration returned None")
+                return None
+            
+            print(f"✓ [RECOVERY] Account backup found for user: {account_data.get('username')}")
             
             # Reconstruct User object from account data
             user = User.from_dict({
@@ -331,8 +391,23 @@ class UserService:
             # Notify callbacks
             self._notify_user_login(user)
             
-            # Return recovered user with wallet data
-            recovered_wallet_data = account_data.get('wallets', wallet_data)
+            # Regenerate all wallets from mnemonic for display during recovery
+            # (This ensures all supported chains are available, not just what was backed up)
+            print(f"\n[RECOVERY] Regenerating all wallets from mnemonic for recovery display...")
+            full_wallet_success, full_wallet_data = self.wallet_generator.generate_from_mnemonic(
+                nano_mnemonic,
+                assets=['nano', 'arweave', 'solana']
+            )
+            
+            if full_wallet_success and full_wallet_data:
+                print(f"[RECOVERY] Regenerated wallets: {list(full_wallet_data.keys())}")
+                # Use regenerated wallets which include all chains
+                recovered_wallet_data = full_wallet_data
+            else:
+                # Fallback to backed up wallets if regeneration fails
+                recovered_wallet_data = account_data.get('wallets', wallet_data)
+                print(f"[RECOVERY] Using backed up wallets: {list(recovered_wallet_data.keys()) if isinstance(recovered_wallet_data, dict) else 'N/A'}")
+            
             return user, session_token, recovered_wallet_data
         
         except Exception as e:
@@ -355,6 +430,12 @@ class UserService:
             Tuple of (success, message)
         """
         try:
+            print(f"\n{'='*60}")
+            print(f"[BACKUP_CREATE] Starting backup creation for user: {user.username}")
+            print(f"[BACKUP_CREATE] Nano address: {user.nano_address}")
+            print(f"[BACKUP_CREATE] Wallet data type: {type(wallet_data)}")
+            print(f"[BACKUP_CREATE] Wallet data keys: {list(wallet_data.keys()) if isinstance(wallet_data, dict) else 'N/A'}")
+            
             # Extract private keys from wallet_data for backup
             private_keys = {}
             
@@ -368,21 +449,24 @@ class UserService:
                         if 'seed' in chain_data:
                             private_keys[f'{chain}_seed'] = chain_data['seed']
             
-            print(f"Extracted private keys for backup: {list(private_keys.keys())}")
+            print(f"[BACKUP_CREATE] Extracted {len(private_keys)} private keys: {list(private_keys.keys())}")
             
             success, backup_path = await account_backup_manager.create_account_backup(
                 user, user.nano_address, nano_mnemonic, wallet_data, private_keys, user.arweave_profile_uri
             )
             
             if success:
-                print(f"Account backup created with {len(private_keys)} private keys: {backup_path}")
+                print(f"✓ [BACKUP_CREATE] Account backup created successfully: {backup_path}")
             else:
-                print(f"Failed to create account backup: {backup_path}")
+                print(f"❌ [BACKUP_CREATE] Failed to create account backup: {backup_path}")
             
+            print(f"{'='*60}\n")
             return success, backup_path
         
         except Exception as e:
-            print(f"Error creating account backup: {e}")
+            print(f"❌ [BACKUP_CREATE] Error creating account backup: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return False, str(e)
     
     async def update_user_profile(self, user: User, updates: Dict[str, Any]) -> bool:

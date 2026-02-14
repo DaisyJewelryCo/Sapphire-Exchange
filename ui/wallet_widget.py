@@ -1309,12 +1309,14 @@ class SimpleWalletWidget(QWidget):
         self.balances_group = QGroupBox("Balances")
         balances_layout = QVBoxLayout()
         
-        self.nano_balance_label = QLabel("NANO: Loading...")
+        self.sol_balance_label = QLabel("SOL: Loading...")
         self.usdc_balance_label = QLabel("USDC: Loading...")
+        self.nano_balance_label = QLabel("NANO: Loading...")
         self.arweave_balance_label = QLabel("ARWEAVE: Loading...")
         
-        balances_layout.addWidget(self.nano_balance_label)
+        balances_layout.addWidget(self.sol_balance_label)
         balances_layout.addWidget(self.usdc_balance_label)
+        balances_layout.addWidget(self.nano_balance_label)
         balances_layout.addWidget(self.arweave_balance_label)
         
         self.balances_group.setLayout(balances_layout)
@@ -1326,12 +1328,22 @@ class SimpleWalletWidget(QWidget):
         
         user = app_service.get_current_user()
         if user:
+            solana_address = getattr(user, 'usdc_address', 'Not set')
+            
+            self.sol_address_label = QLabel(f"SOL: {solana_address}")
+            self.usdc_address_label = QLabel(f"USDC: {solana_address}")
             self.nano_address_label = QLabel(f"NANO: {user.nano_address}")
-            self.usdc_address_label = QLabel(f"USDC: {getattr(user, 'usdc_address', 'Not set')}")
             self.arweave_address_label = QLabel(f"ARWEAVE: {user.arweave_address}")
             
-            addresses_layout.addWidget(self.nano_address_label)
+            # Make addresses selectable/copyable
+            for label in [self.sol_address_label, self.usdc_address_label, self.nano_address_label, self.arweave_address_label]:
+                label.setTextInteractionFlags(label.textInteractionFlags() | Qt.TextSelectableByMouse)
+                label.setFont(QFont("Courier", 8))
+                label.setStyleSheet("color: #666; background: #f5f5f5; padding: 4px; border-radius: 3px; margin: 2px 0;")
+            
+            addresses_layout.addWidget(self.sol_address_label)
             addresses_layout.addWidget(self.usdc_address_label)
+            addresses_layout.addWidget(self.nano_address_label)
             addresses_layout.addWidget(self.arweave_address_label)
         
         self.addresses_group.setLayout(addresses_layout)
@@ -1359,16 +1371,19 @@ class SimpleWalletWidget(QWidget):
     
     def on_balances_loaded(self, balances):
         """Handle loaded balances."""
-        nano_balance = balances.get('nano', 0) or 0
+        sol_balance = balances.get('sol', 0) or 0
         usdc_balance = balances.get('usdc', 0) or 0
+        nano_balance = balances.get('nano', 0) or 0
         arweave_balance = balances.get('arweave', 0) or 0
         
-        self.nano_balance_label.setText(f"NANO: {format_currency(nano_balance, 'NANO')}")
+        self.sol_balance_label.setText(f"SOL: {format_currency(sol_balance, 'SOL')}")
         self.usdc_balance_label.setText(f"USDC: {format_currency(usdc_balance, 'USDC')}")
+        self.nano_balance_label.setText(f"NANO: {format_currency(nano_balance, 'NANO')}")
         self.arweave_balance_label.setText(f"ARWEAVE: {format_currency(arweave_balance, 'ARWEAVE')}")
     
     def on_error(self, error):
         """Handle errors."""
-        self.nano_balance_label.setText("NANO: Error loading")
+        self.sol_balance_label.setText("SOL: Error loading")
         self.usdc_balance_label.setText("USDC: Error loading")
+        self.nano_balance_label.setText("NANO: Error loading")
         self.arweave_balance_label.setText("ARWEAVE: Error loading")

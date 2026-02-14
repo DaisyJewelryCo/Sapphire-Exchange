@@ -123,7 +123,10 @@ class ConversionUtils:
                     'DOGE': 8,
                     'NANO': 6,
                     'BTC': 8,
-                    'ETH': 6
+                    'ETH': 6,
+                    'SOL': 6,
+                    'USDC': 2,
+                    'ARWEAVE': 6
                 }.get(currency.upper(), 8)
             
             # Create format string
@@ -138,12 +141,15 @@ class ConversionUtils:
                 'DOGE': 'Ð',
                 'NANO': 'Ӿ',
                 'BTC': '₿',
-                'ETH': 'Ξ'
+                'ETH': 'Ξ',
+                'SOL': '◎',
+                'USDC': '$',
+                'ARWEAVE': 'AR'
             }
             
             symbol = currency_symbols.get(currency.upper(), currency.upper())
             
-            if currency.upper() == 'USD':
+            if currency.upper() in ['USD', 'USDC']:
                 return f"{symbol}{formatted_amount:,}"
             else:
                 return f"{formatted_amount:,} {symbol}"

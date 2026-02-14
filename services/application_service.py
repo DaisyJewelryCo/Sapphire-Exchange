@@ -157,18 +157,46 @@ class ApplicationService:
                 print(f"[DEBUG] Validation failed: {validation['errors']}")
                 return False, '; '.join(validation['errors']), None
             
-            # Create user
-            user = await self.user_service.create_user(username, password)
+            # Extract addresses from wallet_data if available
+            nano_address = None
+            arweave_address = None
+            usdc_address = None
+            
+            if wallet_data:
+                if 'nano' in wallet_data and isinstance(wallet_data['nano'], dict):
+                    nano_address = wallet_data['nano'].get('address')
+                if 'arweave' in wallet_data and isinstance(wallet_data['arweave'], dict):
+                    arweave_address = wallet_data['arweave'].get('address')
+                if 'solana' in wallet_data and isinstance(wallet_data['solana'], dict):
+                    usdc_address = wallet_data['solana'].get('address')
+                
+                print(f"[DEBUG] Extracted addresses from wallet_data:")
+                print(f"  Nano: {nano_address}")
+                print(f"  Arweave: {arweave_address}")
+                print(f"  USDC/Solana: {usdc_address}")
+            
+            # Create user with provided addresses from mnemonic
+            user = await self.user_service.create_user(
+                username, password,
+                nano_address=nano_address,
+                arweave_address=arweave_address,
+                usdc_address=usdc_address
+            )
             if user:
                 print(f"[DEBUG] User registered successfully: {user.username}")
                 
                 # Create encrypted account backup after Arweave post
                 if wallet_data:
+                    print(f"[DEBUG] Starting backup creation with wallet_data keys: {list(wallet_data.keys())}")
                     backup_success, backup_path = await self.user_service.create_account_backup_for_user(
                         user, seed_phrase, wallet_data
                     )
                     if backup_success:
-                        print(f"[DEBUG] Account backup created: {backup_path}")
+                        print(f"✓ [DEBUG] Account backup created successfully: {backup_path}")
+                    else:
+                        print(f"❌ [DEBUG] Account backup failed: {backup_path}")
+                else:
+                    print(f"❌ [DEBUG] No wallet_data provided, skipping backup creation")
                 
                 # Automatically log in the newly registered user
                 self.current_user = user
@@ -452,8 +480,12 @@ class ApplicationService:
                 'arweave': self.current_user.arweave_address
             }
             
-            if getattr(self.current_user, 'usdc_address', None):
-                addresses['usdc'] = self.current_user.usdc_address
+            solana_address = getattr(self.current_user, 'usdc_address', None)
+            if solana_address:
+                # usdc_address is actually the Solana wallet public key
+                # Get both SOL and USDC balances from Solana
+                addresses['sol'] = solana_address
+                addresses['usdc'] = solana_address
             
             return await self.blockchain.batch_get_balances(addresses)
         except Exception as e:
@@ -482,8 +514,13 @@ class ApplicationService:
             addresses = {}
             if getattr(self.current_user, 'nano_address', None):
                 addresses['NANO'] = self.current_user.nano_address
-            if getattr(self.current_user, 'usdc_address', None):
-                addresses['USDC'] = self.current_user.usdc_address
+            
+            solana_address = getattr(self.current_user, 'usdc_address', None)
+            if solana_address:
+                # usdc_address is the Solana wallet public key
+                addresses['SOL'] = solana_address
+                addresses['USDC'] = solana_address
+            
             if getattr(self.current_user, 'arweave_address', None):
                 addresses['ARWEAVE'] = self.current_user.arweave_address
             

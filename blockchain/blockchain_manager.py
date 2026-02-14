@@ -159,8 +159,14 @@ class BlockchainManager:
                     'Solana USDC', BlockchainStatus.CONNECTED, "Connected to Solana USDC"
                 )
             else:
+                error_msg = self.solana_usdc_client.last_error or "Failed to connect to Solana RPC"
+                details = self.solana_usdc_client.last_error_details
+                if details:
+                    full_msg = f"{error_msg}. Details: {details}"
+                else:
+                    full_msg = error_msg
                 self.connection_status['solana_usdc'] = ConnectionStatus(
-                    'Solana USDC', BlockchainStatus.RPC_ERROR, "Failed to connect to Solana RPC"
+                    'Solana USDC', BlockchainStatus.RPC_ERROR, full_msg
                 )
             return success
         except Exception as e:
@@ -238,6 +244,14 @@ class BlockchainManager:
                 }
                 for status in self.connection_status.values()
             ]
+        }
+    
+    def get_solana_error_details(self) -> Dict[str, Any]:
+        """Get detailed Solana USDC error information for debugging."""
+        return {
+            "status": self.connection_status['solana_usdc'].status.value,
+            "message": self.connection_status['solana_usdc'].message,
+            "client_errors": self.solana_usdc_client.get_error_details()
         }
     
     async def check_health(self) -> Dict[str, bool]:
@@ -440,26 +454,79 @@ class BlockchainManager:
         tasks = []
         
         for blockchain, address in addresses.items():
-            if blockchain.lower() == 'nano':
+            blockchain_lower = blockchain.lower()
+            if blockchain_lower == 'nano':
                 tasks.append(('nano', self.get_nano_balance(address)))
-            elif blockchain.lower() == 'usdc':
-                # For USDC, address would be address_id (int)
-                tasks.append(('usdc', self.get_usdc_balance(int(address) if address.isdigit() else None)))
+            elif blockchain_lower == 'usdc':
+                # For USDC, check if it's a Solana address (string) or database ID (int)
+                if isinstance(address, str) and address.startswith('nano_'):
+                    # Skip Nano addresses
+                    continue
+                # Try to get USDC balance from Solana
+                tasks.append(('usdc', self._get_usdc_balance_solana(address)))
+            elif blockchain_lower == 'sol':
+                # Get native SOL balance
+                tasks.append(('sol', self._get_sol_balance(address)))
+            elif blockchain_lower == 'arweave':
+                # Arweave doesn't have balance tracking in the same way
+                # Skip for now
+                continue
         
         if tasks:
             task_results = await asyncio.gather(*[task[1] for task in tasks], return_exceptions=True)
             
-            for i, (blockchain, result) in enumerate(zip([task[0] for task in tasks], task_results)):
+            for blockchain, result in zip([task[0] for task in tasks], task_results):
                 if isinstance(result, Exception):
+                    print(f"Error getting {blockchain} balance: {result}")
                     results[blockchain] = None
                 else:
                     if blockchain == 'nano' and result:
                         # Convert raw to NANO for display
                         results[blockchain] = float(result.get('balance', '0')) / (10**30)
+                    elif blockchain == 'sol' and isinstance(result, dict):
+                        # Result is dict with sol_balance key
+                        results[blockchain] = result.get('sol_balance', 0)
+                    elif blockchain == 'usdc' and isinstance(result, dict):
+                        # Result is dict with usdc_balance key
+                        results[blockchain] = result.get('usdc_balance', 0)
                     else:
                         results[blockchain] = result
         
         return results
+    
+    async def _get_sol_balance(self, address: str) -> Optional[Dict[str, float]]:
+        """Get native SOL balance for a Solana address."""
+        try:
+            if not self.solana_usdc_client:
+                return None
+            
+            balance_info = await self.solana_usdc_client.get_balance(address)
+            if balance_info:
+                return {
+                    'sol_balance': balance_info.get('sol_balance', 0),
+                    'address': address
+                }
+            return None
+        except Exception as e:
+            print(f"Error getting SOL balance: {e}")
+            return None
+    
+    async def _get_usdc_balance_solana(self, address: str) -> Optional[Dict[str, float]]:
+        """Get USDC token balance from Solana for a given address."""
+        try:
+            if not self.solana_usdc_client:
+                return None
+            
+            balance_info = await self.solana_usdc_client.get_balance(address)
+            if balance_info:
+                return {
+                    'usdc_balance': balance_info.get('usdc_balance', 0),
+                    'address': address
+                }
+            return None
+        except Exception as e:
+            print(f"Error getting USDC balance from Solana: {e}")
+            return None
     
     # Data integrity methods
     async def verify_data_integrity(self, tx_id: str, expected_hash: str) -> bool:

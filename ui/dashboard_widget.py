@@ -771,7 +771,7 @@ class WalletOverviewWidget(QWidget):
         self.wallet_buttons = {}
         self.wallet_addresses = {}
         self.copy_buttons = {}
-        currencies = ['NANO', 'USDC', 'ARWEAVE']
+        currencies = ['SOL', 'USDC', 'NANO', 'ARWEAVE']
         
         for currency in currencies:
             # Create wallet container
@@ -980,7 +980,7 @@ class WalletOverviewWidget(QWidget):
         try:
             addresses = app_service.get_wallet_addresses()
             
-            for currency in ['NANO', 'USDC', 'ARWEAVE']:
+            for currency in ['SOL', 'USDC', 'NANO', 'ARWEAVE']:
                 if currency in self.wallet_addresses:
                     if currency in addresses and addresses[currency]:
                         address = addresses[currency]
@@ -1002,7 +1002,7 @@ class WalletOverviewWidget(QWidget):
                             self.copy_buttons[currency].setEnabled(False)
         except Exception as e:
             print(f"Error loading wallet addresses: {e}")
-            for currency in ['NANO', 'USDC', 'ARWEAVE']:
+            for currency in ['SOL', 'USDC', 'NANO', 'ARWEAVE']:
                 if currency in self.wallet_addresses:
                     self.wallet_addresses[currency].setText("Error loading address")
                     if currency in self.copy_buttons:
@@ -1028,6 +1028,11 @@ class WalletOverviewWidget(QWidget):
                             display_balance = f"{balance_nano:.6f}"
                         except:
                             display_balance = "0.000000"
+                    elif currency == 'SOL':
+                        try:
+                            display_balance = f"{float(balance):,.6f}"
+                        except:
+                            display_balance = "0.000000"
                     else:
                         try:
                             display_balance = f"{float(balance):,.2f}"
@@ -1041,13 +1046,15 @@ class WalletOverviewWidget(QWidget):
                         if currency == 'NANO':
                             balance_nano = float(balance_data) / (10**30)
                             display_balance = f"{balance_nano:.6f}"
+                        elif currency == 'SOL':
+                            display_balance = f"{float(balance_data):,.6f}"
                         else:
                             display_balance = f"{float(balance_data):,.2f}"
                         btn.setText(f"{currency} - {display_balance}")
                     except:
                         btn.setText(f"{currency} - {balance_data}")
             else:
-                btn.setText(f"{currency} - Not available")
+                btn.setText(f"{currency} - 0.000000" if currency in ['SOL', 'NANO'] else f"{currency} - 0.00")
     
     def on_balances_error(self, error):
         """Handle balance loading error."""

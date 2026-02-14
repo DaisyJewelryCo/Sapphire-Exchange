@@ -130,10 +130,27 @@ class UnifiedWalletGenerator:
             if assets is None:
                 assets = ['nano']
             
+            print(f"\n{'='*60}")
+            print(f"[WALLET_GEN] Generating wallets from mnemonic for assets: {assets}")
+            print(f"[WALLET_GEN] Mnemonic word count: {len(mnemonic.split())}")
+            print(f"[WALLET_GEN] Passphrase: {'(empty)' if not passphrase else '(provided)'}")
+            
             wallet = self.create_from_mnemonic("temp", mnemonic, passphrase, assets)
+            print(f"[WALLET_GEN] Wallet created, extracting summary...")
             wallet_data = self.get_wallet_summary(wallet)
+            
+            # Log nano address if present
+            if 'nano' in wallet_data:
+                nano_addr = wallet_data['nano'].get('address', 'N/A')
+                print(f"[WALLET_GEN] Generated Nano address: {nano_addr}")
+            
+            print(f"[WALLET_GEN] ✓ Wallet generation successful. Assets: {list(wallet_data.keys())}")
+            print(f"{'='*60}\n")
             return True, wallet_data
         except Exception as e:
+            print(f"❌ [WALLET_GEN] Wallet generation failed: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False, {'error': str(e)}
     
     def generate_new(self, wallet_name: str, word_count: int = 24,
@@ -198,6 +215,12 @@ class UnifiedWalletGenerator:
         if 'nano' in assets:
             nano_wallet = self.nano_gen.generate_from_mnemonic(mnemonic, passphrase)
         
+        if 'solana' in assets:
+            solana_wallet = self.solana_gen.generate_new()
+        
+        if 'arweave' in assets:
+            arweave_wallet = self.arweave_gen.generate_new()
+        
         from datetime import datetime
         created_at = datetime.utcnow().isoformat()
         
@@ -234,41 +257,36 @@ class UnifiedWalletGenerator:
     def get_wallet_summary(self, wallet: MultiAssetWallet) -> Dict[str, Any]:
         """
         Get summary of wallet addresses and chains.
+        Returns chain-indexed format for easy access by asset name.
         
         Args:
             wallet: MultiAssetWallet instance
         
         Returns:
-            Dictionary with wallet summary
+            Dictionary with wallet data indexed by chain name (nano, solana, arweave)
         """
-        summary = {
-            'wallet_name': wallet.wallet_name,
-            'created_at': wallet.created_at,
-            'assets': []
-        }
-        
-        if wallet.solana_wallet:
-            summary['assets'].append({
-                'chain': 'Solana',
-                'coin': 'USDC',
-                'address': wallet.solana_wallet.address,
-                'derivation_path': wallet.solana_wallet.derivation_path,
-            })
+        summary = {}
         
         if wallet.nano_wallet:
-            summary['assets'].append({
-                'chain': 'Nano',
+            summary['nano'] = {
                 'address': wallet.nano_wallet.address,
+                'public_key': wallet.nano_wallet.public_key,
                 'derivation_path': wallet.nano_wallet.derivation_path,
                 'representative': wallet.nano_wallet.representative,
-            })
+            }
+        
+        if wallet.solana_wallet:
+            summary['solana'] = {
+                'address': wallet.solana_wallet.address,
+                'public_key': wallet.solana_wallet.public_key,
+                'derivation_path': wallet.solana_wallet.derivation_path,
+            }
         
         if wallet.arweave_wallet:
-            summary['assets'].append({
-                'chain': 'Arweave',
+            summary['arweave'] = {
                 'address': wallet.arweave_wallet.address,
                 'wallet_id': wallet.arweave_wallet.wallet_id,
-            })
+            }
         
         return summary
     

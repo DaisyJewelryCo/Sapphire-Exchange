@@ -259,43 +259,60 @@ class LoginScreen(QWidget):
             if not is_valid:
                 return False, f"Invalid mnemonic phrase: {message}", None
             
-            # Try to recover existing account from backup
-            recovery_result = await app_service.recover_user_from_mnemonic(seed_phrase)
+            # Check if this is a new account creation or existing account recovery
+            if self.is_new_user:
+                # New account flow: create wallets and register user
+                print(f"\n{'='*60}")
+                print("[LOGIN] Creating new account with generated seed phrase...")
+                print(f"[LOGIN] Mnemonic word count: {len(seed_phrase.split())}")
+                
+                # Generate wallets for all supported blockchains
+                success, wallet_data = self.wallet_generator.generate_from_mnemonic(
+                    seed_phrase,
+                    passphrase=""
+                )
+                
+                if success and wallet_data and 'nano' in wallet_data:
+                    nano_addr = wallet_data['nano'].get('address')
+                    print(f"[LOGIN] Generated Nano address during account creation: {nano_addr}")
+                    print(f"{'='*60}\n")
+                
+                if not success:
+                    return False, "Failed to generate wallets from mnemonic", None
+                
+                # Register new user with seed phrase
+                success, message, user = await app_service.register_user_with_seed(seed_phrase, wallet_data)
+                
+                # Attach wallet data and mnemonic to user
+                if success and user:
+                    if isinstance(user, dict):
+                        user['wallets'] = wallet_data
+                        user['mnemonic'] = seed_phrase
+                
+                return success, message, user
             
-            if recovery_result is not None:
-                # Account recovered from backup
-                user, session_token, wallet_data = recovery_result
-                app_service.current_user = user
-                app_service.current_session = session_token
-                return True, f"Account recovered: {user.username}", {
-                    'user': user,
-                    'wallets': wallet_data,
-                    'mnemonic': seed_phrase,
-                    'session_token': session_token
-                }
-            
-            # No backup found - create new account with this mnemonic
-            print("No backup found, creating new account with this mnemonic")
-            
-            # Generate wallets for all supported blockchains
-            success, wallet_data = self.wallet_generator.generate_from_mnemonic(
-                seed_phrase,
-                passphrase=""
-            )
-            
-            if not success:
-                return False, "Failed to generate wallets from mnemonic", None
-            
-            # Register new user with seed phrase
-            success, message, user = await app_service.register_user_with_seed(seed_phrase, wallet_data)
-            
-            # Attach wallet data and mnemonic to user
-            if success and user:
-                if isinstance(user, dict):
-                    user['wallets'] = wallet_data
-                    user['mnemonic'] = seed_phrase
-            
-            return success, message, user
+            else:
+                # Existing account recovery: try to recover from backup
+                print("[LOGIN] Attempting to recover existing account from backup...")
+                recovery_result = await app_service.recover_user_from_mnemonic(seed_phrase)
+                
+                if recovery_result is not None:
+                    # Account recovered from backup
+                    print("[LOGIN] ✓ Account recovered from backup!")
+                    user, session_token, wallet_data = recovery_result
+                    app_service.current_user = user
+                    app_service.current_session = session_token
+                    return True, f"Account recovered: {user.username}", {
+                        'user': user,
+                        'wallets': wallet_data,
+                        'mnemonic': seed_phrase,
+                        'session_token': session_token
+                    }
+                
+                # No backup found - fail login
+                # User must use "Create a new account" button to create new accounts
+                print("[LOGIN] ❌ No backup found for this seed phrase - login failed")
+                return False, "No account found for this seed phrase. Use 'Create a new account' to set up a new account.", None
             
         except Exception as e:
             return False, f"Login error: {str(e)}", None
@@ -303,37 +320,55 @@ class LoginScreen(QWidget):
     def on_login_complete(self, result):
         """Handle completion of the login process."""
         try:
-            success, message, user = result
+            success, message, user_or_data = result
             
             # Re-enable login button
             self.login_btn.setEnabled(True)
             self.login_btn.setText("Continue")
             
             if success:
-                self.current_user = user
+                # For recovery flow, user_or_data is a dict with 'user', 'wallets', etc.
+                # For new account flow, user_or_data is a User object
+                if isinstance(user_or_data, dict):
+                    self.current_user = user_or_data.get('user')
+                    wallets = user_or_data.get('wallets', {})
+                else:
+                    self.current_user = user_or_data
+                    wallets = {}
                 
                 # Show wallet information if available
-                if isinstance(user, dict) and 'wallets' in user:
-                    wallets = user['wallets']
+                if wallets and isinstance(wallets, dict):
                     wallet_summary = "Your wallets have been synchronized:\n\n"
                     
-                    if 'solana' in wallets:
+                    wallet_count = 0
+                    
+                    if 'solana' in wallets and isinstance(wallets['solana'], dict):
                         solana_addr = wallets['solana'].get('address', 'N/A')
-                        wallet_summary += f"✓ Solana: {solana_addr[:30]}...\n"
+                        if solana_addr and solana_addr != 'N/A':
+                            wallet_summary += f"✓ Solana (USDC): {solana_addr[:30]}...\n"
+                            wallet_count += 1
                     
-                    if 'nano' in wallets:
+                    if 'nano' in wallets and isinstance(wallets['nano'], dict):
                         nano_addr = wallets['nano'].get('address', 'N/A')
-                        wallet_summary += f"✓ Nano: {nano_addr[:30]}...\n"
+                        if nano_addr and nano_addr != 'N/A':
+                            wallet_summary += f"✓ Nano: {nano_addr[:30]}...\n"
+                            wallet_count += 1
                     
-                    if 'arweave' in wallets:
+                    if 'arweave' in wallets and isinstance(wallets['arweave'], dict):
                         arweave_addr = wallets['arweave'].get('address', 'N/A')
-                        wallet_summary += f"✓ Arweave: {arweave_addr[:30]}...\n"
+                        if arweave_addr and arweave_addr != 'N/A':
+                            wallet_summary += f"✓ Arweave: {arweave_addr[:30]}...\n"
+                            wallet_count += 1
                     
-                    QMessageBox.information(self, "Login Successful", wallet_summary)
+                    if wallet_count > 0:
+                        QMessageBox.information(self, "Login Successful", wallet_summary)
+                
+                # Reset form for next login attempt
+                self.reset_form()
                 
                 # Notify parent window that login was successful
                 if self.parent_window:
-                    self.parent_window.on_login_success(user)
+                    self.parent_window.on_login_success(self.current_user)
             else:
                 QMessageBox.warning(self, "Login Failed", message)
                 

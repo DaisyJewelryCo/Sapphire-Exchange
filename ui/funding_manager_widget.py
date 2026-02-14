@@ -22,6 +22,7 @@ from services.application_service import app_service
 from services.nano_cloudflare_service import get_nano_cloudflare_service
 from services.funding_manager_service import get_funding_manager_service
 from services.transaction_tracker import get_transaction_tracker
+from services.sol_usdc_swap_service import get_sol_usdc_swap_service
 from utils.async_worker import AsyncWorker
 from utils.validation_utils import Validator
 
@@ -274,6 +275,263 @@ class RequestNanoDialog(QDialog):
         QMessageBox.critical(self, "Error", f"Request failed: {str(error)}")
 
 
+class SolUsdcSwapDialog(QDialog):
+    """Dialog for swapping SOL to USDC."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("SOL to USDC Swap")
+        self.setModal(True)
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(400)
+        
+        self.swap_service = None
+        self.user = None
+        self.sol_balance = 0.0
+        self.setup_ui()
+        self._initialize_service()
+    
+    def setup_ui(self):
+        """Setup the dialog UI."""
+        layout = QVBoxLayout(self)
+        
+        title = QLabel("SOL to USDC Swap")
+        title.setFont(QFont("Arial", 14, QFont.Bold))
+        layout.addWidget(title)
+        
+        layout.addWidget(self._create_separator())
+        
+        self.content_layout = QVBoxLayout()
+        
+        scroll = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_widget.setLayout(self.content_layout)
+        scroll.setWidget(scroll_widget)
+        scroll.setWidgetResizable(True)
+        layout.addWidget(scroll)
+        
+        layout.addWidget(self._create_separator())
+        
+        button_layout = QHBoxLayout()
+        
+        self.swap_btn = QPushButton("🔄 Execute Swap")
+        self.swap_btn.clicked.connect(self.execute_swap)
+        self.swap_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2563eb;
+            }
+            QPushButton:pressed {
+                background-color: #1d4ed8;
+            }
+        """)
+        button_layout.addWidget(self.swap_btn)
+        
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_btn)
+        
+        layout.addLayout(button_layout)
+    
+    def _create_separator(self):
+        """Create a horizontal separator."""
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setFrameShadow(QFrame.Sunken)
+        return sep
+    
+    def _initialize_service(self):
+        """Initialize the swap service asynchronously."""
+        worker = AsyncWorker(self._init_service_async())
+        worker.finished.connect(self._on_service_initialized)
+        worker.error.connect(self._on_initialization_error)
+        worker.start()
+        self._init_worker = worker
+    
+    async def _init_service_async(self):
+        """Initialize swap service asynchronously."""
+        try:
+            self.swap_service = await get_sol_usdc_swap_service()
+            self.user = app_service.get_current_user()
+            return True
+        except Exception as e:
+            print(f"Error initializing swap service: {e}")
+            return False
+    
+    def _on_service_initialized(self, result):
+        """Called when service is initialized."""
+        if result:
+            self._show_swap_details()
+        else:
+            self._show_error("Failed to initialize swap service")
+    
+    def _on_initialization_error(self, error):
+        """Called when initialization has an error."""
+        self._show_error(f"Initialization error: {str(error)}")
+    
+    def _show_swap_details(self):
+        """Show swap details in the dialog."""
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().deleteLater()
+        
+        info = QLabel(
+            "This will swap 90% of your SOL balance to USDC.\n\n"
+            "The remaining 10% stays in SOL for transaction fees.\n\n"
+            "Slippage: 0.5% (protects against price movements)"
+        )
+        info.setWordWrap(True)
+        self.content_layout.addWidget(info)
+        
+        details_group = QGroupBox("Swap Summary")
+        details_layout = QVBoxLayout(details_group)
+        
+        sol_label = QLabel("SOL Amount:")
+        sol_label.setStyleSheet("font-weight: bold;")
+        details_layout.addWidget(sol_label)
+        
+        self.sol_amount_display = QLineEdit()
+        self.sol_amount_display.setReadOnly(True)
+        self.sol_amount_display.setText("Loading balance...")
+        details_layout.addWidget(self.sol_amount_display)
+        
+        usdc_label = QLabel("USDC Output (estimated):")
+        usdc_label.setStyleSheet("font-weight: bold;")
+        details_layout.addWidget(usdc_label)
+        
+        self.usdc_amount_display = QLineEdit()
+        self.usdc_amount_display.setReadOnly(True)
+        self.usdc_amount_display.setText("Calculating...")
+        details_layout.addWidget(self.usdc_amount_display)
+        
+        self.content_layout.addWidget(details_group)
+        
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("margin-top: 10px;")
+        self.content_layout.addWidget(self.status_label)
+        
+        self.content_layout.addStretch()
+        
+        self._fetch_balance_and_quote()
+    
+    def _fetch_balance_and_quote(self):
+        """Fetch SOL balance and get swap quote."""
+        worker = AsyncWorker(self._fetch_balance_and_quote_async())
+        worker.finished.connect(self._on_balance_and_quote_fetched)
+        worker.error.connect(self._on_fetch_error)
+        worker.start()
+        self._fetch_worker = worker
+    
+    async def _fetch_balance_and_quote_async(self):
+        """Fetch balance and quote asynchronously."""
+        try:
+            if not self.user or not hasattr(self.user, 'usdc_address'):
+                return None
+            
+            user_pubkey = self.user.usdc_address
+            
+            sol_amount_to_swap = 1.0
+            quote = await self.swap_service.get_quote(sol_amount_to_swap)
+            
+            return {
+                "sol_amount": sol_amount_to_swap,
+                "quote": quote
+            }
+        except Exception as e:
+            print(f"Error fetching balance and quote: {e}")
+            return None
+    
+    def _on_balance_and_quote_fetched(self, result):
+        """Called when balance and quote are fetched."""
+        if result and result.get("quote"):
+            quote = result["quote"]
+            sol_amount = result.get("sol_amount", 0)
+            usdc_output = quote.output_amount / 1e6
+            
+            self.sol_amount_display.setText(f"{sol_amount:.4f} SOL (90% of balance)")
+            self.usdc_amount_display.setText(f"≈ {usdc_output:.2f} USDC")
+            self.status_label.setText("✓ Quote fetched successfully")
+            self.status_label.setStyleSheet("color: #10b981;")
+            self.swap_btn.setEnabled(True)
+        else:
+            self._show_error("Could not fetch quote. Check your balance.")
+    
+    def _on_fetch_error(self, error):
+        """Called when fetching has an error."""
+        self._show_error(f"Error: {str(error)}")
+    
+    def execute_swap(self):
+        """Execute the swap."""
+        self.swap_btn.setEnabled(False)
+        self.status_label.setText("⏳ Preparing swap transaction...")
+        self.status_label.setStyleSheet("background-color: #fef3c7; color: #92400e;")
+        QApplication.processEvents()
+        
+        worker = AsyncWorker(self._execute_swap_async())
+        worker.finished.connect(self._on_swap_complete)
+        worker.error.connect(self._on_swap_error)
+        worker.start()
+        self._swap_worker = worker
+    
+    async def _execute_swap_async(self):
+        """Execute swap asynchronously."""
+        try:
+            if not self.user or not hasattr(self.user, 'usdc_address'):
+                return {"success": False, "error": "No user or wallet address"}
+            
+            sol_amount = 1.0
+            sol_to_swap = sol_amount * 0.9
+            
+            result = await self.swap_service.execute_swap(
+                self.user.usdc_address,
+                sol_to_swap,
+                keypair_bytes=None,
+                slippage_bps=50
+            )
+            
+            return result or {"success": False, "error": "Swap failed"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _on_swap_complete(self, result):
+        """Called when swap is complete."""
+        self.swap_btn.setEnabled(True)
+        
+        if result and result.get("success"):
+            self.status_label.setText(
+                f"✓ Swap successful!\n\n"
+                f"Transaction ID: {result.get('transaction_id', '')[:16]}...\n"
+                f"Amount swapped: {result.get('amount_sol', 0):.4f} SOL"
+            )
+            self.status_label.setStyleSheet("background-color: #dcfce7; color: #166534; padding: 10px; border-radius: 4px;")
+            
+            QMessageBox.information(self, "Success", "SOL to USDC swap completed successfully!")
+            self.accept()
+        else:
+            error = result.get("error", "Unknown error") if result else "Unknown error"
+            self._show_error(f"Swap failed: {error}")
+    
+    def _on_swap_error(self, error):
+        """Called when swap has an error."""
+        self.swap_btn.setEnabled(True)
+        self._show_error(f"Error executing swap: {str(error)}")
+    
+    def _show_error(self, message: str):
+        """Show error message."""
+        self.status_label.setText(f"✗ {message}")
+        self.status_label.setStyleSheet("background-color: #fee2e2; color: #991b1b; padding: 10px; border-radius: 4px;")
+        self.swap_btn.setEnabled(False)
+
+
 class FundingWizardDialog(QDialog):
     """Multi-step funding wizard dialog."""
     
@@ -300,7 +558,7 @@ class FundingWizardDialog(QDialog):
         title.setFont(QFont("Arial", 14, QFont.Bold))
         header_layout.addWidget(title)
         
-        self.step_indicator = QLabel("Step 1 of 3")
+        self.step_indicator = QLabel("Step 1 of 4")
         self.step_indicator.setFont(QFont("Arial", 10))
         self.step_indicator.setStyleSheet("color: #666;")
         header_layout.addStretch()
@@ -358,28 +616,30 @@ class FundingWizardDialog(QDialog):
                 item.widget().deleteLater()
         
         if step_num == 0:
-            self._show_step_1_usdc()
+            self._show_step_1_sol()
         elif step_num == 1:
-            self._show_step_2_arweave()
+            self._show_step_2_swap_sol_to_usdc()
         elif step_num == 2:
-            self._show_step_3_nano()
+            self._show_step_3_arweave()
+        elif step_num == 3:
+            self._show_step_4_nano()
         
         self.current_step = step_num
-        self.step_indicator.setText(f"Step {step_num + 1} of 3")
+        self.step_indicator.setText(f"Step {step_num + 1} of 4")
         
         self.prev_btn.setEnabled(step_num > 0)
-        self.next_btn.setVisible(step_num < 2)
-        self.complete_btn.setVisible(step_num == 2)
+        self.next_btn.setVisible(step_num < 3)
+        self.complete_btn.setVisible(step_num == 3)
     
-    def _show_step_1_usdc(self):
-        """Step 1: Fund wallet with USDC."""
-        title = QLabel("Step 1: Fund Your Solana Wallet with USDC")
+    def _show_step_1_sol(self):
+        """Step 1: Fund wallet with SOL."""
+        title = QLabel("Step 1: Fund Your Solana Wallet with SOL")
         title.setFont(QFont("Arial", 12, QFont.Bold))
         self.content_layout.addWidget(title)
         
         info_text = QLabel(
-            "To use Arweave purchasing, you need USDC (stablecoin) in your Solana wallet.\n\n"
-            "USDC is a widely accepted stablecoin on the Solana blockchain.\n\n"
+            "Start by transferring SOL (Solana's native token) to your wallet.\n\n"
+            "In the next step, we'll automatically swap 90% of your SOL to USDC for Arweave purchases.\n\n"
             "Choose one of the following methods to fund your wallet:"
         )
         info_text.setWordWrap(True)
@@ -391,32 +651,32 @@ class FundingWizardDialog(QDialog):
         methods = [
             {
                 "title": "1. Centralized Exchange (Recommended)",
-                "description": "Transfer USDC from Coinbase, Kraken, FTX, or other exchanges",
+                "description": "Transfer SOL from Coinbase, Kraken, FTX, or other exchanges",
                 "steps": [
                     "Create account on supported exchange",
                     "Complete KYC verification",
-                    "Purchase or deposit USDC",
-                    "Withdraw USDC to your Solana wallet address",
+                    "Purchase or deposit SOL",
+                    "Withdraw SOL to your Solana wallet address",
                     "Usually arrives within 5-30 minutes"
                 ]
             },
             {
                 "title": "2. On-Ramp Services",
-                "description": "Direct bank transfer to USDC",
+                "description": "Direct bank transfer to SOL",
                 "steps": [
                     "Use services like Moonpay, Ramp, or Wyre",
                     "Connect your bank account",
-                    "Deposit funds directly to USDC",
+                    "Deposit funds directly to SOL",
                     "Funds appear instantly in wallet"
                 ]
             },
             {
                 "title": "3. Swap from Existing Crypto",
-                "description": "If you already have SOL or other tokens",
+                "description": "If you already have other tokens",
                 "steps": [
                     "Visit Jupiter or Raydium DEX",
-                    "Swap your tokens for USDC",
-                    "Received USDC instantly"
+                    "Swap your tokens for SOL",
+                    "Received SOL instantly"
                 ]
             }
         ]
@@ -578,14 +838,96 @@ class FundingWizardDialog(QDialog):
         
         self.content_layout.addWidget(your_address_group)
         
+        # Add pending SOL transactions
+        self._add_pending_transactions_display("SOL")
+        
+        self.content_layout.addStretch()
+    
+    def _show_step_2_swap_sol_to_usdc(self):
+        """Step 2: Swap SOL to USDC (90%)."""
+        title = QLabel("Step 2: Swap SOL to USDC")
+        title.setFont(QFont("Arial", 12, QFont.Bold))
+        self.content_layout.addWidget(title)
+        
+        info_text = QLabel(
+            "We'll automatically swap 90% of your SOL balance to USDC (stablecoin) for Arweave purchases.\n\n"
+            "10% of your SOL remains in your wallet for transaction fees.\n\n"
+            "The swap is executed through Jupiter DEX, providing the best prices on Solana."
+        )
+        info_text.setWordWrap(True)
+        self.content_layout.addWidget(info_text)
+        
+        swap_group = QGroupBox("Swap Details")
+        swap_layout = QVBoxLayout(swap_group)
+        
+        details = [
+            ("What happens?",
+             "Your SOL is swapped for USDC in a single transaction on Jupiter DEX."),
+            ("How long does it take?",
+             "Typically 10-30 seconds depending on Solana network conditions."),
+            ("Slippage Protection",
+             "Set to 0.5% to protect against price movements during the swap."),
+            ("Why keep 10%?",
+             "Transaction fees, account rent, and potential future operations."),
+        ]
+        
+        for q, a in details:
+            q_label = QLabel(f"<b>{q}</b>")
+            q_label.setWordWrap(True)
+            swap_layout.addWidget(q_label)
+            
+            a_label = QLabel(a)
+            a_label.setWordWrap(True)
+            a_label.setStyleSheet("margin-left: 20px; margin-bottom: 10px; color: #666;")
+            swap_layout.addWidget(a_label)
+        
+        self.content_layout.addWidget(swap_group)
+        
+        swap_action_group = QGroupBox("Ready to Swap?")
+        swap_action_layout = QVBoxLayout(swap_action_group)
+        
+        action_text = QLabel(
+            "Click the button below to:\n"
+            "  1. Detect your SOL balance\n"
+            "  2. Calculate 90% amount\n"
+            "  3. Get Jupiter quote\n"
+            "  4. Execute the swap\n"
+            "  5. Confirm transaction"
+        )
+        action_text.setWordWrap(True)
+        swap_action_layout.addWidget(action_text)
+        
+        launch_swap_btn = QPushButton("🔄 Launch Swap Dialog")
+        launch_swap_btn.clicked.connect(self.launch_sol_usdc_swap)
+        launch_swap_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #2563eb;
+            }
+            QPushButton:pressed {
+                background-color: #1d4ed8;
+            }
+        """)
+        swap_action_layout.addWidget(launch_swap_btn)
+        
+        self.content_layout.addWidget(swap_action_group)
+        
         # Add pending USDC transactions
         self._add_pending_transactions_display("USDC")
         
         self.content_layout.addStretch()
     
-    def _show_step_2_arweave(self):
-        """Step 2: Purchase Arweave."""
-        title = QLabel("Step 2: Purchase Arweave Coins")
+    def _show_step_3_arweave(self):
+        """Step 3: Purchase Arweave."""
+        title = QLabel("Step 3: Purchase Arweave Coins")
         title.setFont(QFont("Arial", 12, QFont.Bold))
         self.content_layout.addWidget(title)
         
@@ -646,9 +988,9 @@ class FundingWizardDialog(QDialog):
         
         self.content_layout.addStretch()
     
-    def _show_step_3_nano(self):
-        """Step 3: Access Cloudflare for Nano funds."""
-        title = QLabel("Step 3: Acquire Nano via Cloudflare Worker")
+    def _show_step_4_nano(self):
+        """Step 4: Access Cloudflare for Nano funds."""
+        title = QLabel("Step 4: Acquire Nano via Cloudflare Worker")
         title.setFont(QFont("Arial", 12, QFont.Bold))
         self.content_layout.addWidget(title)
         
@@ -957,6 +1299,16 @@ class FundingWizardDialog(QDialog):
         from ui.wallet_widget import ArweavePurchaseDialog
         
         dialog = ArweavePurchaseDialog(self)
+        dialog.exec_()
+    
+    def launch_sol_usdc_swap(self):
+        """Launch the SOL to USDC swap dialog."""
+        user = app_service.get_current_user()
+        if not user:
+            QMessageBox.warning(self, "Error", "No user logged in")
+            return
+        
+        dialog = SolUsdcSwapDialog(self)
         dialog.exec_()
     
     def _copy_to_clipboard(self, text):
