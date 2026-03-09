@@ -5,7 +5,7 @@ Enables account recovery by providing the Nano mnemonic on re-login.
 """
 import json
 import hashlib
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 from datetime import datetime
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -249,70 +249,105 @@ class AccountBackupManager:
                                          mnemonic: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
         Restore account backup using Nano address and mnemonic.
-        Finds the most recent backup for the given nano address.
+        Prefers explicit saved backup exports, then falls back to indexed backups.
         
         Args:
-            nano_address: User's Nano address (backup key)
+            nano_address: User's Nano address (derived from mnemonic)
             mnemonic: Nano mnemonic (used to decrypt backup)
         
         Returns:
             Tuple of (success, account_data or None)
         """
         try:
-            # Support both old and new backup naming formats
             nano_short = nano_address.replace("nano_", "").lower()[:8]
             nano_full = nano_address.replace("nano_", "").lower()
-            
-            # Try new format first: sapphire_backup_user_*_nano_NANOSHORT_*.account.enc
+
+            generic_candidates = [
+                Path.cwd() / f"sapphire_key_backup{self.BACKUP_EXTENSION}",
+                self.backup_dir / f"sapphire_key_backup{self.BACKUP_EXTENSION}",
+            ]
+            generic_backups = []
+            seen_paths = set()
+            for candidate in generic_candidates:
+                candidate_resolved = str(candidate.resolve())
+                if candidate.exists() and candidate_resolved not in seen_paths:
+                    generic_backups.append(candidate)
+                    seen_paths.add(candidate_resolved)
+
             pattern_new = f"sapphire_backup_user_*_nano_{nano_short}_*.account.enc"
-            backup_files = sorted(self.backup_dir.glob(pattern_new), reverse=True)
-            
-            # Fall back to old format: just the nano address hash
-            if not backup_files:
-                print(f"[BACKUP_RESTORE] No new-format backups found, checking old format...")
-                pattern_old = f"{nano_full}{self.BACKUP_EXTENSION}"
-                backup_path_old = self.backup_dir / pattern_old
-                if backup_path_old.exists():
-                    backup_files = [backup_path_old]
-                    print(f"✓ [BACKUP_RESTORE] Found old-format backup: {backup_path_old.name}")
-            
+            indexed_backups = sorted(self.backup_dir.glob(pattern_new), reverse=True)
+
+            pattern_old = f"{nano_full}{self.BACKUP_EXTENSION}"
+            backup_path_old = self.backup_dir / pattern_old
+            if backup_path_old.exists():
+                indexed_backups.append(backup_path_old)
+
+            if generic_backups:
+                backup_files: List[Path] = generic_backups
+                print(f"✓ [BACKUP_RESTORE] Found {len(generic_backups)} saved backup export(s); using saved backup recovery only")
+            else:
+                backup_files = indexed_backups
+
             if not backup_files:
                 print(f"❌ [BACKUP_RESTORE] No backups found for nano address: {nano_address}")
                 print(f"[BACKUP_RESTORE] Searched patterns:")
+                print(f"  - Generic export: sapphire_key_backup{self.BACKUP_EXTENSION}")
                 print(f"  - New format: {pattern_new}")
                 print(f"  - Old format: {nano_full}{self.BACKUP_EXTENSION}")
                 print(f"[BACKUP_RESTORE] Total backups in directory: {len(list(self.backup_dir.glob('*.account.enc')))}")
                 return False, None
-            
-            # Use the most recent backup
-            backup_path = backup_files[0]
-            print(f"✓ [BACKUP_RESTORE] Found {len(backup_files)} backup(s), using: {backup_path.name}")
-            
-            # Load encrypted backup
-            backup_blob = json.loads(backup_path.read_text(encoding='utf-8'))
-            
-            ciphertext = bytes.fromhex(backup_blob['ciphertext'])
-            iv = bytes.fromhex(backup_blob['iv'])
-            tag = bytes.fromhex(backup_blob['tag'])
-            
-            print(f"[BACKUP_RESTORE] Decrypting account data...")
-            
-            # Decrypt account data
-            account_data = self.decrypt_account_data(ciphertext, iv, tag, mnemonic)
-            
-            if account_data is None:
-                print(f"❌ [BACKUP_RESTORE] Decryption failed (returned None)")
-                return False, None
-            
-            print(f"✓ [BACKUP_RESTORE] Decryption successful")
-            
-            # Verify Nano address matches
-            if account_data.get('nano_address') != nano_address:
-                print(f"❌ [BACKUP_RESTORE] Address mismatch! Backup: {account_data.get('nano_address')}, Expected: {nano_address}")
-                return False, None
-            
-            print(f"✓ [BACKUP_RESTORE] Backup verified successfully for user: {account_data.get('username')}")
-            return True, account_data
+
+            print(f"✓ [BACKUP_RESTORE] Found {len(backup_files)} candidate backup(s) for derived Nano address: {nano_address}")
+
+            for backup_path in backup_files:
+                try:
+                    print(f"[BACKUP_RESTORE] Trying backup: {backup_path}")
+                    backup_blob = json.loads(backup_path.read_text(encoding='utf-8'))
+
+                    ciphertext = bytes.fromhex(backup_blob['ciphertext'])
+                    iv = bytes.fromhex(backup_blob['iv'])
+                    tag = bytes.fromhex(backup_blob['tag'])
+
+                    print(f"[BACKUP_RESTORE] Decrypting account data...")
+                    account_data = self.decrypt_account_data(ciphertext, iv, tag, mnemonic)
+
+                    if account_data is None or not isinstance(account_data, dict):
+                        print(f"❌ [BACKUP_RESTORE] Decryption failed for: {backup_path.name}")
+                        continue
+
+                    print(f"✓ [BACKUP_RESTORE] Decryption successful for: {backup_path.name}")
+
+                    wallets = account_data.get('wallets', {}) if isinstance(account_data.get('wallets'), dict) else {}
+                    nano_wallet = wallets.get('nano', {}) if isinstance(wallets.get('nano'), dict) else {}
+                    solana_wallet = wallets.get('solana', {}) if isinstance(wallets.get('solana'), dict) else {}
+                    arweave_wallet = wallets.get('arweave', {}) if isinstance(wallets.get('arweave'), dict) else {}
+
+                    if not account_data.get('nano_address'):
+                        account_data['nano_address'] = backup_blob.get('nano_address') or nano_wallet.get('address') or ''
+                    if not account_data.get('usdc_address'):
+                        account_data['usdc_address'] = account_data.get('solana_address') or backup_blob.get('solana_address') or solana_wallet.get('address')
+                    if not account_data.get('arweave_address'):
+                        account_data['arweave_address'] = backup_blob.get('arweave_address') or arweave_wallet.get('address') or ''
+                    if not account_data.get('username'):
+                        account_data['username'] = 'Recovered Account'
+
+                    backup_nano_address = account_data.get('nano_address') or backup_blob.get('nano_address')
+                    if backup_nano_address != nano_address:
+                        print(
+                            f"❌ [BACKUP_RESTORE] Skipping backup with non-matching Nano address. "
+                            f"Backup: {backup_nano_address}, Derived: {nano_address}"
+                        )
+                        continue
+
+                    print(f"✓ [BACKUP_RESTORE] Backup verified successfully for user: {account_data.get('username')}")
+                    return True, account_data
+
+                except Exception as inner_error:
+                    print(f"❌ [BACKUP_RESTORE] Failed to process {backup_path.name}: {type(inner_error).__name__}: {str(inner_error)}")
+                    continue
+
+            print(f"❌ [BACKUP_RESTORE] No decryptable backup matched derived Nano address: {nano_address}")
+            return False, None
         
         except Exception as e:
             print(f"❌ [BACKUP_RESTORE] Backup restoration failed: {type(e).__name__}: {str(e)}")

@@ -5,6 +5,8 @@ Tests transaction builders, signers, broadcasters, and manager.
 import pytest
 import asyncio
 import json
+import sys
+import types
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from datetime import datetime
 
@@ -45,6 +47,7 @@ from blockchain.transaction_manager import (
     TransactionWorkflow,
     TransactionPhase,
 )
+from services.sol_usdc_swap_service import SolUsdcSwapService
 
 
 class TestTransactionBuilder:
@@ -577,6 +580,160 @@ class TestIntegration:
         private_key = bytes.fromhex("0" * 64)
         success, workflow = await manager.sign(workflow, private_key)
         assert success is True
+
+
+class TestSolUsdcSwapServiceSigning:
+    @pytest.mark.asyncio
+    async def test_calculate_swap_plan_reserves_ata_rent_when_usdc_account_missing(self):
+        service = SolUsdcSwapService()
+        service.wallet_has_token_account = AsyncMock(return_value=False)
+
+        plan = await service.calculate_swap_plan("wallet_pubkey", 0.00997257)
+
+        assert plan is not None
+        assert plan["reserve_lamports"] == (
+            service.TRANSACTION_FEE_BUFFER_LAMPORTS + service.ASSOCIATED_TOKEN_ACCOUNT_RENT_LAMPORTS
+        )
+        assert plan["swap_lamports"] == 7_683_290
+        assert plan["usdc_account_exists"] is False
+        assert service.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_calculate_swap_plan_uses_requested_amount_when_token_account_exists(self):
+        service = SolUsdcSwapService()
+        service.wallet_has_token_account = AsyncMock(return_value=True)
+
+        plan = await service.calculate_swap_plan("wallet_pubkey", 1.0)
+
+        assert plan is not None
+        assert plan["reserve_lamports"] == service.TRANSACTION_FEE_BUFFER_LAMPORTS
+        assert plan["requested_lamports"] == 900_000_000
+        assert plan["swap_lamports"] == 900_000_000
+        assert plan["usdc_account_exists"] is True
+        assert service.last_error is None
+
+    def test_sign_swap_transaction_uses_seed_for_32_byte_key(self):
+        service = SolUsdcSwapService()
+        seed_bytes = bytes(range(32))
+        keypair_calls = []
+
+        class FakeKeypair:
+            @staticmethod
+            def from_bytes(raw_bytes):
+                keypair_calls.append(("from_bytes", raw_bytes))
+                return ("kp64", raw_bytes)
+
+            @staticmethod
+            def from_seed(seed):
+                keypair_calls.append(("from_seed", seed))
+                return ("kp32", seed)
+
+        class FakeUnsignedTx:
+            message = "versioned-message"
+
+            def into_legacy_transaction(self):
+                return None
+
+        class FakeVersionedTransaction:
+            @staticmethod
+            def from_bytes(data):
+                assert data == b"swap-tx"
+                return FakeUnsignedTx()
+
+            def __init__(self, message, keypairs):
+                self.message = message
+                self.keypairs = keypairs
+
+            def __bytes__(self):
+                return b"signed-versioned"
+
+        solders_module = types.ModuleType("solders")
+        solders_keypair_module = types.ModuleType("solders.keypair")
+        solders_transaction_module = types.ModuleType("solders.transaction")
+        solders_keypair_module.Keypair = FakeKeypair
+        solders_transaction_module.VersionedTransaction = FakeVersionedTransaction
+        solders_module.keypair = solders_keypair_module
+        solders_module.transaction = solders_transaction_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "solders": solders_module,
+                "solders.keypair": solders_keypair_module,
+                "solders.transaction": solders_transaction_module,
+            },
+        ):
+            result = service._sign_swap_transaction(b"swap-tx", seed_bytes)
+
+        assert result == b"signed-versioned"
+        assert keypair_calls == [("from_seed", seed_bytes)]
+        assert service.last_error is None
+
+    def test_sign_swap_transaction_uses_full_keypair_for_64_byte_legacy_tx(self):
+        service = SolUsdcSwapService()
+        keypair_bytes = bytes(range(64))
+        keypair_calls = []
+        sign_calls = []
+
+        class FakeKeypair:
+            @staticmethod
+            def from_bytes(raw_bytes):
+                keypair_calls.append(("from_bytes", raw_bytes))
+                return ("kp64", raw_bytes)
+
+            @staticmethod
+            def from_seed(seed):
+                keypair_calls.append(("from_seed", seed))
+                return ("kp32", seed)
+
+        class FakeLegacyMessage:
+            recent_blockhash = "recent-blockhash"
+
+        class FakeLegacyTx:
+            def __init__(self):
+                self.message = FakeLegacyMessage()
+
+            def sign(self, keypairs, recent_blockhash):
+                sign_calls.append((keypairs, recent_blockhash))
+
+            def __bytes__(self):
+                return b"signed-legacy"
+
+        class FakeUnsignedTx:
+            def __init__(self):
+                self.legacy_tx = FakeLegacyTx()
+
+            def into_legacy_transaction(self):
+                return self.legacy_tx
+
+        class FakeVersionedTransaction:
+            @staticmethod
+            def from_bytes(data):
+                assert data == b"legacy-swap-tx"
+                return FakeUnsignedTx()
+
+        solders_module = types.ModuleType("solders")
+        solders_keypair_module = types.ModuleType("solders.keypair")
+        solders_transaction_module = types.ModuleType("solders.transaction")
+        solders_keypair_module.Keypair = FakeKeypair
+        solders_transaction_module.VersionedTransaction = FakeVersionedTransaction
+        solders_module.keypair = solders_keypair_module
+        solders_module.transaction = solders_transaction_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "solders": solders_module,
+                "solders.keypair": solders_keypair_module,
+                "solders.transaction": solders_transaction_module,
+            },
+        ):
+            result = service._sign_swap_transaction(b"legacy-swap-tx", keypair_bytes)
+
+        assert result == b"signed-legacy"
+        assert keypair_calls == [("from_bytes", keypair_bytes)]
+        assert sign_calls == [([("kp64", keypair_bytes)], "recent-blockhash")]
+        assert service.last_error is None
 
 
 if __name__ == "__main__":

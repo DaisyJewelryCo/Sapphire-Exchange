@@ -266,29 +266,39 @@ class LoginScreen(QWidget):
                 print("[LOGIN] Creating new account with generated seed phrase...")
                 print(f"[LOGIN] Mnemonic word count: {len(seed_phrase.split())}")
                 
-                # Generate wallets for all supported blockchains
-                success, wallet_data = self.wallet_generator.generate_from_mnemonic(
+                # Generate full wallets for all supported blockchains (including key material)
+                wallet = self.wallet_generator.create_from_mnemonic(
+                    "account_setup",
                     seed_phrase,
-                    passphrase=""
+                    passphrase="",
+                    assets=['nano', 'solana', 'arweave']
                 )
-                
-                if success and wallet_data and 'nano' in wallet_data:
+                wallet_data = {}
+                if wallet.nano_wallet:
+                    wallet_data['nano'] = wallet.nano_wallet.to_dict()
+                if wallet.solana_wallet:
+                    wallet_data['solana'] = wallet.solana_wallet.to_dict()
+                if wallet.arweave_wallet:
+                    wallet_data['arweave'] = wallet.arweave_wallet.to_dict()
+
+                if wallet_data and 'nano' in wallet_data:
                     nano_addr = wallet_data['nano'].get('address')
                     print(f"[LOGIN] Generated Nano address during account creation: {nano_addr}")
                     print(f"{'='*60}\n")
-                
-                if not success:
+
+                if not wallet_data:
                     return False, "Failed to generate wallets from mnemonic", None
                 
-                # Register new user with seed phrase
                 success, message, user = await app_service.register_user_with_seed(seed_phrase, wallet_data)
-                
-                # Attach wallet data and mnemonic to user
+
                 if success and user:
-                    if isinstance(user, dict):
-                        user['wallets'] = wallet_data
-                        user['mnemonic'] = seed_phrase
-                
+                    return True, message, {
+                        'user': user,
+                        'wallets': wallet_data,
+                        'mnemonic': seed_phrase,
+                        'session_token': getattr(app_service, 'current_session', None)
+                    }
+
                 return success, message, user
             
             else:
@@ -332,6 +342,11 @@ class LoginScreen(QWidget):
                 if isinstance(user_or_data, dict):
                     self.current_user = user_or_data.get('user')
                     wallets = user_or_data.get('wallets', {})
+                    mnemonic = user_or_data.get('mnemonic')
+                    if self.current_user is not None:
+                        setattr(self.current_user, 'wallets', wallets)
+                        if mnemonic:
+                            setattr(self.current_user, 'mnemonic', mnemonic)
                 else:
                     self.current_user = user_or_data
                     wallets = {}

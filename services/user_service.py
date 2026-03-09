@@ -354,6 +354,13 @@ class UserService:
                 return None
             
             print(f"✓ [RECOVERY] Account backup found for user: {account_data.get('username')}")
+
+            restored_nano_address = account_data.get('nano_address')
+            if restored_nano_address != nano_address:
+                print(f"❌ [RECOVERY] Restored backup Nano address does not match mnemonic-derived Nano address")
+                print(f"[RECOVERY] Backup Nano: {restored_nano_address}")
+                print(f"[RECOVERY] Derived Nano: {nano_address}")
+                return None
             
             # Reconstruct User object from account data
             user = User.from_dict({
@@ -391,22 +398,16 @@ class UserService:
             # Notify callbacks
             self._notify_user_login(user)
             
-            # Regenerate all wallets from mnemonic for display during recovery
-            # (This ensures all supported chains are available, not just what was backed up)
-            print(f"\n[RECOVERY] Regenerating all wallets from mnemonic for recovery display...")
-            full_wallet_success, full_wallet_data = self.wallet_generator.generate_from_mnemonic(
-                nano_mnemonic,
-                assets=['nano', 'arweave', 'solana']
-            )
-            
-            if full_wallet_success and full_wallet_data:
-                print(f"[RECOVERY] Regenerated wallets: {list(full_wallet_data.keys())}")
-                # Use regenerated wallets which include all chains
-                recovered_wallet_data = full_wallet_data
-            else:
-                # Fallback to backed up wallets if regeneration fails
-                recovered_wallet_data = account_data.get('wallets', wallet_data)
-                print(f"[RECOVERY] Using backed up wallets: {list(recovered_wallet_data.keys()) if isinstance(recovered_wallet_data, dict) else 'N/A'}")
+            recovered_wallet_data = account_data.get('wallets', wallet_data)
+            print(f"[RECOVERY] Using backed up wallets as canonical recovery data: {list(recovered_wallet_data.keys()) if isinstance(recovered_wallet_data, dict) else 'N/A'}")
+
+            if isinstance(recovered_wallet_data, dict):
+                recovered_wallet_data = dict(recovered_wallet_data)
+                solana_wallet = recovered_wallet_data.get('solana')
+                if isinstance(solana_wallet, dict) and account_data.get('usdc_address'):
+                    solana_wallet = dict(solana_wallet)
+                    solana_wallet['address'] = account_data.get('usdc_address')
+                    recovered_wallet_data['solana'] = solana_wallet
             
             return user, session_token, recovered_wallet_data
         
@@ -436,23 +437,45 @@ class UserService:
             print(f"[BACKUP_CREATE] Wallet data type: {type(wallet_data)}")
             print(f"[BACKUP_CREATE] Wallet data keys: {list(wallet_data.keys()) if isinstance(wallet_data, dict) else 'N/A'}")
             
-            # Extract private keys from wallet_data for backup
+            backup_wallet_data = wallet_data if isinstance(wallet_data, dict) else {}
+
+            has_nano_keys = isinstance(backup_wallet_data.get('nano'), dict) and 'private_key' in backup_wallet_data.get('nano', {})
+            has_solana_keys = isinstance(backup_wallet_data.get('solana'), dict) and 'private_key' in backup_wallet_data.get('solana', {})
+            has_arweave_keys = isinstance(backup_wallet_data.get('arweave'), dict) and 'jwk' in backup_wallet_data.get('arweave', {})
+
+            if not (has_nano_keys and has_solana_keys and has_arweave_keys):
+                print("[BACKUP_CREATE] Wallet data missing full key material, regenerating complete wallets from mnemonic...")
+                full_wallet = self.wallet_generator.create_from_mnemonic(
+                    "backup_sync",
+                    nano_mnemonic,
+                    passphrase="",
+                    assets=['nano', 'solana', 'arweave']
+                )
+                regenerated_wallet_data = {}
+                if full_wallet.nano_wallet:
+                    regenerated_wallet_data['nano'] = full_wallet.nano_wallet.to_dict()
+                if full_wallet.solana_wallet:
+                    regenerated_wallet_data['solana'] = full_wallet.solana_wallet.to_dict()
+                if full_wallet.arweave_wallet:
+                    regenerated_wallet_data['arweave'] = full_wallet.arweave_wallet.to_dict()
+                if regenerated_wallet_data:
+                    backup_wallet_data = regenerated_wallet_data
+
             private_keys = {}
-            
-            # Wallet data format from unified_wallet_generator
-            if isinstance(wallet_data, dict):
-                # If it's the new format with chain/address structure
-                for chain, chain_data in wallet_data.items():
-                    if isinstance(chain_data, dict):
-                        if 'private_key' in chain_data:
-                            private_keys[chain] = chain_data['private_key']
-                        if 'seed' in chain_data:
-                            private_keys[f'{chain}_seed'] = chain_data['seed']
-            
+            for chain, chain_data in backup_wallet_data.items():
+                if not isinstance(chain_data, dict):
+                    continue
+                if 'private_key' in chain_data:
+                    private_keys[chain] = chain_data['private_key']
+                if 'seed' in chain_data:
+                    private_keys[f'{chain}_seed'] = chain_data['seed']
+                if chain == 'arweave' and 'jwk' in chain_data:
+                    private_keys['arweave_jwk'] = chain_data['jwk']
+
             print(f"[BACKUP_CREATE] Extracted {len(private_keys)} private keys: {list(private_keys.keys())}")
             
             success, backup_path = await account_backup_manager.create_account_backup(
-                user, user.nano_address, nano_mnemonic, wallet_data, private_keys, user.arweave_profile_uri
+                user, user.nano_address, nano_mnemonic, backup_wallet_data, private_keys, user.arweave_profile_uri
             )
             
             if success:

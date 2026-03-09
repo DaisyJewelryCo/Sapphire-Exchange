@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "type": "sapphire_mnemonic_backup",
+  "kdf": {
+    "name": "PBKDF2-HMAC-SHA256",
+    "iterations": 100000,
+    "salt": "e9588214937f5a5782f224cfa58c40c0"
+  },
+  "cipher": {
+    "name": "AES-256-GCM",
+    "nonce": "386130b6f095691f71532985",
+    "ciphertext": "0807b121a9bdce19573ed0bfdc4f952226afc928c6d8c59a69f452817f094751570871ff0ba8ed4ed8647401580cba704b33cd1b9e4b809e6f2d538c0c430d782eff550ef9cec2dde2c121cc35ecfdbb6f41fb5b3e253d1645eea03fd69a02bc6ee8fab42238e75de527308a7a7e25ed2750c6cf7e27c0873dc5483532ec6413d8d576f210fdee8afd3363561e0fac328df1aba9c7011ab32fee73f694390db39d66b0e152"
+  },
+  "created_at": "2026-03-08T05:14:44.121722"
+}

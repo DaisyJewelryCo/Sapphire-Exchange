@@ -79,6 +79,11 @@ class TransactionTracker:
             "DOGE": 4,
             "NANO": 3
         }
+        self.currency_aliases = {
+            "AR": "ARWEAVE",
+            "DOGECOIN": "DOGE",
+            "XNO": "NANO"
+        }
         
         # Active polling tasks
         self.polling_tasks: Dict[str, asyncio.Task] = {}
@@ -121,6 +126,17 @@ class TransactionTracker:
             except Exception as e:
                 logger.warning(f"Error closing HTTP session: {e}")
     
+    def _normalize_currency(self, currency: Optional[str]) -> str:
+        if not currency:
+            return ""
+        normalized = str(currency).strip().upper()
+        return self.currency_aliases.get(normalized, normalized)
+
+    def _normalize_user_id(self, user_id: Optional[str]) -> str:
+        if user_id is None:
+            return ""
+        return str(user_id).strip()
+    
     def create_transaction(
         self,
         user_id: str,
@@ -135,10 +151,13 @@ class TransactionTracker:
         """Create and track a new transaction."""
         import uuid
         
+        normalized_currency = self._normalize_currency(currency)
+        normalized_user_id = self._normalize_user_id(user_id)
+
         tx = Transaction(
             id=str(uuid.uuid4()),
-            user_id=user_id,
-            currency=currency,
+            user_id=normalized_user_id,
+            currency=normalized_currency,
             type=tx_type,
             amount=amount,
             from_address=from_address,
@@ -151,7 +170,7 @@ class TransactionTracker:
         self.pending_transactions[tx.id] = tx
         self._save_transactions()
         
-        logger.info(f"Created transaction {tx.id}: {amount} {currency} from {from_address}")
+        logger.info(f"Created transaction {tx.id}: {amount} {normalized_currency} from {from_address}")
         
         return tx
     
@@ -161,12 +180,15 @@ class TransactionTracker:
             if not self.http_session:
                 await self.initialize()
             
+            tx.currency = self._normalize_currency(tx.currency)
+            currency = tx.currency
+
             # Start polling for confirmations
-            if tx.currency not in self.polling_tasks or self.polling_tasks[tx.currency].done():
+            if currency not in self.polling_tasks or self.polling_tasks[currency].done():
                 task = asyncio.create_task(
-                    self._poll_confirmations(tx.currency)
+                    self._poll_confirmations(currency)
                 )
-                self.polling_tasks[tx.currency] = task
+                self.polling_tasks[currency] = task
             
             logger.info(f"Started tracking transaction {tx.id}")
         except Exception as e:
@@ -174,12 +196,13 @@ class TransactionTracker:
     
     async def _poll_confirmations(self, currency: str) -> None:
         """Poll for transaction confirmations."""
+        currency = self._normalize_currency(currency)
         try:
             while True:
                 # Get all pending transactions for this currency
                 pending = [
                     tx for tx in self.pending_transactions.values()
-                    if tx.currency == currency
+                    if self._normalize_currency(tx.currency) == currency
                 ]
                 
                 if not pending:
@@ -222,17 +245,19 @@ class TransactionTracker:
         if not tx.tx_hash:
             return 0
         
+        currency = self._normalize_currency(tx.currency)
+
         try:
-            if tx.currency == "USDC":
+            if currency == "USDC":
                 return await self._check_solana_confirmations(tx.tx_hash)
-            elif tx.currency == "ARWEAVE":
+            elif currency == "ARWEAVE":
                 return await self._check_arweave_confirmations(tx.tx_hash)
-            elif tx.currency == "DOGE":
+            elif currency == "DOGE":
                 return await self._check_dogecoin_confirmations(tx.tx_hash)
-            elif tx.currency == "NANO":
+            elif currency == "NANO":
                 return await self._check_nano_confirmations(tx.tx_hash)
         except Exception as e:
-            logger.error(f"Error checking confirmations for {tx.currency}: {e}")
+            logger.error(f"Error checking confirmations for {currency}: {e}")
         
         return 0
     
@@ -365,11 +390,13 @@ class TransactionTracker:
     def get_pending_transactions(self, user_id: Optional[str] = None, currency: Optional[str] = None) -> List[Transaction]:
         """Get pending transactions, optionally filtered."""
         txs = list(self.pending_transactions.values())
+        normalized_user_id = self._normalize_user_id(user_id) if user_id is not None else ""
+        normalized_currency = self._normalize_currency(currency) if currency else ""
         
-        if user_id:
-            txs = [tx for tx in txs if tx.user_id == user_id]
+        if user_id is not None:
+            txs = [tx for tx in txs if self._normalize_user_id(tx.user_id) == normalized_user_id]
         if currency:
-            txs = [tx for tx in txs if tx.currency == currency]
+            txs = [tx for tx in txs if self._normalize_currency(tx.currency) == normalized_currency]
         
         return sorted(txs, key=lambda x: x.created_at, reverse=True)
     
@@ -383,14 +410,16 @@ class TransactionTracker:
         """Get transaction history."""
         # Combine pending and completed
         all_txs = list(self.pending_transactions.values()) + list(self.completed_transactions.values())
+        normalized_user_id = self._normalize_user_id(user_id) if user_id is not None else ""
+        normalized_currency = self._normalize_currency(currency) if currency else ""
         
         # Filter by user
-        if user_id:
-            all_txs = [tx for tx in all_txs if tx.user_id == user_id]
+        if user_id is not None:
+            all_txs = [tx for tx in all_txs if self._normalize_user_id(tx.user_id) == normalized_user_id]
         
         # Filter by currency
         if currency:
-            all_txs = [tx for tx in all_txs if tx.currency == currency]
+            all_txs = [tx for tx in all_txs if self._normalize_currency(tx.currency) == normalized_currency]
         
         # Filter by date
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -405,7 +434,7 @@ class TransactionTracker:
         if not tx:
             return False
         
-        if tx.retry_count >= self.max_retries.get(tx.currency, 3):
+        if tx.retry_count >= self.max_retries.get(self._normalize_currency(tx.currency), 3):
             logger.error(f"Transaction {tx_id} has exceeded max retries")
             return False
         
@@ -451,10 +480,14 @@ class TransactionTracker:
                     
                     for tx_data in data.get('pending', []):
                         tx = Transaction.from_dict(tx_data)
+                        tx.currency = self._normalize_currency(tx.currency)
+                        tx.user_id = self._normalize_user_id(tx.user_id)
                         self.pending_transactions[tx.id] = tx
                     
                     for tx_data in data.get('completed', []):
                         tx = Transaction.from_dict(tx_data)
+                        tx.currency = self._normalize_currency(tx.currency)
+                        tx.user_id = self._normalize_user_id(tx.user_id)
                         self.completed_transactions[tx.id] = tx
                 
                 logger.info(

@@ -116,7 +116,6 @@ class UnifiedWalletGenerator:
                               assets: List[str] = None) -> Tuple[bool, Dict[str, Any]]:
         """
         Generate wallet addresses from mnemonic.
-        Only Nano wallet is derived from mnemonic.
         
         Args:
             mnemonic: BIP39 mnemonic phrase
@@ -186,8 +185,6 @@ class UnifiedWalletGenerator:
                             passphrase: str = "", assets: List[str] = None) -> MultiAssetWallet:
         """
         Create multi-asset wallet from existing mnemonic.
-        Only Nano wallet is derived from mnemonic.
-        Solana and Arweave wallets are generated fresh (not from mnemonic).
         
         Args:
             wallet_name: Name for the wallet
@@ -216,7 +213,7 @@ class UnifiedWalletGenerator:
             nano_wallet = self.nano_gen.generate_from_mnemonic(mnemonic, passphrase)
         
         if 'solana' in assets:
-            solana_wallet = self.solana_gen.generate_new()
+            solana_wallet = self.solana_gen.generate_from_mnemonic(mnemonic, passphrase)
         
         if 'arweave' in assets:
             arweave_wallet = self.arweave_gen.generate_new()

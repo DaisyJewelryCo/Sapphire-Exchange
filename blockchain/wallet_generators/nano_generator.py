@@ -2,7 +2,6 @@
 Nano wallet generator.
 Uses Ed25519 keys with BIP44 path: m/44'/165'/0' and blake2b address encoding.
 """
-import base58
 import hashlib
 from typing import Tuple, Optional, Dict, Any
 from dataclasses import dataclass
@@ -43,6 +42,7 @@ class NanoWalletGenerator:
     CHAIN = "nano"
     DERIVATION_PATH = "m/44'/165'/0'"
     ADDRESS_PREFIX = "nano_"
+    NANO_ALPHABET = "13456789abcdefghijkmnopqrstuwxyz"
     
     DEFAULT_REPRESENTATIVE = "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3"
     
@@ -162,61 +162,76 @@ class NanoWalletGenerator:
         
         return addresses
     
-    @staticmethod
-    def _public_key_to_address(public_key: bytes) -> str:
+    @classmethod
+    def _encode_nano_base32(cls, value: int, length: int) -> str:
+        chars = []
+        for _ in range(length):
+            value, remainder = divmod(value, 32)
+            chars.append(cls.NANO_ALPHABET[remainder])
+        return ''.join(reversed(chars))
+
+    @classmethod
+    def _decode_nano_base32(cls, encoded: str) -> Optional[int]:
+        value = 0
+        for char in encoded:
+            idx = cls.NANO_ALPHABET.find(char)
+            if idx == -1:
+                return None
+            value = (value << 5) | idx
+        return value
+
+    @classmethod
+    def _public_key_to_address(cls, public_key: bytes) -> str:
         """
-        Convert Ed25519 public key to Nano address.
-        
-        Uses blake2b for checksum with Nano address format.
-        
-        Args:
-            public_key: Ed25519 public key (32 bytes)
-        
-        Returns:
-            Nano address (nano_ prefix with base58 encoding)
+        Convert Ed25519 public key to a standard Nano address.
         """
         if len(public_key) > 32:
             public_key = public_key[:32]
-        
-        blake2b_hash = hashlib.blake2b(public_key, digest_size=5).digest()
-        checksum = blake2b_hash[::-1]
-        
-        encoded = base58.b58encode(public_key + checksum).decode('utf-8')
-        
-        return f"nano_{encoded}"
-    
-    @staticmethod
-    def address_to_public_key(address: str) -> Optional[bytes]:
+        if len(public_key) < 32:
+            public_key = public_key.rjust(32, b'\x00')
+
+        account_part = cls._encode_nano_base32(int.from_bytes(public_key, 'big'), 52)
+        checksum = hashlib.blake2b(public_key, digest_size=5).digest()[::-1]
+        checksum_part = cls._encode_nano_base32(int.from_bytes(checksum, 'big'), 8)
+
+        return f"nano_{account_part}{checksum_part}"
+
+    @classmethod
+    def address_to_public_key(cls, address: str) -> Optional[bytes]:
         """
-        Convert Nano address back to public key.
-        Validates checksum.
-        
-        Args:
-            address: Nano address
-        
-        Returns:
-            Public key bytes or None if invalid
+        Convert Nano address back to public key and validate checksum.
         """
         try:
+            if not address or not isinstance(address, str):
+                return None
+            if address != address.lower():
+                return None
             if not address.startswith("nano_"):
                 return None
-            
+
             encoded = address[5:]
-            decoded = base58.b58decode(encoded)
-            
-            if len(decoded) != 37:
+            if len(encoded) != 60:
                 return None
-            
-            public_key = decoded[:32]
-            checksum = decoded[32:]
-            
+
+            account_part = encoded[:52]
+            checksum_part = encoded[52:]
+
+            account_value = cls._decode_nano_base32(account_part)
+            checksum_value = cls._decode_nano_base32(checksum_part)
+            if account_value is None or checksum_value is None:
+                return None
+
+            if account_value >> 256 != 0:
+                return None
+            public_key = account_value.to_bytes(32, 'big')
+            checksum = checksum_value.to_bytes(5, 'big')
+
             expected_checksum = hashlib.blake2b(public_key, digest_size=5).digest()[::-1]
-            
             if checksum != expected_checksum:
                 return None
-            
+
             return public_key
-        
+
         except Exception:
             return None
     

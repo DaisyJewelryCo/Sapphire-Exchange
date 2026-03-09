@@ -4,6 +4,7 @@ Provides a step-by-step wizard for funding wallet with USDC, purchasing Arweave,
 """
 
 import io
+import asyncio
 import qrcode
 from PIL import Image
 from datetime import datetime
@@ -13,7 +14,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDialog,
     QProgressBar, QGroupBox, QLineEdit, QMessageBox, QScrollArea,
     QFrame, QListWidget, QListWidgetItem, QApplication, QTableWidget,
-    QTableWidgetItem, QHeaderView
+    QTableWidgetItem, QHeaderView, QInputDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QUrl, QTimer
 from PyQt5.QtGui import QFont, QColor, QDesktopServices, QPixmap
@@ -23,6 +24,9 @@ from services.nano_cloudflare_service import get_nano_cloudflare_service
 from services.funding_manager_service import get_funding_manager_service
 from services.transaction_tracker import get_transaction_tracker
 from services.sol_usdc_swap_service import get_sol_usdc_swap_service
+from services.solana_balance_service import get_solana_balance_service
+from services.incoming_transaction_detector import get_incoming_transaction_detector
+from security.account_backup_manager import account_backup_manager
 from utils.async_worker import AsyncWorker
 from utils.validation_utils import Validator
 
@@ -435,35 +439,74 @@ class SolUsdcSwapDialog(QDialog):
         """Fetch balance and quote asynchronously."""
         try:
             if not self.user or not hasattr(self.user, 'usdc_address'):
-                return None
+                return {"error": "No Solana wallet configured"}
             
-            user_pubkey = self.user.usdc_address
+            user_pubkey = (self.user.usdc_address or "").strip()
+            if not user_pubkey:
+                return {"error": "No Solana wallet configured"}
             
-            sol_amount_to_swap = 1.0
+            balance_service = await get_solana_balance_service()
+            sol_balance_info = await balance_service.get_native_sol_balance(user_pubkey)
+            if not sol_balance_info:
+                err = balance_service.last_error or "Could not fetch SOL balance"
+                return {"error": err}
+            
+            sol_balance = float(sol_balance_info.amount_human)
+            self.sol_balance = sol_balance
+
+            swap_plan = await self.swap_service.calculate_swap_plan(user_pubkey, sol_balance)
+            if not swap_plan:
+                err = getattr(self.swap_service, "last_error", None) or "No SOL available to swap"
+                return {
+                    "sol_balance": sol_balance,
+                    "error": err
+                }
+
+            sol_amount_to_swap = swap_plan["swap_amount_sol"]
             quote = await self.swap_service.get_quote(sol_amount_to_swap)
+            if not quote:
+                err = getattr(self.swap_service, "last_error", None) or "Could not fetch quote"
+                return {
+                    "sol_balance": sol_balance,
+                    "sol_amount": sol_amount_to_swap,
+                    "reserve_sol": swap_plan["reserve_sol"],
+                    "requested_sol": swap_plan["requested_sol"],
+                    "error": err
+                }
             
             return {
+                "sol_balance": sol_balance,
                 "sol_amount": sol_amount_to_swap,
+                "reserve_sol": swap_plan["reserve_sol"],
+                "requested_sol": swap_plan["requested_sol"],
                 "quote": quote
             }
         except Exception as e:
             print(f"Error fetching balance and quote: {e}")
-            return None
+            return {"error": str(e)}
     
     def _on_balance_and_quote_fetched(self, result):
         """Called when balance and quote are fetched."""
         if result and result.get("quote"):
             quote = result["quote"]
             sol_amount = result.get("sol_amount", 0)
+            requested_sol = result.get("requested_sol", sol_amount)
+            reserve_sol = result.get("reserve_sol", 0)
             usdc_output = quote.output_amount / 1e6
-            
-            self.sol_amount_display.setText(f"{sol_amount:.4f} SOL (90% of balance)")
+
+            if sol_amount < requested_sol:
+                self.sol_amount_display.setText(f"{sol_amount:.6f} SOL (reserve kept: {reserve_sol:.6f} SOL)")
+            else:
+                self.sol_amount_display.setText(f"{sol_amount:.6f} SOL")
             self.usdc_amount_display.setText(f"≈ {usdc_output:.2f} USDC")
             self.status_label.setText("✓ Quote fetched successfully")
             self.status_label.setStyleSheet("color: #10b981;")
             self.swap_btn.setEnabled(True)
         else:
-            self._show_error("Could not fetch quote. Check your balance.")
+            error_message = "Could not fetch quote. Check your balance."
+            if isinstance(result, dict) and result.get("error"):
+                error_message = result.get("error")
+            self._show_error(error_message)
     
     def _on_fetch_error(self, error):
         """Called when fetching has an error."""
@@ -475,12 +518,49 @@ class SolUsdcSwapDialog(QDialog):
         self.status_label.setText("⏳ Preparing swap transaction...")
         self.status_label.setStyleSheet("background-color: #fef3c7; color: #92400e;")
         QApplication.processEvents()
+
+        nano_address = getattr(self.user, 'nano_address', None) if self.user else None
+        if not nano_address:
+            self.swap_btn.setEnabled(True)
+            self.status_label.setText("Nano address required to unlock backup")
+            self.status_label.setStyleSheet("color: #b91c1c;")
+            return
+
+        mnemonic, ok = QInputDialog.getText(
+            self,
+            "Enter Mnemonic",
+            "Enter your mnemonic phrase to decrypt your account backup:",
+            QLineEdit.Normal
+        )
+        mnemonic = (mnemonic or "").strip()
+        if not ok or not mnemonic:
+            self.swap_btn.setEnabled(True)
+            self.status_label.setText("Swap cancelled")
+            self.status_label.setStyleSheet("color: #b91c1c;")
+            return
+
+        self._swap_backup_mnemonic = mnemonic
         
         worker = AsyncWorker(self._execute_swap_async())
         worker.finished.connect(self._on_swap_complete)
         worker.error.connect(self._on_swap_error)
         worker.start()
         self._swap_worker = worker
+
+    async def _load_solana_key_from_backup(self, nano_address: str, mnemonic: str):
+        success, account_data = await account_backup_manager.restore_account_from_backup(nano_address, mnemonic)
+        if not success or not isinstance(account_data, dict):
+            return None, None
+
+        private_keys = account_data.get('private_keys', {})
+        wallets = account_data.get('wallets', {})
+        key_value = private_keys.get('solana') or private_keys.get('solana_private_key')
+        solana_wallet = wallets.get('solana', {}) if isinstance(wallets.get('solana'), dict) else {}
+        if not key_value:
+            key_value = solana_wallet.get('private_key') or solana_wallet.get('secret_key')
+
+        wallet_pubkey = account_data.get('usdc_address') or solana_wallet.get('address') or solana_wallet.get('public_key')
+        return key_value or None, wallet_pubkey or None
     
     async def _execute_swap_async(self):
         """Execute swap asynchronously."""
@@ -488,19 +568,90 @@ class SolUsdcSwapDialog(QDialog):
             if not self.user or not hasattr(self.user, 'usdc_address'):
                 return {"success": False, "error": "No user or wallet address"}
             
-            sol_amount = 1.0
-            sol_to_swap = sol_amount * 0.9
-            
+            requested_pubkey = getattr(self.user, 'usdc_address', '')
+            expected_pubkey = requested_pubkey
+            keypair_bytes = None
+
+            mnemonic = getattr(self, '_swap_backup_mnemonic', None)
+            nano_address = getattr(self.user, 'nano_address', None)
+            if mnemonic and nano_address:
+                backup_keypair, backup_pubkey = await self._load_solana_key_from_backup(nano_address, mnemonic)
+                if backup_keypair and self.swap_service.keypair_matches_pubkey(backup_keypair, expected_pubkey):
+                    keypair_bytes = backup_keypair
+                    setattr(self.user, 'solana_private_key', keypair_bytes)
+                elif backup_pubkey and backup_pubkey != expected_pubkey:
+                    return {
+                        "success": False,
+                        "error": f"Recovered backup Solana address {backup_pubkey} does not match the logged-in wallet {expected_pubkey}."
+                    }
+
+            if not keypair_bytes:
+                cached_keypair = getattr(self.user, 'solana_private_key', None)
+                if self.swap_service.keypair_matches_pubkey(cached_keypair, expected_pubkey):
+                    keypair_bytes = cached_keypair
+
+            if not keypair_bytes:
+                wallets = getattr(self.user, 'wallets', {}) if hasattr(self.user, 'wallets') else {}
+                if isinstance(wallets, dict):
+                    sol_wallet = wallets.get('solana', {})
+                    if isinstance(sol_wallet, dict):
+                        candidate_keypair = sol_wallet.get('private_key') or sol_wallet.get('secret_key')
+                        if self.swap_service.keypair_matches_pubkey(candidate_keypair, expected_pubkey):
+                            keypair_bytes = candidate_keypair
+
+            if not keypair_bytes and mnemonic:
+                try:
+                    from blockchain.wallet_generators.solana_generator import SolanaWalletGenerator
+                    derived_wallet = SolanaWalletGenerator().generate_from_mnemonic(mnemonic)
+                    if self.swap_service.keypair_matches_pubkey(derived_wallet.private_key, expected_pubkey):
+                        keypair_bytes = derived_wallet.private_key
+                        setattr(self.user, 'solana_private_key', keypair_bytes)
+                except Exception:
+                    keypair_bytes = None
+
+            if not keypair_bytes:
+                import os
+                env_keypair = os.getenv("SOLANA_PRIVATE_KEY", "").strip() or None
+                if self.swap_service.keypair_matches_pubkey(env_keypair, expected_pubkey):
+                    keypair_bytes = env_keypair
+
+            if not keypair_bytes:
+                return {
+                    "success": False,
+                    "error": "Failed to decrypt a usable Solana key from your backup. Verify the mnemonic matches the account backup and try again."
+                }
+
+            balance_service = await get_solana_balance_service()
+            sol_balance_info = await balance_service.get_native_sol_balance(expected_pubkey)
+            if not sol_balance_info:
+                err = balance_service.last_error or "Could not fetch SOL balance for signing wallet"
+                return {"success": False, "error": err}
+
+            sol_balance = float(sol_balance_info.amount_human)
+            self.sol_balance = sol_balance
+            swap_plan = await self.swap_service.calculate_swap_plan(expected_pubkey, sol_balance)
+            if not swap_plan:
+                err = getattr(self.swap_service, "last_error", None) or f"No SOL available in signing wallet {expected_pubkey}"
+                return {
+                    "success": False,
+                    "error": err
+                }
+
             result = await self.swap_service.execute_swap(
-                self.user.usdc_address,
-                sol_to_swap,
-                keypair_bytes=None,
+                expected_pubkey,
+                swap_plan["swap_amount_sol"],
+                keypair_bytes=keypair_bytes,
                 slippage_bps=50
             )
             
-            return result or {"success": False, "error": "Swap failed"}
+            if not result:
+                swap_error = getattr(self.swap_service, "last_error", None) or "Swap failed"
+                return {"success": False, "error": swap_error}
+            return result
         except Exception as e:
             return {"success": False, "error": str(e)}
+        finally:
+            self._swap_backup_mnemonic = None
     
     def _on_swap_complete(self, result):
         """Called when swap is complete."""
@@ -1181,11 +1332,15 @@ class FundingWizardDialog(QDialog):
             
             # Get pending transactions for this currency (may be empty)
             pending = []
-            if self.tracker:
-                pending = self.tracker.get_pending_transactions(
-                    user_id=user.id,
-                    currency=currency
-                )
+            if not self.tracker:
+                # Tracker not yet initialized, defer displaying pending transactions
+                self._schedule_pending_display(currency)
+                return
+            
+            pending = self.tracker.get_pending_transactions(
+                user_id=user.id,
+                currency=currency
+            )
             
             # Always create group box, even if no transactions
             if pending:
@@ -1261,18 +1416,128 @@ class FundingWizardDialog(QDialog):
         except Exception as e:
             print(f"Error displaying pending transactions: {e}")
     
+    def _schedule_pending_display(self, currency: str):
+        """Schedule pending transactions display after tracker is initialized."""
+        worker = AsyncWorker(self._wait_for_tracker())
+        worker.finished.connect(lambda: self._display_pending_now(currency))
+        worker.start()
+        self._pending_display_worker = worker
+    
+    async def _wait_for_tracker(self):
+        """Wait for tracker to be initialized."""
+        max_retries = 50
+        retry_count = 0
+        while not self.tracker and retry_count < max_retries:
+            await asyncio.sleep(0.1)
+            retry_count += 1
+        return self.tracker is not None
+    
+    def _display_pending_now(self, currency: str):
+        """Display pending transactions once tracker is ready."""
+        if not self.tracker:
+            print(f"Warning: Tracker still not initialized after waiting for {currency}")
+            return
+        
+        if not hasattr(self, 'content_layout'):
+            print(f"Warning: content_layout not available for {currency}")
+            return
+        
+        try:
+            user = app_service.get_current_user()
+            if not user:
+                return
+            
+            pending = self.tracker.get_pending_transactions(
+                user_id=user.id,
+                currency=currency
+            )
+            
+            if pending:
+                pending_group = QGroupBox(f"📊 Pending {currency} Transactions ({len(pending)})")
+            else:
+                pending_group = QGroupBox(f"📊 {currency} Transaction Status")
+            
+            pending_layout = QVBoxLayout(pending_group)
+            pending_layout.setContentsMargins(10, 10, 10, 10)
+            pending_layout.setSpacing(6)
+            
+            if pending:
+                for tx in pending[:3]:
+                    target = self.tracker.confirmation_targets.get(currency, 6)
+                    tx_type = "Send" if tx.type == "send" else "Receive"
+                    status_icon = "⏳" if tx.status == "pending" else "✓" if tx.status == "confirmed" else "✗"
+                    
+                    tx_label = QLabel(
+                        f"{status_icon} {tx_type}: {tx.amount} {currency} "
+                        f"({tx.confirmations}/{target} confirms)"
+                    )
+                    tx_label.setFont(QFont("Arial", 9))
+                    
+                    if tx.status == "pending":
+                        tx_label.setStyleSheet("color: #ff9800;")
+                    elif tx.status == "confirmed":
+                        tx_label.setStyleSheet("color: #4caf50;")
+                    elif tx.status == "failed":
+                        tx_label.setStyleSheet("color: #f44336;")
+                    
+                    pending_layout.addWidget(tx_label)
+                
+                if len(pending) > 3:
+                    more_label = QLabel(f"... and {len(pending) - 3} more pending transaction(s)")
+                    more_label.setFont(QFont("Arial", 8))
+                    more_label.setStyleSheet("color: #999; font-style: italic;")
+                    pending_layout.addWidget(more_label)
+            else:
+                no_pending_label = QLabel("✓ No pending transactions")
+                no_pending_label.setFont(QFont("Arial", 9))
+                no_pending_label.setStyleSheet("color: #4caf50; font-weight: bold;")
+                pending_layout.addWidget(no_pending_label)
+                
+                status_label = QLabel("Ready to proceed with next step")
+                status_label.setFont(QFont("Arial", 8))
+                status_label.setStyleSheet("color: #999; font-style: italic; margin-top: 4px;")
+                pending_layout.addWidget(status_label)
+            
+            pending_group.setStyleSheet("""
+                QGroupBox {
+                    border: 1px solid #e2e8f0;
+                    border-radius: 4px;
+                    margin-top: 8px;
+                    padding-top: 10px;
+                    font-weight: bold;
+                    font-size: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 3px 0 3px;
+                }
+            """)
+            
+            self.content_layout.addWidget(pending_group)
+        except Exception as e:
+            print(f"Error displaying pending transactions: {e}")
+    
     def init_tracker(self):
         """Initialize transaction tracker."""
         worker = AsyncWorker(self._init_tracker_async())
+        worker.finished.connect(self._on_tracker_initialized)
         worker.start()
         self._tracker_worker = worker
+    
+    def _on_tracker_initialized(self, result):
+        """Called when tracker is initialized."""
+        if result:
+            print("Transaction tracker initialized successfully")
     
     async def _init_tracker_async(self):
         """Initialize tracker asynchronously."""
         try:
             self.tracker = await get_transaction_tracker()
+            return True
         except Exception as e:
             print(f"Error initializing tracker: {e}")
+            return False
     
     def request_nano_via_cloudflare(self):
         """Show dialog to request Nano via Cloudflare Worker."""
@@ -1338,6 +1603,10 @@ class FundingManagerWidget(QWidget):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.refresh_pending_transactions)
         self.refresh_timer.start(3000)
+        
+        self.incoming_check_timer = QTimer()
+        self.incoming_check_timer.timeout.connect(self.check_for_incoming_transactions)
+        self.incoming_check_timer.start(10000)
     
     def _init_tracker_immediate(self):
         """Initialize tracker asynchronously without blocking UI."""
@@ -1639,6 +1908,42 @@ class FundingManagerWidget(QWidget):
             QMessageBox.warning(self, "Retry Unavailable", "Transaction could not be retried.")
         self.refresh_pending_transactions()
     
+    def check_for_incoming_transactions(self):
+        """Check for incoming SOL/USDC transactions."""
+        user = app_service.get_current_user()
+        if not user or not hasattr(user, 'usdc_address') or not user.usdc_address:
+            return
+        
+        worker = AsyncWorker(self._check_incoming_transactions_async(user.id, user.usdc_address))
+        worker.finished.connect(self.refresh_pending_transactions)
+        worker.error.connect(lambda e: print(f"Error checking incoming transactions: {e}"))
+        worker.start()
+        self._incoming_check_worker = worker
+    
+    async def _check_incoming_transactions_async(self, user_id: str, wallet_address: str):
+        """Check for and track incoming transactions asynchronously."""
+        try:
+            detector = await get_incoming_transaction_detector()
+            tracker = await get_transaction_tracker()
+            
+            existing_sigs = set()
+            existing_txs = tracker.get_pending_transactions(user_id=user_id, currency="SOL")
+            for tx in existing_txs:
+                if tx.tx_hash:
+                    existing_sigs.add(tx.tx_hash)
+            
+            existing_completed = tracker.get_transaction_history(user_id=user_id, currency="SOL", limit=50)
+            for tx in existing_completed:
+                if tx.tx_hash:
+                    existing_sigs.add(tx.tx_hash)
+            
+            incoming = await detector.detect_incoming_transactions(wallet_address, existing_sigs)
+            
+            for tx_info in incoming:
+                await detector.track_incoming_transaction(user_id, tx_info)
+        except Exception as e:
+            print(f"Error in incoming transaction check: {e}")
+    
     def update_progress(self):
         """Update progress display."""
         user = app_service.get_current_user()
@@ -1690,9 +1995,13 @@ class FundingManagerWidget(QWidget):
         super().hideEvent(event)
         if hasattr(self, 'refresh_timer'):
             self.refresh_timer.stop()
+        if hasattr(self, 'incoming_check_timer'):
+            self.incoming_check_timer.stop()
     
     def closeEvent(self, event):
         """Cleanup on close."""
         if hasattr(self, 'refresh_timer'):
             self.refresh_timer.stop()
+        if hasattr(self, 'incoming_check_timer'):
+            self.incoming_check_timer.stop()
         super().closeEvent(event)

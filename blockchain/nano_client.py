@@ -4,7 +4,6 @@ Consolidates functionality from multiple nano_utils files.
 """
 import asyncio
 import aiohttp
-import base58
 import hashlib
 import ed25519_blake2b
 import json
@@ -56,6 +55,7 @@ class MockNanoNetwork:
 
 class NanoClient:
     """Unified Nano blockchain client using mock network."""
+    NANO_ALPHABET = "13456789abcdefghijkmnopqrstuwxyz"
     
     def __init__(self, config: Dict[str, Any]):
         """Initialize Nano client with configuration."""
@@ -236,32 +236,62 @@ class NanoClient:
             # Fallback: generate a mock public key for testing
             return hashlib.sha256(private_key).digest()
     
+    def _encode_nano_base32(self, value: int, length: int) -> str:
+        chars = []
+        for _ in range(length):
+            value, remainder = divmod(value, 32)
+            chars.append(self.NANO_ALPHABET[remainder])
+        return ''.join(reversed(chars))
+
+    def _decode_nano_base32(self, encoded: str) -> Optional[int]:
+        value = 0
+        for char in encoded:
+            idx = self.NANO_ALPHABET.find(char)
+            if idx == -1:
+                return None
+            value = (value << 5) | idx
+        return value
+
     def public_key_to_address(self, public_key: bytes) -> str:
-        """Convert public key to Nano address."""
-        # Blake2b hash of public key
-        h = hashlib.blake2b(public_key, digest_size=5).digest()
-        # Reverse for checksum
-        checksum = h[::-1]
-        # Encode with base32
-        encoded = base58.b58encode(public_key + checksum).decode('utf-8')
-        return f"nano_{encoded}"
+        """Convert public key to standard Nano address format."""
+        if len(public_key) > 32:
+            public_key = public_key[:32]
+        if len(public_key) < 32:
+            public_key = public_key.rjust(32, b'\x00')
+
+        account_part = self._encode_nano_base32(int.from_bytes(public_key, 'big'), 52)
+        checksum = hashlib.blake2b(public_key, digest_size=5).digest()[::-1]
+        checksum_part = self._encode_nano_base32(int.from_bytes(checksum, 'big'), 8)
+
+        return f"nano_{account_part}{checksum_part}"
     
     def address_to_public_key(self, address: str) -> Optional[bytes]:
-        """Convert Nano address to public key."""
+        """Convert Nano address to public key and verify checksum."""
         try:
+            if not address or not isinstance(address, str):
+                return None
+            if address != address.lower():
+                return None
             if not address.startswith('nano_'):
                 return None
             
-            encoded = address[5:]  # Remove 'nano_' prefix
-            decoded = base58.b58decode(encoded)
-            
-            if len(decoded) != 37:  # 32 bytes public key + 5 bytes checksum
+            encoded = address[5:]
+            if len(encoded) != 60:
                 return None
+
+            account_part = encoded[:52]
+            checksum_part = encoded[52:]
+
+            account_value = self._decode_nano_base32(account_part)
+            checksum_value = self._decode_nano_base32(checksum_part)
+            if account_value is None or checksum_value is None:
+                return None
+
+            if account_value >> 256 != 0:
+                return None
+            public_key = account_value.to_bytes(32, 'big')
+            checksum = checksum_value.to_bytes(5, 'big')
             
-            public_key = decoded[:32]
-            checksum = decoded[32:]
-            
-            # Verify checksum
             expected_checksum = hashlib.blake2b(public_key, digest_size=5).digest()[::-1]
             if checksum != expected_checksum:
                 return None

@@ -473,21 +473,48 @@ class ApplicationService:
         """Get wallet balances for current user."""
         try:
             if not self.current_user:
+                print("No current user set")
                 return {}
             
-            addresses = {
-                'nano': self.current_user.nano_address,
-                'arweave': self.current_user.arweave_address
-            }
+            addresses = {}
             
+            # Add NANO address
+            nano_address = getattr(self.current_user, 'nano_address', None)
+            if nano_address and isinstance(nano_address, str) and len(nano_address.strip()) > 0:
+                addresses['nano'] = nano_address.strip()
+            else:
+                print("Warning: No NANO address for balance query")
+            
+            # Add Arweave address
+            arweave_address = getattr(self.current_user, 'arweave_address', None)
+            if arweave_address and isinstance(arweave_address, str) and len(arweave_address.strip()) > 0:
+                addresses['arweave'] = arweave_address.strip()
+            else:
+                print("Warning: No Arweave address for balance query")
+            
+            # Add Solana address (for both SOL and USDC)
             solana_address = getattr(self.current_user, 'usdc_address', None)
-            if solana_address:
+            if solana_address and isinstance(solana_address, str) and len(solana_address.strip()) > 0:
+                solana_address = solana_address.strip()
                 # usdc_address is actually the Solana wallet public key
                 # Get both SOL and USDC balances from Solana
                 addresses['sol'] = solana_address
                 addresses['usdc'] = solana_address
+            else:
+                print("Warning: No Solana address for balance query")
             
-            return await self.blockchain.batch_get_balances(addresses)
+            if not addresses:
+                print("Warning: No addresses configured for balance query")
+                return {}
+            
+            # Fetch balances from blockchain
+            balances = await self.blockchain.batch_get_balances(addresses)
+            
+            if not balances:
+                print("Warning: No balances returned from blockchain")
+                return {}
+            
+            return balances
         except Exception as e:
             print(f"Error getting wallet balances: {e}")
             return {}
@@ -509,20 +536,37 @@ class ApplicationService:
         """Get wallet addresses for current user."""
         try:
             if not self.current_user:
+                print("No current user set")
                 return {}
             
             addresses = {}
-            if getattr(self.current_user, 'nano_address', None):
-                addresses['NANO'] = self.current_user.nano_address
             
+            # Get NANO address
+            nano_address = getattr(self.current_user, 'nano_address', None)
+            if nano_address and isinstance(nano_address, str) and len(nano_address.strip()) > 0:
+                addresses['NANO'] = nano_address.strip()
+            else:
+                print("No valid NANO address configured")
+            
+            # Get Solana address (stored as usdc_address)
             solana_address = getattr(self.current_user, 'usdc_address', None)
-            if solana_address:
+            if solana_address and isinstance(solana_address, str) and len(solana_address.strip()) > 0:
+                solana_address = solana_address.strip()
                 # usdc_address is the Solana wallet public key
                 addresses['SOL'] = solana_address
                 addresses['USDC'] = solana_address
+            else:
+                print("No valid Solana address configured")
             
-            if getattr(self.current_user, 'arweave_address', None):
-                addresses['ARWEAVE'] = self.current_user.arweave_address
+            # Get Arweave address
+            arweave_address = getattr(self.current_user, 'arweave_address', None)
+            if arweave_address and isinstance(arweave_address, str) and len(arweave_address.strip()) > 0:
+                addresses['ARWEAVE'] = arweave_address.strip()
+            else:
+                print("No valid Arweave address configured")
+            
+            if not addresses:
+                print("Warning: No wallet addresses configured for current user")
             
             return addresses
         except Exception as e:

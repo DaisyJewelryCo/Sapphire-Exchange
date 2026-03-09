@@ -770,6 +770,7 @@ class WalletOverviewWidget(QWidget):
         # Wallet sections with addresses
         self.wallet_buttons = {}
         self.wallet_addresses = {}
+        self.wallet_full_addresses = {}
         self.copy_buttons = {}
         currencies = ['SOL', 'USDC', 'NANO', 'ARWEAVE']
         
@@ -858,7 +859,7 @@ class WalletOverviewWidget(QWidget):
             copy_btn.clicked.connect(lambda checked, c=currency: self.copy_address(c))
             self.copy_buttons[currency] = copy_btn
             address_container.addWidget(copy_btn)
-            
+
             wallet_layout.addLayout(address_container)
             wallets_layout.addWidget(wallet_container)
         
@@ -934,9 +935,40 @@ class WalletOverviewWidget(QWidget):
     def copy_address(self, currency):
         """Copy wallet address to clipboard."""
         try:
+            if not currency or not isinstance(currency, str):
+                print(f"Invalid currency: {currency}")
+                QMessageBox.warning(self, "Invalid Currency", "Invalid currency specified")
+                return
+            
             addresses = app_service.get_wallet_addresses()
-            if currency in addresses:
-                address = addresses[currency]
+            
+            if not isinstance(addresses, dict):
+                print(f"Invalid addresses returned: {type(addresses)}")
+                QMessageBox.warning(self, "Address Error", "Failed to retrieve addresses")
+                return
+            
+            if currency not in addresses:
+                QMessageBox.warning(
+                    self,
+                    "Address Not Available",
+                    f"No {currency} address found for current user."
+                )
+                return
+            
+            address = addresses[currency]
+            
+            if not address or not isinstance(address, str) or len(address.strip()) == 0:
+                print(f"Invalid address for {currency}: {address}")
+                QMessageBox.warning(
+                    self,
+                    "Invalid Address",
+                    f"Invalid {currency} address configured"
+                )
+                return
+            
+            address = address.strip()
+            
+            try:
                 clipboard = QApplication.clipboard()
                 clipboard.setText(address)
                 
@@ -946,11 +978,12 @@ class WalletOverviewWidget(QWidget):
                     "Address Copied",
                     f"{currency} address copied to clipboard:\n{address}"
                 )
-            else:
-                QMessageBox.warning(
+            except Exception as e:
+                print(f"Error setting clipboard: {e}")
+                QMessageBox.critical(
                     self,
-                    "Address Not Available",
-                    f"No {currency} address found for current user."
+                    "Clipboard Error",
+                    f"Failed to copy to clipboard: {str(e)}"
                 )
         except Exception as e:
             print(f"Error copying address: {e}")
@@ -980,107 +1013,167 @@ class WalletOverviewWidget(QWidget):
         try:
             addresses = app_service.get_wallet_addresses()
             
+            if not isinstance(addresses, dict):
+                print(f"Warning: get_wallet_addresses returned non-dict: {type(addresses)}")
+                addresses = {}
+            
             for currency in ['SOL', 'USDC', 'NANO', 'ARWEAVE']:
-                if currency in self.wallet_addresses:
-                    if currency in addresses and addresses[currency]:
-                        address = addresses[currency]
-                        # Truncate long addresses for display
+                if currency not in self.wallet_addresses:
+                    continue
+                
+                try:
+                    address = addresses.get(currency) if isinstance(addresses, dict) else None
+                    
+                    # Validate address
+                    if address and isinstance(address, str) and len(address.strip()) > 0:
+                        address = address.strip()
+                        self.wallet_full_addresses[currency] = address
                         if len(address) > 20:
                             display_address = f"{address[:10]}...{address[-10:]}"
                         else:
                             display_address = address
                         self.wallet_addresses[currency].setText(display_address)
                         self.wallet_addresses[currency].setToolTip(f"Full address: {address}")
-                        # Enable copy button
                         if currency in self.copy_buttons:
                             self.copy_buttons[currency].setEnabled(True)
                     else:
+                        self.wallet_full_addresses[currency] = ""
                         self.wallet_addresses[currency].setText("No address available")
                         self.wallet_addresses[currency].setToolTip("No address available")
-                        # Disable copy button
                         if currency in self.copy_buttons:
                             self.copy_buttons[currency].setEnabled(False)
+                except Exception as e:
+                    print(f"Error loading {currency} address: {e}")
+                    self.wallet_full_addresses[currency] = ""
+                    self.wallet_addresses[currency].setText("Error loading address")
+                    if currency in self.copy_buttons:
+                        self.copy_buttons[currency].setEnabled(False)
         except Exception as e:
             print(f"Error loading wallet addresses: {e}")
             for currency in ['SOL', 'USDC', 'NANO', 'ARWEAVE']:
                 if currency in self.wallet_addresses:
+                    self.wallet_full_addresses[currency] = ""
                     self.wallet_addresses[currency].setText("Error loading address")
                     if currency in self.copy_buttons:
                         self.copy_buttons[currency].setEnabled(False)
     
     def on_balances_loaded(self, balances):
         """Handle loaded wallet balances."""
-        self.wallet_balances = balances
-        
-        # Update wallet buttons
-        for currency, btn in self.wallet_buttons.items():
+        try:
+            if not isinstance(balances, dict):
+                print(f"Warning: get_wallet_balances returned non-dict: {type(balances)}")
+                balances = {}
+            
+            self.wallet_balances = balances
+            
+            # Update wallet buttons
+            for currency, btn in self.wallet_buttons.items():
+                if btn is None:
+                    continue
+                
+                try:
+                    display_balance = self._format_balance_for_display(currency, balances)
+                    btn.setText(f"{currency} - {display_balance}")
+                except Exception as e:
+                    print(f"Error formatting balance for {currency}: {e}")
+                    default_balance = "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
+                    btn.setText(f"{currency} - {default_balance}")
+        except Exception as e:
+            print(f"Error in on_balances_loaded: {e}")
+            # Set all to error state
+            for currency, btn in self.wallet_buttons.items():
+                if btn:
+                    default_balance = "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
+                    btn.setText(f"{currency} - {default_balance}")
+    
+    def _format_balance_for_display(self, currency: str, balances: dict) -> str:
+        """Format balance value for display with proper error handling."""
+        try:
+            # Normalize currency key
             currency_key = currency.lower()
             if currency_key == 'arweave':
-                currency_key = 'ar'  # Arweave might use 'ar' as key
+                currency_key = 'ar'
             
-            if currency_key in balances:
-                balance_data = balances[currency_key]
-                if isinstance(balance_data, dict):
-                    balance = balance_data.get('balance', '0')
-                    if currency == 'NANO':
-                        try:
-                            balance_nano = float(balance) / (10**30)
-                            display_balance = f"{balance_nano:.6f}"
-                        except:
-                            display_balance = "0.000000"
-                    elif currency == 'SOL':
-                        try:
-                            display_balance = f"{float(balance):,.6f}"
-                        except:
-                            display_balance = "0.000000"
-                    else:
-                        try:
-                            display_balance = f"{float(balance):,.2f}"
-                        except:
-                            display_balance = "0.00"
-                    
-                    btn.setText(f"{currency} - {display_balance}")
-                else:
-                    # Handle case where balance_data is not a dict (e.g., direct value)
-                    try:
-                        if currency == 'NANO':
-                            balance_nano = float(balance_data) / (10**30)
-                            display_balance = f"{balance_nano:.6f}"
-                        elif currency == 'SOL':
-                            display_balance = f"{float(balance_data):,.6f}"
-                        else:
-                            display_balance = f"{float(balance_data):,.2f}"
-                        btn.setText(f"{currency} - {display_balance}")
-                    except:
-                        btn.setText(f"{currency} - {balance_data}")
+            # Get balance data
+            balance_data = balances.get(currency_key)
+            
+            # Handle None or missing balance
+            if balance_data is None:
+                return "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
+            
+            # Extract numeric value from various formats
+            balance_value = None
+            
+            if isinstance(balance_data, dict):
+                # Try to get balance from dict
+                balance_value = balance_data.get('balance', balance_data.get('amount', 0))
+            elif isinstance(balance_data, (int, float)):
+                balance_value = balance_data
+            elif isinstance(balance_data, str):
+                try:
+                    balance_value = float(balance_data)
+                except (ValueError, TypeError):
+                    return "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
             else:
-                btn.setText(f"{currency} - 0.000000" if currency in ['SOL', 'NANO'] else f"{currency} - 0.00")
+                return "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
+            
+            # Ensure we have a numeric value
+            if balance_value is None:
+                return "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
+            
+            balance_value = float(balance_value)
+            
+            # Format based on currency
+            if currency == 'NANO':
+                # NANO uses raw units, convert to NANO (30 decimals)
+                if balance_value > 1e30:
+                    balance_nano = balance_value / (10**30)
+                else:
+                    balance_nano = balance_value
+                return f"{balance_nano:.6f}"
+            elif currency == 'SOL':
+                # SOL uses 9 decimals (lamports) or direct value
+                if balance_value > 1e8:
+                    balance_sol = balance_value / (10**9)
+                else:
+                    balance_sol = balance_value
+                return f"{balance_sol:,.6f}"
+            else:
+                # USDC, ARWEAVE, and others use 2 decimal places
+                return f"{float(balance_value):,.2f}"
+        
+        except Exception as e:
+            print(f"Error in _format_balance_for_display for {currency}: {e}")
+            return "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
     
     def on_balances_error(self, error):
         """Handle balance loading error."""
         print(f"Error loading wallet balances: {error}")
         for currency, btn in self.wallet_buttons.items():
-            btn.setText(f"{currency} - Error loading")
+            if btn:
+                # Show default zero balance on error instead of "Error loading"
+                default_balance = "0.000000" if currency in ['SOL', 'NANO'] else "0.00"
+                btn.setText(f"{currency} - {default_balance}")
     
     def show_wallet_details(self, currency):
         """Show wallet details dialog and transaction history for selected wallet."""
         from ui.dialogs.wallet_details_dialog import WalletDetailsDialog
         from ui.dialogs.wallet_management import WalletInfo
         
-        # Get the address for the selected currency
-        address_label = self.wallet_addresses.get(currency, None)
-        address = address_label.text() if (address_label and hasattr(address_label, 'text')) else ''
-        
-        # Create wallet info with ONLY the selected currency's address
+        addresses = app_service.get_wallet_addresses()
+        address = self.wallet_full_addresses.get(currency, "")
+        if (not address) and isinstance(addresses, dict):
+            address = addresses.get(currency, "")
+        address = (address or "").strip()
+
         wallet_info = WalletInfo(
             name=f"{currency} Wallet",
             mnemonic=""
         )
-        
-        # Set only the relevant address based on selected currency
+
         if currency == 'NANO':
             wallet_info.address_nano = address
-        elif currency == 'USDC':
+        elif currency in ('SOL', 'USDC'):
             wallet_info.address_solana = address
         elif currency == 'ARWEAVE':
             wallet_info.address_arweave = address

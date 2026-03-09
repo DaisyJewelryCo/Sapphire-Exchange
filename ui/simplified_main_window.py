@@ -3,9 +3,16 @@ Simplified Main Window for Sapphire Exchange.
 Clean, maintainable main window using distributed components.
 """
 
+import json
+import os
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QStackedWidget, QStatusBar, QMessageBox
+    QStackedWidget, QStatusBar, QMessageBox, QInputDialog, QLineEdit,
+    QDialog, QTextEdit
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
@@ -18,6 +25,55 @@ from ui.main_window_components import (
 )
 from ui.auction_widget import AuctionListWidget
 from ui.wallet_widget import SimpleWalletWidget
+
+
+MNEMONIC_BACKUP_FILE = "/Users/seanmorrissey/Desktop/Coding/Sapphire_Exchange/sapphire_mnemonic_backup.mnemonic.enc"
+
+
+def decrypt_mnemonic_backup_payload(payload, password):
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid backup file.")
+
+    if payload.get('type') != 'sapphire_mnemonic_backup':
+        raise ValueError("Selected file is not a Sapphire mnemonic backup.")
+
+    kdf_data = payload.get('kdf') or {}
+    cipher_data = payload.get('cipher') or {}
+    salt_hex = kdf_data.get('salt')
+    nonce_hex = cipher_data.get('nonce')
+    ciphertext_hex = cipher_data.get('ciphertext')
+    iterations = kdf_data.get('iterations', 100000)
+
+    if not salt_hex or not nonce_hex or not ciphertext_hex:
+        raise ValueError("Backup file is incomplete.")
+
+    if not isinstance(iterations, int) or iterations <= 0:
+        raise ValueError("Backup file has invalid encryption settings.")
+
+    try:
+        salt = bytes.fromhex(salt_hex)
+        nonce = bytes.fromhex(nonce_hex)
+        ciphertext = bytes.fromhex(ciphertext_hex)
+    except ValueError as exc:
+        raise ValueError("Backup file is corrupted.") from exc
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=iterations,
+    )
+    key = kdf.derive(password.encode('utf-8'))
+
+    try:
+        mnemonic = AESGCM(key).decrypt(nonce, ciphertext, None).decode('utf-8').strip()
+    except Exception as exc:
+        raise ValueError("Incorrect password or unreadable backup.") from exc
+
+    if not mnemonic:
+        raise ValueError("Backup decrypted successfully, but the mnemonic is empty.")
+
+    return mnemonic
 
 
 class SimplifiedMainWindow(QMainWindow):
@@ -252,7 +308,28 @@ class SimplifiedMainWindow(QMainWindow):
         
         status_bar.addWidget(status_container)
         
-        # Activity log button
+        self.view_mnemonic_btn = QPushButton("View Backup")
+        self.view_mnemonic_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0f172a;
+                color: white;
+                border: none;
+                padding: 6px 10px;
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #1e293b;
+            }
+            QPushButton:disabled {
+                background-color: #cbd5e1;
+                color: #64748b;
+            }
+        """)
+        self.view_mnemonic_btn.clicked.connect(self.open_mnemonic_backup)
+        status_bar.addPermanentWidget(self.view_mnemonic_btn)
+        
         self.activity_btn = QPushButton("Activity Log")
         self.activity_btn.setStyleSheet("""
             QPushButton {
@@ -352,7 +429,6 @@ class SimplifiedMainWindow(QMainWindow):
             self.sidebar.setVisible(False)
             self.stacked_widget.setCurrentWidget(self.login_screen)
             self.login_screen.reset_form()
-            # Update status
             self.status_label.setText("Logged out successfully")
         else:
             print("[DEBUG] Logout failed")
@@ -368,13 +444,83 @@ class SimplifiedMainWindow(QMainWindow):
         if self.activity_overlay.isVisible():
             self.activity_overlay.hide()
         else:
-            # Position overlay above status bar
             overlay_height = 128
             self.activity_overlay.setGeometry(
                 0, self.height() - 48 - overlay_height,
                 self.width(), overlay_height
             )
             self.activity_overlay.show()
+    
+    def open_mnemonic_backup(self):
+        """Open and decrypt the configured mnemonic backup."""
+        password, ok = QInputDialog.getText(
+            self,
+            "Enter Backup Password",
+            "Enter password to decrypt your mnemonic backup:",
+            QLineEdit.Password
+        )
+        password = (password or '').strip()
+        if not ok:
+            return
+        if not password:
+            QMessageBox.warning(self, "Password Required", "Password cannot be empty.")
+            return
+
+        try:
+            with open(MNEMONIC_BACKUP_FILE, 'r', encoding='utf-8') as backup_file:
+                payload = json.load(backup_file)
+            mnemonic = decrypt_mnemonic_backup_payload(payload, password)
+        except FileNotFoundError:
+            QMessageBox.warning(self, "Backup Not Found", f"Backup file not found:\n{MNEMONIC_BACKUP_FILE}")
+            return
+        except json.JSONDecodeError:
+            QMessageBox.warning(self, "Invalid Backup", "The configured backup file is not valid JSON.")
+            return
+        except ValueError as exc:
+            QMessageBox.warning(self, "Unable to Decrypt Backup", str(exc))
+            return
+        except Exception as exc:
+            QMessageBox.critical(self, "Backup Error", f"Failed to read backup: {exc}")
+            return
+
+        self.show_mnemonic_backup_dialog(mnemonic, MNEMONIC_BACKUP_FILE)
+
+    def show_mnemonic_backup_dialog(self, mnemonic, file_path):
+        """Show decrypted mnemonic in a modal dialog."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Backup Mnemonic")
+        dialog.setModal(True)
+        dialog.resize(640, 320)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        warning_label = QLabel(
+            "This is your decrypted backup mnemonic. Keep it private and close this window when you are done."
+        )
+        warning_label.setWordWrap(True)
+        warning_label.setStyleSheet(
+            "background-color: #fff7ed; color: #9a3412; border: 1px solid #fdba74; "
+            "border-radius: 6px; padding: 12px;"
+        )
+        layout.addWidget(warning_label)
+
+        file_label = QLabel(f"Backup file: {os.path.basename(file_path)}")
+        file_label.setStyleSheet("color: #64748b; font-size: 12px;")
+        layout.addWidget(file_label)
+
+        mnemonic_display = QTextEdit()
+        mnemonic_display.setReadOnly(True)
+        mnemonic_display.setPlainText(mnemonic)
+        mnemonic_display.setFont(QFont("Courier New", 12, QFont.Bold))
+        layout.addWidget(mnemonic_display)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn, 0, Qt.AlignRight)
+
+        dialog.exec_()
     
     def update_status(self):
         """Update status information."""

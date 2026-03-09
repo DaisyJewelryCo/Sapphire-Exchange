@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QProgressBar, QFrame, QScrollArea, QDialog, QDialogButtonBox,
                              QFormLayout, QCheckBox, QSpinBox, QComboBox, QTableWidget,
                              QTableWidgetItem, QHeaderView, QApplication, QFileDialog,
-                             QSizePolicy)
+                             QSizePolicy, QInputDialog)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QColor, QPalette
 import qrcode
@@ -20,6 +20,7 @@ import io
 
 from security.security_manager import SecurityManager
 from security.performance_manager import PerformanceManager
+from security.account_backup_manager import account_backup_manager
 from services.application_service import app_service
 from services.arweave_purchase_service import get_arweave_purchase_service
 from services.funding_manager_service import get_funding_manager_service
@@ -55,6 +56,7 @@ class WalletBalanceWidget(QWidget):
     """Widget displaying balance for a single currency."""
     
     balance_updated = pyqtSignal(str, dict)  # currency, balance_data
+    private_key_requested = pyqtSignal(str)
     
     def __init__(self, currency: str, parent=None):
         super().__init__(parent)
@@ -120,6 +122,10 @@ class WalletBalanceWidget(QWidget):
         self.receive_btn = QPushButton("Receive")
         self.receive_btn.clicked.connect(self.show_receive_dialog)
         button_layout.addWidget(self.receive_btn)
+
+        self.view_key_btn = QPushButton("View Private Key")
+        self.view_key_btn.clicked.connect(lambda: self.private_key_requested.emit(self.currency))
+        button_layout.addWidget(self.view_key_btn)
         
         if self.currency == "ARWEAVE":
             self.buy_btn = QPushButton("Buy with USDC")
@@ -820,18 +826,45 @@ class ArweavePurchaseDialog(QDialog):
             if not hasattr(user, 'usdc_address') or not user.usdc_address:
                 raise Exception("Solana wallet not configured")
             
-            # Get private key (this would normally come from secure storage)
-            # For now, assuming it's available in the user object
-            keypair_bytes = None
-            if hasattr(user, 'solana_private_key'):
-                keypair_bytes = user.solana_private_key
-            
+            keypair_bytes = getattr(user, 'solana_private_key', None)
+            if not keypair_bytes:
+                wallets = getattr(user, 'wallets', {}) if hasattr(user, 'wallets') else {}
+                if isinstance(wallets, dict):
+                    sol_wallet = wallets.get('solana', {})
+                    if isinstance(sol_wallet, dict):
+                        keypair_bytes = sol_wallet.get('private_key') or sol_wallet.get('secret_key')
+
+            if not keypair_bytes:
+                mnemonic = getattr(user, 'mnemonic', None)
+                if mnemonic:
+                    try:
+                        from blockchain.wallet_generators.solana_generator import SolanaWalletGenerator
+                        derived_wallet = SolanaWalletGenerator().generate_from_mnemonic(mnemonic)
+                        keypair_bytes = derived_wallet.private_key
+                        if keypair_bytes:
+                            setattr(user, 'solana_private_key', keypair_bytes)
+                    except Exception:
+                        keypair_bytes = None
+
+            if not keypair_bytes:
+                import os
+                keypair_bytes = os.getenv("SOLANA_PRIVATE_KEY", "").strip() or None
+
+            if not keypair_bytes:
+                return {
+                    "success": False,
+                    "error": "Solana private key unavailable. Log in again with your seed phrase."
+                }
+
             result = await service.execute_swap(
                 user.usdc_address,
                 usdc_amount,
                 keypair_bytes=keypair_bytes
             )
-            
+
+            if not result:
+                swap_error = getattr(service, "last_error", None) or "Swap failed"
+                return {"success": False, "error": swap_error}
             return result
         
         except Exception as e:
@@ -988,6 +1021,7 @@ class WalletWidget(QWidget):
         for currency in currencies:
             wallet_widget = WalletBalanceWidget(currency)
             wallet_widget.balance_updated.connect(self.refresh_balance)
+            wallet_widget.private_key_requested.connect(self.view_private_key_for_currency)
             self.wallet_widgets[currency.lower()] = wallet_widget
             self.tab_widget.addTab(wallet_widget, currency)
         
@@ -1037,6 +1071,100 @@ class WalletWidget(QWidget):
         """Refresh all currency balances."""
         for currency in self.wallet_widgets.keys():
             self.refresh_balance(currency, {})
+
+    def view_private_key_for_currency(self, currency: str):
+        user = app_service.get_current_user()
+        if not user:
+            QMessageBox.warning(self, "Not Logged In", "Please log in to view private keys.")
+            return
+
+        nano_address = getattr(user, 'nano_address', None)
+        if not nano_address:
+            QMessageBox.warning(self, "Unavailable", "Nano address is required to locate your backup.")
+            return
+
+        mnemonic, ok = QInputDialog.getText(
+            self,
+            "Enter Mnemonic",
+            "Enter your mnemonic phrase to decrypt your account backup:",
+            QLineEdit.Normal
+        )
+        mnemonic = (mnemonic or "").strip()
+        if not ok or not mnemonic:
+            return
+
+        worker = AsyncWorker(self._load_private_key_from_backup(currency, nano_address, mnemonic))
+        worker.finished.connect(lambda result: self._on_private_key_loaded(currency, result))
+        worker.error.connect(lambda error: QMessageBox.critical(self, "Backup Error", str(error)))
+        worker.start()
+        self._private_key_worker = worker
+
+    async def _load_private_key_from_backup(self, currency: str, nano_address: str, mnemonic: str):
+        success, account_data = await account_backup_manager.restore_account_from_backup(nano_address, mnemonic)
+        if not success or not isinstance(account_data, dict):
+            return {'success': False, 'error': 'Failed to decrypt backup. Verify your mnemonic and try again.'}
+
+        private_keys = account_data.get('private_keys', {})
+        wallets = account_data.get('wallets', {})
+        currency_upper = (currency or '').upper()
+
+        if currency_upper == 'NANO':
+            key_value = private_keys.get('nano') or private_keys.get('nano_private_key')
+            if not key_value and isinstance(wallets.get('nano'), dict):
+                key_value = wallets.get('nano', {}).get('private_key')
+        elif currency_upper == 'DOGE':
+            key_value = (
+                private_keys.get('doge') or
+                private_keys.get('dogecoin') or
+                private_keys.get('solana') or
+                private_keys.get('solana_private_key')
+            )
+            if not key_value:
+                if isinstance(wallets.get('doge'), dict):
+                    key_value = wallets.get('doge', {}).get('private_key')
+                elif isinstance(wallets.get('dogecoin'), dict):
+                    key_value = wallets.get('dogecoin', {}).get('private_key')
+                elif isinstance(wallets.get('solana'), dict):
+                    key_value = wallets.get('solana', {}).get('private_key')
+        elif currency_upper == 'ARWEAVE':
+            key_value = private_keys.get('arweave_jwk') or private_keys.get('arweave')
+            if not key_value and isinstance(wallets.get('arweave'), dict):
+                key_value = wallets.get('arweave', {}).get('jwk')
+            if isinstance(key_value, dict):
+                key_value = json.dumps(key_value, indent=2)
+        else:
+            key_value = None
+
+        if isinstance(key_value, bytes):
+            key_value = key_value.hex()
+
+        if not key_value:
+            return {'success': False, 'error': f'No private key found in backup for {currency_upper}.'}
+
+        return {'success': True, 'private_key': str(key_value)}
+
+    def _on_private_key_loaded(self, currency: str, result: dict):
+        if not result or not result.get('success'):
+            error_message = (result or {}).get('error', 'Unable to load private key from backup.')
+            QMessageBox.warning(self, 'Private Key Unavailable', error_message)
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{currency.upper()} Private Key")
+        dialog.setModal(True)
+        dialog.resize(700, 380)
+
+        layout = QVBoxLayout(dialog)
+        value_display = QTextEdit()
+        value_display.setReadOnly(True)
+        value_display.setPlainText(result.get('private_key', ''))
+        layout.addWidget(value_display)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+
+        dialog.exec_()
 
 
 class PortfolioSummaryWidget(QWidget):

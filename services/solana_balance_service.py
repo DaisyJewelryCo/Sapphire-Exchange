@@ -263,6 +263,48 @@ class SolanaBalanceService:
         except Exception as e:
             self._set_last_error(f"Error getting all balances: {e}")
             return {}
+    
+    async def get_recent_transactions(self, wallet_address: str, limit: int = 10) -> Optional[List[Dict[str, Any]]]:
+        """Get recent transactions for a wallet address."""
+        try:
+            # Get recent transaction signatures
+            params = [wallet_address, {"limit": limit}]
+            result = await self._make_rpc_call("getSignaturesForAddress", params)
+            
+            if result is None:
+                self._set_last_error("Failed to fetch transaction signatures")
+                return None
+            
+            transactions = []
+            for sig_info in result:
+                if sig_info.get("signature"):
+                    tx = {
+                        "signature": sig_info.get("signature"),
+                        "slot": sig_info.get("slot"),
+                        "block_time": sig_info.get("blockTime"),
+                        "err": sig_info.get("err"),
+                        "confirmation_status": sig_info.get("confirmationStatus")
+                    }
+                    transactions.append(tx)
+            
+            return transactions
+        except Exception as e:
+            self._set_last_error(f"Error getting recent transactions: {e}")
+            return None
+    
+    async def get_transaction_details(self, signature: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a specific transaction."""
+        try:
+            params = [signature, {"encoding": "jsonParsed"}]
+            result = await self._make_rpc_call("getTransaction", params)
+            
+            if result is None:
+                return None
+            
+            return result
+        except Exception as e:
+            self._set_last_error(f"Error getting transaction details: {e}")
+            return None
 
 
 async def get_solana_balance_service() -> SolanaBalanceService:

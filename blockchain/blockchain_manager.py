@@ -12,6 +12,7 @@ from utils.qasync_compat import async_sleep
 from .nano_client import NanoClient
 from .arweave_client import ArweaveClient
 from .solana_usdc_client import SolanaUsdcClient
+from .wallet_generators.solana_generator import SolanaWalletGenerator
 # from .dogecoin_client import DogecoinClient  # Foundation code for real DOGE blockchain
 
 
@@ -50,6 +51,9 @@ class BlockchainManager:
         # Real Solana USDC implementation
         self.solana_usdc_client = SolanaUsdcClient(blockchain_config.get_usdc_config())
         # self.dogecoin_client = DogecoinClient(blockchain_config.get_dogecoin_config())  # Foundation code for real DOGE blockchain
+        
+        # Solana wallet generator for creating proper wallets
+        self.solana_wallet_generator = SolanaWalletGenerator()
         
         # Connection status tracking
         self.connection_status: Dict[str, ConnectionStatus] = {
@@ -391,17 +395,17 @@ class BlockchainManager:
             return None
     
     async def generate_usdc_address(self) -> Optional[str]:
-        """Generate new USDC address. Returns a mock Solana address."""
+        """
+        Generate new USDC address by creating a proper Solana wallet.
+        Returns the wallet's Solana public key in base58 format.
+        """
         try:
-            import uuid
-            import base58
-            
-            # Generate a mock Solana address using base58 encoding
-            # Solana addresses are 32-byte public keys encoded in base58
-            unique_bytes = uuid.uuid4().bytes + uuid.uuid4().bytes[:8]
-            solana_address = base58.b58encode(unique_bytes).decode('ascii')
-            
-            return solana_address
+            solana_wallet = self.solana_wallet_generator.generate_new()
+            if solana_wallet and solana_wallet.address:
+                return solana_wallet.address
+            else:
+                print("Error generating Solana wallet")
+                return None
         except Exception as e:
             print(f"Error generating USDC address: {e}")
             return None
@@ -476,57 +480,120 @@ class BlockchainManager:
             task_results = await asyncio.gather(*[task[1] for task in tasks], return_exceptions=True)
             
             for blockchain, result in zip([task[0] for task in tasks], task_results):
-                if isinstance(result, Exception):
-                    print(f"Error getting {blockchain} balance: {result}")
-                    results[blockchain] = None
-                else:
-                    if blockchain == 'nano' and result:
+                try:
+                    if isinstance(result, Exception):
+                        print(f"Error getting {blockchain} balance: {result}")
+                        # Set sensible defaults on error
+                        results[blockchain] = 0.0 if blockchain in ['sol', 'usdc'] else None
+                    elif result is None:
+                        print(f"No result for {blockchain} balance")
+                        results[blockchain] = 0.0 if blockchain in ['sol', 'usdc'] else None
+                    elif blockchain == 'nano' and isinstance(result, dict):
                         # Convert raw to NANO for display
-                        results[blockchain] = float(result.get('balance', '0')) / (10**30)
+                        balance_raw = result.get('balance', '0')
+                        try:
+                            results[blockchain] = float(balance_raw) / (10**30)
+                        except (ValueError, TypeError, ZeroDivisionError):
+                            print(f"Invalid NANO balance value: {balance_raw}")
+                            results[blockchain] = 0.0
                     elif blockchain == 'sol' and isinstance(result, dict):
                         # Result is dict with sol_balance key
-                        results[blockchain] = result.get('sol_balance', 0)
+                        sol_balance = result.get('sol_balance', 0)
+                        try:
+                            results[blockchain] = float(sol_balance) if sol_balance else 0.0
+                        except (ValueError, TypeError):
+                            print(f"Invalid SOL balance value: {sol_balance}")
+                            results[blockchain] = 0.0
                     elif blockchain == 'usdc' and isinstance(result, dict):
                         # Result is dict with usdc_balance key
-                        results[blockchain] = result.get('usdc_balance', 0)
+                        usdc_balance = result.get('usdc_balance', 0)
+                        try:
+                            results[blockchain] = float(usdc_balance) if usdc_balance else 0.0
+                        except (ValueError, TypeError):
+                            print(f"Invalid USDC balance value: {usdc_balance}")
+                            results[blockchain] = 0.0
                     else:
-                        results[blockchain] = result
+                        # Fallback: try to convert to float
+                        try:
+                            results[blockchain] = float(result) if result else 0.0
+                        except (ValueError, TypeError):
+                            print(f"Could not convert {blockchain} balance to float: {result}")
+                            results[blockchain] = 0.0
+                except Exception as e:
+                    print(f"Error processing {blockchain} balance result: {e}")
+                    results[blockchain] = 0.0 if blockchain in ['sol', 'usdc'] else None
         
         return results
     
     async def _get_sol_balance(self, address: str) -> Optional[Dict[str, float]]:
         """Get native SOL balance for a Solana address."""
         try:
-            if not self.solana_usdc_client:
-                return None
+            if not address or not isinstance(address, str):
+                print(f"Invalid address for SOL balance: {address}")
+                return {'sol_balance': 0.0, 'address': address}
             
-            balance_info = await self.solana_usdc_client.get_balance(address)
-            if balance_info:
-                return {
-                    'sol_balance': balance_info.get('sol_balance', 0),
-                    'address': address
-                }
-            return None
+            if not self.solana_usdc_client:
+                print("Solana USDC client not initialized")
+                return {'sol_balance': 0.0, 'address': address}
+            
+            try:
+                balance_info = await self.solana_usdc_client.get_balance(address)
+                if balance_info and isinstance(balance_info, dict):
+                    sol_balance = balance_info.get('sol_balance', 0)
+                    # Ensure it's a numeric value
+                    try:
+                        sol_balance = float(sol_balance) if sol_balance else 0.0
+                    except (ValueError, TypeError):
+                        print(f"Invalid SOL balance value: {sol_balance}")
+                        sol_balance = 0.0
+                    return {
+                        'sol_balance': sol_balance,
+                        'address': address
+                    }
+                else:
+                    print(f"Invalid balance info returned: {balance_info}")
+                    return {'sol_balance': 0.0, 'address': address}
+            except Exception as e:
+                print(f"Error querying SOL balance: {e}")
+                return {'sol_balance': 0.0, 'address': address}
         except Exception as e:
             print(f"Error getting SOL balance: {e}")
-            return None
+            return {'sol_balance': 0.0, 'address': address}
     
     async def _get_usdc_balance_solana(self, address: str) -> Optional[Dict[str, float]]:
         """Get USDC token balance from Solana for a given address."""
         try:
-            if not self.solana_usdc_client:
-                return None
+            if not address or not isinstance(address, str):
+                print(f"Invalid address for USDC balance: {address}")
+                return {'usdc_balance': 0.0, 'address': address}
             
-            balance_info = await self.solana_usdc_client.get_balance(address)
-            if balance_info:
-                return {
-                    'usdc_balance': balance_info.get('usdc_balance', 0),
-                    'address': address
-                }
-            return None
+            if not self.solana_usdc_client:
+                print("Solana USDC client not initialized")
+                return {'usdc_balance': 0.0, 'address': address}
+            
+            try:
+                balance_info = await self.solana_usdc_client.get_balance(address)
+                if balance_info and isinstance(balance_info, dict):
+                    usdc_balance = balance_info.get('usdc_balance', 0)
+                    # Ensure it's a numeric value
+                    try:
+                        usdc_balance = float(usdc_balance) if usdc_balance else 0.0
+                    except (ValueError, TypeError):
+                        print(f"Invalid USDC balance value: {usdc_balance}")
+                        usdc_balance = 0.0
+                    return {
+                        'usdc_balance': usdc_balance,
+                        'address': address
+                    }
+                else:
+                    print(f"Invalid balance info returned: {balance_info}")
+                    return {'usdc_balance': 0.0, 'address': address}
+            except Exception as e:
+                print(f"Error querying USDC balance: {e}")
+                return {'usdc_balance': 0.0, 'address': address}
         except Exception as e:
             print(f"Error getting USDC balance from Solana: {e}")
-            return None
+            return {'usdc_balance': 0.0, 'address': address}
     
     # Data integrity methods
     async def verify_data_integrity(self, tx_id: str, expected_hash: str) -> bool:

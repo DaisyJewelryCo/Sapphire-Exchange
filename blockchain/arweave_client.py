@@ -18,6 +18,7 @@ from Crypto.Hash import SHA256
 
 # Database interface for wallet storage
 from sql_blockchain.blockchain_interface import ArweaveInterface, ConnectionConfig
+from blockchain.wallet_generators.arweave_generator import ArweaveWalletGenerator
 
 
 class MockArweaveTransaction:
@@ -123,6 +124,9 @@ class ArweaveClient:
         # Conversion constants
         self.AR_TO_WINSTON = 10**12
         self.WINSTON_TO_AR = 1 / (10**12)
+        
+        # Arweave wallet generator for creating proper wallets
+        self.wallet_generator = ArweaveWalletGenerator()
     
     async def initialize(self) -> bool:
         """Initialize the Arweave client."""
@@ -396,17 +400,17 @@ class ArweaveClient:
             return False
     
     async def generate_address(self) -> Optional[str]:
-        """Generate a new Arweave address."""
+        """
+        Generate a new Arweave address by creating a proper RSA-4096 wallet.
+        Returns the wallet's Arweave address (SHA-256 of public key in base64url format).
+        """
         try:
-            # Generate a new wallet ID
-            wallet_id = str(uuid.uuid4())
-            
-            # Create a mock Arweave address
-            # Real Arweave addresses are base64url encoded public keys
-            # For now, use mock format
-            address = f"arweave_{wallet_id[:16]}"
-            
-            return address
+            arweave_wallet = self.wallet_generator.generate_new()
+            if arweave_wallet and arweave_wallet.address:
+                return arweave_wallet.address
+            else:
+                print("Error generating Arweave wallet")
+                return None
                 
         except Exception as e:
             print(f"Error generating Arweave address: {e}")
