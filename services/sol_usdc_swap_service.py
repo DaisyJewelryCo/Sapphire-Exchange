@@ -7,6 +7,7 @@ import base64
 import binascii
 import aiohttp
 import os
+import re
 from typing import Dict, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass
@@ -25,6 +26,11 @@ except ImportError:
     AsyncClient = None
     SoldersPubkey = None
     SOLANA_AVAILABLE = False
+
+try:
+    from spl.token.instructions import get_associated_token_address
+except ImportError:
+    get_associated_token_address = None
 
 
 @dataclass
@@ -45,6 +51,7 @@ class SolUsdcSwapService:
     ASSOCIATED_TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280
     TRANSACTION_FEE_BUFFER_LAMPORTS = 250_000
     DEFAULT_SWAP_RATIO = 0.9
+    SPL_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
     
     # Jupiter API endpoints
     JUPITER_QUOTE_APIS = [
@@ -132,6 +139,26 @@ class SolUsdcSwapService:
     def set_slippage_bps(self, slippage_bps: int):
         """Set slippage tolerance in basis points."""
         self.slippage_bps = self._resolve_slippage(slippage_bps)
+
+    def _format_send_transaction_error(self, error_message: Optional[str]) -> Optional[str]:
+        """Translate low-level Solana transaction failures into clearer swap errors."""
+        message = (error_message or "").strip()
+        if not message:
+            return None
+
+        lamport_match = re.search(r"insufficient lamports\s+(\d+),\s+need\s+(\d+)", message)
+        if not lamport_match:
+            return f"Error sending transaction: {message}"
+
+        available_lamports = int(lamport_match.group(1))
+        required_lamports = int(lamport_match.group(2))
+        missing_lamports = max(required_lamports - available_lamports, 0)
+        return (
+            "Insufficient SOL to create the token accounts required for this swap. "
+            f"Available: {available_lamports / self.LAMPORTS_PER_SOL:.6f} SOL, "
+            f"required: {required_lamports / self.LAMPORTS_PER_SOL:.6f} SOL, "
+            f"shortfall: {missing_lamports / self.LAMPORTS_PER_SOL:.6f} SOL."
+        )
 
     def _resolve_input_amount(self, sol_amount: float) -> Optional[int]:
         """Validate SOL input and convert to lamports."""
@@ -330,19 +357,33 @@ class SolUsdcSwapService:
         if not wallet_address or not target_mint:
             return None
 
-        result = await self._request_rpc(
-            "getTokenAccountsByOwner",
-            [
-                wallet_address,
-                {"mint": target_mint},
-                {"encoding": "jsonParsed"}
-            ]
-        )
-        if result is None:
-            return None
+        if not get_associated_token_address or not SoldersPubkey:
+            return False
 
-        accounts = result.get("value") or []
-        return len(accounts) > 0
+        try:
+            associated_token_address = str(
+                get_associated_token_address(
+                    SoldersPubkey.from_string(wallet_address),
+                    SoldersPubkey.from_string(target_mint)
+                )
+            )
+            account_info = await self._request_rpc(
+                "getAccountInfo",
+                [
+                    associated_token_address,
+                    {"encoding": "jsonParsed"}
+                ]
+            )
+            if account_info is None:
+                return None
+
+            value = account_info.get("value")
+            if value is None:
+                return False
+
+            return value.get("owner") == self.SPL_TOKEN_PROGRAM_ID and value.get("lamports", 0) > 0
+        except Exception:
+            return False
 
     async def calculate_swap_plan(self, wallet_pubkey: str, sol_balance: float,
                                   swap_ratio: Optional[float] = None) -> Optional[Dict[str, Any]]:
@@ -370,6 +411,10 @@ class SolUsdcSwapService:
         requested_lamports = min(int(balance_lamports * resolved_ratio), balance_lamports)
         reserve_lamports = self.TRANSACTION_FEE_BUFFER_LAMPORTS
 
+        has_wrapped_sol_account = await self.wallet_has_token_account(wallet_address, self.SOL_MINT)
+        if has_wrapped_sol_account is not True:
+            reserve_lamports += self.ASSOCIATED_TOKEN_ACCOUNT_RENT_LAMPORTS
+
         has_usdc_account = await self.wallet_has_token_account(wallet_address, self.USDC_MINT)
         if has_usdc_account is not True:
             reserve_lamports += self.ASSOCIATED_TOKEN_ACCOUNT_RENT_LAMPORTS
@@ -393,6 +438,7 @@ class SolUsdcSwapService:
             "swap_amount_sol": swap_lamports / self.LAMPORTS_PER_SOL,
             "reserve_lamports": reserve_lamports,
             "reserve_sol": reserve_lamports / self.LAMPORTS_PER_SOL,
+            "wrapped_sol_account_exists": has_wrapped_sol_account is True,
             "usdc_account_exists": has_usdc_account is True,
         }
     
@@ -558,7 +604,8 @@ class SolUsdcSwapService:
                         continue
 
             if response is None:
-                self._set_last_error(f"Error sending transaction: {last_error}")
+                formatted_error = self._format_send_transaction_error(last_error)
+                self._set_last_error(formatted_error or f"Error sending transaction: {last_error}")
                 return None
 
             tx_signature = response.value if hasattr(response, 'value') else str(response)

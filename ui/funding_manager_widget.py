@@ -669,11 +669,13 @@ class SolUsdcSwapDialog(QDialog):
             self.accept()
         else:
             error = result.get("error", "Unknown error") if result else "Unknown error"
+            print(f"Swap failed: {error}")
             self._show_error(f"Swap failed: {error}")
     
     def _on_swap_error(self, error):
         """Called when swap has an error."""
         self.swap_btn.setEnabled(True)
+        print(f"Error executing swap: {str(error)}")
         self._show_error(f"Error executing swap: {str(error)}")
     
     def _show_error(self, message: str):

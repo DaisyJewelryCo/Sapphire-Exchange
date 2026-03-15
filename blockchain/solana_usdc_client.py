@@ -245,6 +245,29 @@ class SolanaUsdcClient:
             "details": self.last_error_details,
             "rpc_url": self.rpc_url
         }
+
+    def _coerce_pubkey(self, value: Union[str, "Pubkey", Any]) -> Optional["Pubkey"]:
+        """Normalize strings and pubkey-like values into a Pubkey instance."""
+        if not value or not Pubkey:
+            return None
+
+        if isinstance(value, Pubkey):
+            return value
+
+        candidate = str(value).strip()
+        if not candidate:
+            return None
+
+        if SoldersPubkey:
+            try:
+                return SoldersPubkey.from_string(candidate)
+            except Exception:
+                pass
+
+        try:
+            return Pubkey(base58.b58decode(candidate))
+        except Exception:
+            return None
     
     async def shutdown(self):
         """Shutdown the client."""
@@ -297,14 +320,9 @@ class SolanaUsdcClient:
             if not self.client or not Pubkey:
                 return None
             
-            # Convert address string to Pubkey
-            try:
-                pubkey = Pubkey(base58.b58decode(address))
-            except Exception:
-                try:
-                    pubkey = Pubkey(address.encode())
-                except Exception:
-                    return None
+            pubkey = self._coerce_pubkey(address)
+            if not pubkey:
+                return None
             
             # Get SOL balance
             balance_response = await self.client.get_balance(pubkey)
@@ -326,35 +344,37 @@ class SolanaUsdcClient:
             return None
     
     async def _get_token_balance(self, owner: Union[str, "Pubkey"]) -> float:
-        """Get USDC token balance for an owner."""
+        """Get total USDC token balance for an owner."""
         try:
             if not self.client or not Pubkey:
                 return 0.0
             
-            owner_pubkey = owner if isinstance(owner, Pubkey) else Pubkey(base58.b58decode(owner))
-            mint_pubkey = Pubkey(base58.b58decode(self.usdc_mint))
+            owner_pubkey = self._coerce_pubkey(owner)
+            mint_pubkey = self._coerce_pubkey(self.usdc_mint)
+            if not owner_pubkey or not mint_pubkey:
+                return 0.0
             
-            # Get token accounts for owner
             response = await self.client.get_token_accounts_by_owner(
                 owner_pubkey,
                 {"mint": mint_pubkey}
             )
             
-            if not response.value or len(response.value) == 0:
+            if not response.value:
                 return 0.0
             
-            # Get the first token account balance
-            token_account = response.value[0]
-            token_account_pubkey = Pubkey(base58.b58decode(token_account.pubkey))
-            account_info = await self.client.get_token_account_balance(
-                token_account_pubkey
-            )
+            total_amount = 0
+            for token_account in response.value:
+                token_account_pubkey = self._coerce_pubkey(
+                    getattr(token_account, "pubkey", token_account)
+                )
+                if not token_account_pubkey:
+                    continue
+                
+                account_info = await self.client.get_token_account_balance(token_account_pubkey)
+                if getattr(account_info, "value", None) and getattr(account_info.value, "amount", None):
+                    total_amount += int(account_info.value.amount)
             
-            if account_info.value:
-                # USDC has 6 decimals
-                return float(account_info.value.amount) / 1e6
-            
-            return 0.0
+            return total_amount / 1e6
             
         except Exception as e:
             print(f"Error getting token balance: {e}")

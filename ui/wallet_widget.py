@@ -531,13 +531,19 @@ class ArweavePurchaseDialog(QDialog):
         self.setMinimumWidth(500)
         self.purchase_service = None
         self.execute_btn = None
+        self._pending_estimate_amount = None
+        self._estimate_request_id = 0
+        self._estimate_debounce_timer = QTimer(self)
+        self._estimate_debounce_timer.setSingleShot(True)
+        self._estimate_debounce_timer.setInterval(350)
+        self._estimate_debounce_timer.timeout.connect(self._start_estimate_lookup)
         self.setup_ui()
     
     def setup_ui(self):
         """Setup purchase dialog UI."""
         layout = QVBoxLayout(self)
         
-        info_label = QLabel("Purchase Arweave (AR) with USDC on Solana")
+        info_label = QLabel("Estimate Arweave (AR) funding from USDC on Solana")
         info_label.setFont(QFont("Arial", 12, QFont.Bold))
         layout.addWidget(info_label)
         
@@ -547,6 +553,19 @@ class ArweavePurchaseDialog(QDialog):
         self.usdc_amount_edit.setPlaceholderText("Amount in USDC (e.g., 50)")
         self.usdc_amount_edit.textChanged.connect(self.update_estimate)
         form_layout.addRow("USDC Amount:", self.usdc_amount_edit)
+
+        funding_service = get_funding_manager_service()
+        self.ar_output_mint_edit = QLineEdit()
+        self.ar_output_mint_edit.setText((funding_service.config.arweave_output_mint or "").strip())
+        self.ar_output_mint_edit.setPlaceholderText("Optional: tradable Solana mint for wrapped AR on Jupiter")
+        self.ar_output_mint_edit.textChanged.connect(self.update_estimate)
+        form_layout.addRow("AR Output Mint:", self.ar_output_mint_edit)
+
+        self.native_provider_combo = QComboBox()
+        self.native_provider_combo.addItems(["Turbo", "Arseeding"])
+        self.native_provider_combo.setCurrentText((funding_service.config.arweave_native_provider or "turbo").title())
+        self.native_provider_combo.currentTextChanged.connect(self.update_estimate)
+        form_layout.addRow("Native AR Provider:", self.native_provider_combo)
         
         self.ar_estimate_label = QLabel("AR Estimate: Enter amount to calculate")
         self.ar_estimate_label.setStyleSheet("color: #666; font-weight: bold;")
@@ -569,8 +588,8 @@ class ArweavePurchaseDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         
-        warning = QLabel("⚠️ This will execute a swap on Jupiter DEX.\n"
-                        "Make sure you have sufficient USDC balance and ~0.005 SOL for gas fees.")
+        warning = QLabel("⚠️ Jupiter can only execute this flow if a tradable wrapped-AR SPL mint exists.\n"
+                        "If no Jupiter route is available, use the selected native AR provider to complete delivery.")
         warning.setStyleSheet("color: #ff9800; padding: 10px; border: 1px solid #ff9800; border-radius: 3px;")
         warning.setWordWrap(True)
         layout.addWidget(warning)
@@ -579,10 +598,39 @@ class ArweavePurchaseDialog(QDialog):
         button_box.accepted.connect(self.execute_purchase)
         button_box.rejected.connect(self.reject)
         self.execute_btn = button_box.button(QDialogButtonBox.Ok)
-        self.execute_btn.setText("Execute Swap")
+        self.execute_btn.setText("Execute Funding Route")
         self.execute_btn.setEnabled(False)
         layout.addWidget(button_box)
     
+    def _current_output_mint(self):
+        return self.ar_output_mint_edit.text().strip() if hasattr(self, 'ar_output_mint_edit') else ""
+
+    def _current_native_provider(self):
+        return self.native_provider_combo.currentText().strip().lower() if hasattr(self, 'native_provider_combo') else "turbo"
+
+    def _current_native_provider_name(self):
+        provider = self._current_native_provider()
+        return provider.title() if provider else "Turbo"
+
+    def _persist_arweave_preferences(self):
+        funding_service = get_funding_manager_service()
+        current_mint = self._current_output_mint()
+        current_provider = self._current_native_provider()
+        config_changed = False
+
+        if funding_service.config.arweave_output_mint != current_mint:
+            funding_service.config.arweave_output_mint = current_mint
+            config_changed = True
+
+        if funding_service.config.arweave_native_provider != current_provider:
+            funding_service.config.arweave_native_provider = current_provider
+            config_changed = True
+
+        if config_changed:
+            funding_service.save_config()
+
+        return current_mint
+
     def _parse_usdc_amount(self):
         amount_text = self.usdc_amount_edit.text().strip()
         if not amount_text:
@@ -610,6 +658,10 @@ class ArweavePurchaseDialog(QDialog):
     def update_estimate(self):
         """Update AR estimate as user enters USDC amount."""
         amount_decimal, error = self._parse_usdc_amount()
+        self._estimate_request_id += 1
+        self._estimate_debounce_timer.stop()
+        self._pending_estimate_amount = None
+        
         if error:
             if not self.usdc_amount_edit.text().strip():
                 self.ar_estimate_label.setText("AR Estimate: Enter amount to calculate")
@@ -627,21 +679,31 @@ class ArweavePurchaseDialog(QDialog):
                 self.execute_btn.setEnabled(False)
             return
         
-        usdc_amount = float(amount_decimal)
+        self._persist_arweave_preferences()
+        self._pending_estimate_amount = float(amount_decimal)
         self.ar_estimate_label.setText("AR Estimate: Calculating...")
         self.price_impact_label.setText("Price Impact: Calculating...")
         self.route_label.setText("Route: Calculating...")
-        self.status_label.setText("Fetching price information from Jupiter DEX...")
+        self.status_label.setText("Checking Jupiter route and native AR provider...")
         self.status_label.setStyleSheet("color: #1976d2; padding: 8px; border: 1px solid #1976d2; border-radius: 3px; background: #e3f2fd;")
-        
+        self._estimate_debounce_timer.start()
+
+    def _start_estimate_lookup(self):
+        usdc_amount = self._pending_estimate_amount
+        request_id = self._estimate_request_id
+        if usdc_amount is None:
+            return
+
         worker = AsyncWorker(self._fetch_estimate(usdc_amount))
-        worker.finished.connect(self._on_estimate_ready)
-        worker.error.connect(self._on_estimate_error)
+        worker.finished.connect(lambda result, rid=request_id: self._on_estimate_ready(result, rid))
+        worker.error.connect(lambda error, rid=request_id: self._on_estimate_error(error, rid))
         worker.start()
         self._estimate_worker = worker
     
-    def _on_estimate_error(self, error):
+    def _on_estimate_error(self, error, request_id=None):
         """Handle estimate fetch error."""
+        if request_id is not None and request_id != self._estimate_request_id:
+            return
         error_msg = str(error)[:100]
         self.ar_estimate_label.setText(f"AR Estimate: Error")
         self.price_impact_label.setText(f"Price Impact: N/A")
@@ -655,26 +717,18 @@ class ArweavePurchaseDialog(QDialog):
         """Fetch AR estimate from Jupiter."""
         try:
             service = await get_arweave_purchase_service()
-            
-            # Try with auto-discovered token first
-            quote = await service.get_quote(usdc_amount)
-            
-            # If that fails, try with known Arweave token mints
-            if not quote or (quote and quote.output_amount == 0):
-                print("Auto-discovery failed, trying known Arweave mints...")
-                
-                # Known Arweave-related token mints on Solana
-                known_ar_mints = [
-                    "HrFRX3amJZKUami6jPMD7T7qKHjWSXkkqwRWN3EcESj",  # Wrapped AR
-                    "A7n8jRSQn9YvRLr6V8ztkP2z2ypeEo7b6QksA1JForward",  # ForwardAR
-                    "JBoQUUqRpdB8oYbT8p7EQfR8nxZDj6z83ZV8b7Zz49sE",  # Test mint (placeholder)
-                ]
-                
-                for mint in known_ar_mints:
-                    quote = await service.get_quote(usdc_amount, output_mint=mint)
-                    if quote and quote.output_amount > 0:
-                        print(f"Found working Arweave mint: {mint}")
-                        break
+            output_mint = self._current_output_mint() or None
+            capability = await asyncio.wait_for(
+                service.get_direct_swap_capability(output_mint=output_mint),
+                timeout=6
+            )
+            if not capability.get('available'):
+                return await self._fetch_estimate_from_coingecko(
+                    usdc_amount,
+                    capability.get('reason')
+                )
+
+            quote = await asyncio.wait_for(service.get_quote(usdc_amount, output_mint=output_mint), timeout=8)
             
             if quote and quote.output_amount > 0:
                 ar_amount = quote.output_amount / 1e12
@@ -683,15 +737,21 @@ class ArweavePurchaseDialog(QDialog):
                 return {
                     'ar_amount': ar_amount,
                     'price_impact': quote.price_impact,
-                    'route': route_str
+                    'route': route_str,
+                    'can_execute': True,
+                    'status_message': f"Quote ready - Jupiter route found for ~{ar_amount:.6f} AR"
                 }
-            
-            return await self._fetch_estimate_from_coingecko(usdc_amount)
+
+            print(f"Jupiter quote unavailable, falling back to CoinGecko: {service.last_error}")
+            return await self._fetch_estimate_from_coingecko(usdc_amount, service.last_error)
+        except asyncio.TimeoutError:
+            print("Jupiter quote timed out, falling back to CoinGecko")
+            return await self._fetch_estimate_from_coingecko(usdc_amount, f"Jupiter quote timed out. Use {self._current_native_provider_name()} for native AR conversion.")
         except Exception as e:
             print(f"Error fetching estimate from Jupiter: {e}")
-            return await self._fetch_estimate_from_coingecko(usdc_amount)
+            return await self._fetch_estimate_from_coingecko(usdc_amount, f"Jupiter quote check failed. Use {self._current_native_provider_name()} for native AR conversion.")
     
-    async def _fetch_estimate_from_coingecko(self, usdc_amount: float):
+    async def _fetch_estimate_from_coingecko(self, usdc_amount: float, direct_swap_reason: str = ""):
         try:
             import aiohttp
             
@@ -712,10 +772,13 @@ class ArweavePurchaseDialog(QDialog):
                                 ar_price_usd = data["arweave"].get("usd")
                                 if ar_price_usd and ar_price_usd > 0:
                                     ar_amount = usdc_amount / ar_price_usd
+                                    status_message = direct_swap_reason or f"Direct Jupiter AR swaps are unavailable. Use this only as a market estimate, then convert to native AR with {self._current_native_provider_name()}."
                                     return {
                                         'ar_amount': ar_amount,
                                         'price_impact': 0.1,
-                                        'route': f"CoinGecko Price Feed (AR/USD: ${ar_price_usd:.2f})"
+                                        'route': f"CoinGecko Price Feed (AR/USD: ${ar_price_usd:.2f})",
+                                        'can_execute': False,
+                                        'status_message': status_message
                                     }
             except asyncio.TimeoutError:
                 print("CoinGecko request timed out")
@@ -724,39 +787,55 @@ class ArweavePurchaseDialog(QDialog):
             
             fallback_ar_price = 8.50
             ar_amount = usdc_amount / fallback_ar_price
+            status_message = direct_swap_reason or f"Direct Jupiter AR swaps are unavailable. Use this only as a market estimate, then convert to native AR with {self._current_native_provider_name()}."
             return {
                 'ar_amount': ar_amount,
                 'price_impact': 0.2,
-                'route': f"Fallback Price (AR/USD: ${fallback_ar_price:.2f})"
+                'route': f"Fallback Price (AR/USD: ${fallback_ar_price:.2f})",
+                'can_execute': False,
+                'status_message': status_message
             }
         except Exception as e:
             print(f"Critical error in CoinGecko fallback: {e}")
             ar_amount = usdc_amount / 10.0
+            status_message = direct_swap_reason or f"Direct Jupiter AR swaps are unavailable. Use this only as a market estimate, then convert to native AR with {self._current_native_provider_name()}."
             return {
                 'ar_amount': ar_amount,
                 'price_impact': 0.5,
-                'route': "Emergency Fallback Price"
+                'route': "Emergency Fallback Price",
+                'can_execute': False,
+                'status_message': status_message
             }
     
-    def _on_estimate_ready(self, estimate_data):
+    def _on_estimate_ready(self, estimate_data, request_id=None):
         """Handle estimate data ready."""
+        if request_id is not None and request_id != self._estimate_request_id:
+            return
         try:
             if estimate_data:
                 ar_amount = estimate_data.get('ar_amount', 0)
                 price_impact = estimate_data.get('price_impact', 0)
                 route = estimate_data.get('route', 'Unknown')
+                can_execute = bool(estimate_data.get('can_execute'))
+                status_message = estimate_data.get('status_message') or "Quote ready"
                 
                 if ar_amount > 0:
                     self.ar_estimate_label.setText(f"✓ AR Estimate: {ar_amount:.6f} AR")
-                    self.ar_estimate_label.setStyleSheet("color: #2e7d32; font-weight: bold;")
                     self.price_impact_label.setText(f"Price Impact: {price_impact:.3f}%")
                     self.route_label.setText(f"Route: {route}")
-                    self.status_label.setText(f"✓ Quote Ready - You will receive ~{ar_amount:.6f} AR")
-                    self.status_label.setStyleSheet("color: #2e7d32; padding: 8px; border: 1px solid #2e7d32; border-radius: 3px; background: #f1f8e9;")
-                    
-                    # Enable execute button
-                    if hasattr(self, 'execute_btn'):
-                        self.execute_btn.setEnabled(True)
+
+                    if can_execute:
+                        self.ar_estimate_label.setStyleSheet("color: #2e7d32; font-weight: bold;")
+                        self.status_label.setText(status_message)
+                        self.status_label.setStyleSheet("color: #2e7d32; padding: 8px; border: 1px solid #2e7d32; border-radius: 3px; background: #f1f8e9;")
+                        if hasattr(self, 'execute_btn'):
+                            self.execute_btn.setEnabled(True)
+                    else:
+                        self.ar_estimate_label.setStyleSheet("color: #ff9800; font-weight: bold;")
+                        self.status_label.setText(status_message)
+                        self.status_label.setStyleSheet("color: #ff9800; padding: 8px; border: 1px solid #ff9800; border-radius: 3px; background: #fff3e0;")
+                        if hasattr(self, 'execute_btn'):
+                            self.execute_btn.setEnabled(False)
                 else:
                     self.ar_estimate_label.setText("⚠️ AR Estimate: No output (check token mint)")
                     self.ar_estimate_label.setStyleSheet("color: #ff9800; font-weight: bold;")
@@ -795,13 +874,23 @@ class ArweavePurchaseDialog(QDialog):
                 return
             
             msg = f"Purchase {self.ar_estimate_label.text()} for {usdc_amount} USDC?\n\n" \
-                  f"This will execute a swap on Jupiter DEX.\n" \
+                  f"If a live route is available, this will execute a Jupiter swap.\n" \
+                  f"Otherwise use {self._current_native_provider_name()} for native AR delivery.\n" \
                   f"Confirm transaction?"
             
             reply = QMessageBox.question(self, "Confirm Purchase", msg,
                                         QMessageBox.Yes | QMessageBox.No)
             
             if reply == QMessageBox.Yes:
+                self._persist_arweave_preferences()
+                if hasattr(self, 'execute_btn') and not self.execute_btn.isEnabled():
+                    QMessageBox.warning(
+                        self,
+                        "Swap Unavailable",
+                        f"A live Jupiter route is required before this swap can be executed from this dialog. Right now direct AR swaps are unavailable, so use SOL/USDC funding first and convert to native AR with {self._current_native_provider_name()}."
+                    )
+                    return
+
                 progress = QMessageBox(self)
                 progress.setWindowTitle("Processing")
                 progress.setText("Building and sending swap transaction...\nThis may take a few seconds.")
@@ -856,10 +945,12 @@ class ArweavePurchaseDialog(QDialog):
                     "error": "Solana private key unavailable. Log in again with your seed phrase."
                 }
 
+            output_mint = self._current_output_mint() or None
             result = await service.execute_swap(
                 user.usdc_address,
                 usdc_amount,
-                keypair_bytes=keypair_bytes
+                keypair_bytes=keypair_bytes,
+                output_mint=output_mint
             )
 
             if not result:

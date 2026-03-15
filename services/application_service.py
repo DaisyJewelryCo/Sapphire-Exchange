@@ -14,6 +14,7 @@ from repositories.database_adapter import database_adapter
 from security.security_manager import SecurityManager
 from security.performance_manager import PerformanceManager
 from services.price_service import PriceConversionService
+from services.solana_balance_service import get_solana_balance_service
 from utils.validation_utils import Validator
 from utils.conversion_utils import conversion_utils
 from config.app_config import app_config
@@ -478,26 +479,21 @@ class ApplicationService:
             
             addresses = {}
             
-            # Add NANO address
             nano_address = getattr(self.current_user, 'nano_address', None)
             if nano_address and isinstance(nano_address, str) and len(nano_address.strip()) > 0:
                 addresses['nano'] = nano_address.strip()
             else:
                 print("Warning: No NANO address for balance query")
             
-            # Add Arweave address
             arweave_address = getattr(self.current_user, 'arweave_address', None)
             if arweave_address and isinstance(arweave_address, str) and len(arweave_address.strip()) > 0:
                 addresses['arweave'] = arweave_address.strip()
             else:
                 print("Warning: No Arweave address for balance query")
             
-            # Add Solana address (for both SOL and USDC)
             solana_address = getattr(self.current_user, 'usdc_address', None)
             if solana_address and isinstance(solana_address, str) and len(solana_address.strip()) > 0:
                 solana_address = solana_address.strip()
-                # usdc_address is actually the Solana wallet public key
-                # Get both SOL and USDC balances from Solana
                 addresses['sol'] = solana_address
                 addresses['usdc'] = solana_address
             else:
@@ -507,12 +503,19 @@ class ApplicationService:
                 print("Warning: No addresses configured for balance query")
                 return {}
             
-            # Fetch balances from blockchain
             balances = await self.blockchain.batch_get_balances(addresses)
-            
             if not balances:
-                print("Warning: No balances returned from blockchain")
-                return {}
+                balances = {}
+            
+            if solana_address:
+                balance_service = await get_solana_balance_service()
+                sol_balance = await balance_service.get_native_sol_balance(solana_address)
+                if sol_balance is not None:
+                    balances['sol'] = sol_balance.amount_human
+                
+                usdc_balance = await balance_service.get_usdc_balance(solana_address)
+                if usdc_balance is not None:
+                    balances['usdc'] = usdc_balance.amount_human
             
             return balances
         except Exception as e:

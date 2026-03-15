@@ -78,6 +78,38 @@ class SettingsDialog(QDialog):
             self.current_settings.get('arweave_gateway', 'https://arweave.net')
         )
         layout.addRow("Arweave Gateway:", self.arweave_gateway)
+
+        self.arweave_output_mint = QLineEdit()
+        self.arweave_output_mint.setText(
+            self.current_settings.get('arweave_output_mint', '')
+        )
+        self.arweave_output_mint.setPlaceholderText("Solana mint address for tradable AR token")
+        layout.addRow("Arweave Output Mint:", self.arweave_output_mint)
+
+        self.arweave_provider = QComboBox()
+        self.arweave_provider.addItems(["Turbo", "Arseeding"])
+        self.arweave_provider.setCurrentText(
+            self.current_settings.get('arweave_provider', 'Turbo')
+        )
+        layout.addRow("Native AR Provider:", self.arweave_provider)
+
+        self.turbo_payment_url = QLineEdit()
+        self.turbo_payment_url.setText(
+            self.current_settings.get('turbo_payment_url', 'https://payment.ardrive.io/v1')
+        )
+        layout.addRow("Turbo Payment URL:", self.turbo_payment_url)
+
+        self.arseeding_url = QLineEdit()
+        self.arseeding_url.setText(
+            self.current_settings.get('arseeding_url', 'https://arseed.web3infra.dev')
+        )
+        layout.addRow("Arseeding URL:", self.arseeding_url)
+
+        self.arseeding_pay_url = QLineEdit()
+        self.arseeding_pay_url.setText(
+            self.current_settings.get('arseeding_pay_url', 'https://api.everpay.io')
+        )
+        layout.addRow("Arseeding Pay URL:", self.arseeding_pay_url)
         
         # Network timeout
         self.timeout_spin = QSpinBox()
@@ -209,6 +241,11 @@ class SettingsDialog(QDialog):
             'solana_rpc': self.solana_rpc.text(),
             'nano_node': self.nano_node.text(),
             'arweave_gateway': self.arweave_gateway.text(),
+            'arweave_output_mint': self.arweave_output_mint.text().strip(),
+            'arweave_provider': self.arweave_provider.currentText(),
+            'turbo_payment_url': self.turbo_payment_url.text().strip(),
+            'arseeding_url': self.arseeding_url.text().strip(),
+            'arseeding_pay_url': self.arseeding_pay_url.text().strip(),
             'network_timeout': self.timeout_spin.value(),
             'retry_attempts': self.retry_spin.value(),
             'session_timeout': self.session_timeout.value(),
@@ -242,6 +279,11 @@ class SettingsDialog(QDialog):
             self.solana_rpc.setText('https://api.mainnet-beta.solana.com')
             self.nano_node.setText('https://mynano.ninja/api')
             self.arweave_gateway.setText('https://arweave.net')
+            self.arweave_output_mint.setText('')
+            self.arweave_provider.setCurrentText('Turbo')
+            self.turbo_payment_url.setText('https://payment.ardrive.io/v1')
+            self.arseeding_url.setText('https://arseed.web3infra.dev')
+            self.arseeding_pay_url.setText('https://api.everpay.io')
             self.timeout_spin.setValue(30)
             self.retry_spin.setValue(3)
             self.session_timeout.setValue(30)

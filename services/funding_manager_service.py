@@ -30,12 +30,17 @@ class FundingConfig:
     jupiter_swap_api: str = "https://quote-api.jup.ag/v6/swap"
     
     # USDC Configuration
-    usdc_min_amount: float = 1.0
+    usdc_min_amount: float = 0.01
     usdc_max_amount: float = 1000.0
     
     # Arweave Configuration
     ar_min_amount: float = 0.001
     ar_max_amount: float = 100.0
+    arweave_output_mint: str = ""
+    arweave_native_provider: str = "turbo"
+    turbo_payment_service_url: str = "https://payment.ardrive.io/v1"
+    arseeding_service_url: str = "https://arseed.web3infra.dev"
+    arseeding_pay_url: str = "https://api.everpay.io"
     
     # Nano Configuration
     nano_min_amount: float = 0.001
@@ -241,6 +246,8 @@ class FundingManagerService:
             "is_valid": is_valid,
             "errors": errors,
             "cloudflare_configured": bool(self.config.cloudflare_api_key),
+            "arweave_output_mint_configured": bool(self.config.arweave_output_mint),
+            "arweave_native_provider": self.config.arweave_native_provider,
             "features": {
                 "nano": self.config.enable_cloudflare_nano,
                 "arweave": self.config.enable_arweave_purchase,

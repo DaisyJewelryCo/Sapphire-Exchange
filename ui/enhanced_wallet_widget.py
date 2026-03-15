@@ -17,6 +17,7 @@ from ui.dialogs.transaction_dialogs import SendTransactionDialog, ReceiveDialog,
 from ui.dialogs.backup_dialogs import MnemonicDisplayDialog, BackupWizardDialog, RecoveryWizardDialog
 from ui.dialogs.settings_dialog import SettingsDialog
 from ui.dialogs.wallet_details_dialog import WalletDetailsDialog
+from services.funding_manager_service import get_funding_manager_service
 from ui.custom_widgets import (
     AddressDisplayWidget, BalanceWidget, QRCodeWidget,
     TransactionListWidget, WalletTileWidget, StatusIndicatorWidget
@@ -40,12 +41,19 @@ class EnhancedWalletWidget(QWidget):
     
     def _default_settings(self) -> Dict[str, Any]:
         """Get default application settings."""
+        funding_service = get_funding_manager_service()
+        config = funding_service.config
         return {
-            'solana_rpc': 'https://api.mainnet-beta.solana.com',
-            'nano_node': 'https://mynano.ninja/api',
+            'solana_rpc': config.solana_rpc_url,
+            'nano_node': config.nano_rpc_url,
             'arweave_gateway': 'https://arweave.net',
-            'network_timeout': 30,
-            'retry_attempts': 3,
+            'arweave_output_mint': config.arweave_output_mint,
+            'arweave_provider': config.arweave_native_provider.title(),
+            'turbo_payment_url': config.turbo_payment_service_url,
+            'arseeding_url': config.arseeding_service_url,
+            'arseeding_pay_url': config.arseeding_pay_url,
+            'network_timeout': config.request_timeout,
+            'retry_attempts': config.max_retries,
             'session_timeout': 30,
             'password_for_transactions': True,
             'show_private_keys': False,
@@ -473,6 +481,19 @@ class EnhancedWalletWidget(QWidget):
         """Handle settings change."""
         self.settings = settings
         self.refresh_timer.setInterval(settings['refresh_interval'] * 1000)
+
+        funding_service = get_funding_manager_service()
+        funding_service.config.solana_rpc_url = settings.get('solana_rpc', funding_service.config.solana_rpc_url)
+        funding_service.config.nano_rpc_url = settings.get('nano_node', funding_service.config.nano_rpc_url)
+        funding_service.config.request_timeout = settings.get('network_timeout', funding_service.config.request_timeout)
+        funding_service.config.max_retries = settings.get('retry_attempts', funding_service.config.max_retries)
+        funding_service.config.arweave_output_mint = settings.get('arweave_output_mint', '').strip()
+        funding_service.config.arweave_native_provider = settings.get('arweave_provider', 'Turbo').strip().lower()
+        funding_service.config.turbo_payment_service_url = settings.get('turbo_payment_url', funding_service.config.turbo_payment_service_url).strip()
+        funding_service.config.arseeding_service_url = settings.get('arseeding_url', funding_service.config.arseeding_service_url).strip()
+        funding_service.config.arseeding_pay_url = settings.get('arseeding_pay_url', funding_service.config.arseeding_pay_url).strip()
+        funding_service.save_config()
+
         QMessageBox.information(self, "Settings", "Settings updated successfully")
     
     def refresh_balances(self):

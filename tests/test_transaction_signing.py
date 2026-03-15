@@ -48,6 +48,7 @@ from blockchain.transaction_manager import (
     TransactionPhase,
 )
 from services.sol_usdc_swap_service import SolUsdcSwapService
+from blockchain.solana_usdc_client import SolanaUsdcClient
 
 
 class TestTransactionBuilder:
@@ -582,26 +583,60 @@ class TestIntegration:
         assert success is True
 
 
+class TestSolanaUsdcClientBalances:
+    @pytest.mark.asyncio
+    async def test_get_token_balance_sums_all_usdc_token_accounts(self):
+        client = SolanaUsdcClient({"solana": {"testnet": False}})
+        client._coerce_pubkey = lambda value: value
+
+        class FakeClient:
+            async def get_token_accounts_by_owner(self, owner_pubkey, filters):
+                assert owner_pubkey == "wallet-pubkey"
+                assert filters == {"mint": client.usdc_mint}
+                return types.SimpleNamespace(
+                    value=[
+                        types.SimpleNamespace(pubkey="token-account-1"),
+                        types.SimpleNamespace(pubkey="token-account-2"),
+                    ]
+                )
+
+            async def get_token_account_balance(self, token_account_pubkey):
+                amounts = {
+                    "token-account-1": "1250000",
+                    "token-account-2": "250000",
+                }
+                return types.SimpleNamespace(
+                    value=types.SimpleNamespace(amount=amounts[token_account_pubkey])
+                )
+
+        client.client = FakeClient()
+
+        balance = await client._get_token_balance("wallet-pubkey")
+
+        assert balance == 1.5
+
+
 class TestSolUsdcSwapServiceSigning:
     @pytest.mark.asyncio
-    async def test_calculate_swap_plan_reserves_ata_rent_when_usdc_account_missing(self):
+    async def test_calculate_swap_plan_reserves_ata_rent_when_wrapped_sol_and_usdc_accounts_are_missing(self):
         service = SolUsdcSwapService()
-        service.wallet_has_token_account = AsyncMock(return_value=False)
+        service.wallet_has_token_account = AsyncMock(side_effect=[False, False])
 
         plan = await service.calculate_swap_plan("wallet_pubkey", 0.00997257)
 
         assert plan is not None
         assert plan["reserve_lamports"] == (
-            service.TRANSACTION_FEE_BUFFER_LAMPORTS + service.ASSOCIATED_TOKEN_ACCOUNT_RENT_LAMPORTS
+            service.TRANSACTION_FEE_BUFFER_LAMPORTS + (2 * service.ASSOCIATED_TOKEN_ACCOUNT_RENT_LAMPORTS)
         )
-        assert plan["swap_lamports"] == 7_683_290
+        assert plan["swap_lamports"] == 5_644_010
+        assert plan["wrapped_sol_account_exists"] is False
         assert plan["usdc_account_exists"] is False
         assert service.last_error is None
 
     @pytest.mark.asyncio
-    async def test_calculate_swap_plan_uses_requested_amount_when_token_account_exists(self):
+    async def test_calculate_swap_plan_uses_requested_amount_when_wrapped_sol_and_usdc_accounts_exist(self):
         service = SolUsdcSwapService()
-        service.wallet_has_token_account = AsyncMock(return_value=True)
+        service.wallet_has_token_account = AsyncMock(side_effect=[True, True])
 
         plan = await service.calculate_swap_plan("wallet_pubkey", 1.0)
 
@@ -609,8 +644,56 @@ class TestSolUsdcSwapServiceSigning:
         assert plan["reserve_lamports"] == service.TRANSACTION_FEE_BUFFER_LAMPORTS
         assert plan["requested_lamports"] == 900_000_000
         assert plan["swap_lamports"] == 900_000_000
+        assert plan["wrapped_sol_account_exists"] is True
         assert plan["usdc_account_exists"] is True
         assert service.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_wallet_has_token_account_checks_associated_token_account_before_generic_token_accounts(self):
+        service = SolUsdcSwapService()
+        rpc_calls = []
+
+        async def fake_request_rpc(method, params=None):
+            rpc_calls.append((method, params))
+            if method == "getAccountInfo":
+                return {"value": None}
+            return None
+
+        service._request_rpc = fake_request_rpc
+
+        with patch("services.sol_usdc_swap_service.get_associated_token_address", return_value="associated-token-account"):
+            has_account = await service.wallet_has_token_account(
+                "7vfCXTUXx5o5KxqM8gijQ6e8s1n5Xw3GfM4wT1u5Q2wT",
+                service.USDC_MINT,
+            )
+
+        assert has_account is False
+        assert rpc_calls[0][0] == "getAccountInfo"
+        assert rpc_calls[0][1][0] == "associated-token-account"
+
+    @pytest.mark.asyncio
+    async def test_wallet_has_token_account_returns_false_when_ata_helper_unavailable(self):
+        service = SolUsdcSwapService()
+
+        with patch("services.sol_usdc_swap_service.get_associated_token_address", None):
+            has_account = await service.wallet_has_token_account(
+                "7vfCXTUXx5o5KxqM8gijQ6e8s1n5Xw3GfM4wT1u5Q2wT",
+                service.USDC_MINT,
+            )
+
+        assert has_account is False
+
+    def test_format_send_transaction_error_reports_lamport_shortfall(self):
+        service = SolUsdcSwapService()
+
+        message = service._format_send_transaction_error(
+            "SendTransactionPreflightFailureMessage { logs: [\"Transfer: insufficient lamports 145000, need 2039280\"] }"
+        )
+
+        assert message == (
+            "Insufficient SOL to create the token accounts required for this swap. "
+            "Available: 0.000145 SOL, required: 0.002039 SOL, shortfall: 0.001894 SOL."
+        )
 
     def test_sign_swap_transaction_uses_seed_for_32_byte_key(self):
         service = SolUsdcSwapService()
