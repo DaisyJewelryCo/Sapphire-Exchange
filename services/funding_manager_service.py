@@ -36,7 +36,6 @@ class FundingConfig:
     # Arweave Configuration
     ar_min_amount: float = 0.001
     ar_max_amount: float = 100.0
-    arweave_output_mint: str = ""
     arweave_native_provider: str = "turbo"
     turbo_payment_service_url: str = "https://payment.ardrive.io/v1"
     arseeding_service_url: str = "https://arseed.web3infra.dev"
@@ -160,6 +159,8 @@ class FundingManagerService:
                 with open(self.CONFIG_FILE, 'r') as f:
                     config_dict = json.load(f)
                     self.config = FundingConfig.from_dict(config_dict)
+                    if self.config.turbo_payment_service_url == "https://turbo.arweave.dev":
+                        self.config.turbo_payment_service_url = "https://payment.ardrive.io/v1"
                     self.logger.info("Configuration loaded successfully")
                     return True
             return False
@@ -246,7 +247,6 @@ class FundingManagerService:
             "is_valid": is_valid,
             "errors": errors,
             "cloudflare_configured": bool(self.config.cloudflare_api_key),
-            "arweave_output_mint_configured": bool(self.config.arweave_output_mint),
             "arweave_native_provider": self.config.arweave_native_provider,
             "features": {
                 "nano": self.config.enable_cloudflare_nano,

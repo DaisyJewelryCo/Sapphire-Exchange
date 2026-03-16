@@ -15,15 +15,13 @@ async def test_arweave_purchase_service():
         success = await service.initialize()
         print(f"✓ Service initialized: {success}")
         
-        print("\nTesting token discovery...")
-        ar_mint = await service.discover_arweave_token()
-        if ar_mint:
-            print(f"✓ Discovered AR token mint: {ar_mint}")
-        else:
-            print("⚠ Could not discover AR token (network may be unavailable)")
+        print("\nTesting provider configuration...")
+        plan = service.get_native_conversion_plan()
+        provider = plan.get("provider", {})
+        print(f"✓ Native provider: {provider.get('name', 'Unknown')}")
         
         print("\nTesting quote generation (100 USDC)...")
-        quote = await service.get_quote(usdc_amount=100.0, output_mint=ar_mint)
+        quote = await service.get_quote(usdc_amount=100.0)
         if quote:
             ar_amount = quote.output_amount / 1e12
             print(f"✓ Quote received:")

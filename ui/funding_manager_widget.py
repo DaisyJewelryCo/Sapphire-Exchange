@@ -1085,8 +1085,8 @@ class FundingWizardDialog(QDialog):
         self.content_layout.addWidget(title)
         
         info_text = QLabel(
-            "Once you have USDC in your Solana wallet, you can purchase Arweave (AR) tokens.\n\n"
-            "This widget provides an easy way to swap USDC to AR using Jupiter DEX."
+            "Once you have USDC in your Solana wallet, you can fund native Arweave (AR).\n\n"
+            "This widget uses a provider API to convert supported Solana funds and deliver AR to your Arweave wallet."
         )
         info_text.setWordWrap(True)
         self.content_layout.addWidget(info_text)
@@ -1100,9 +1100,9 @@ class FundingWizardDialog(QDialog):
             ("Why Arweave?",
              "Arweave enables permanent data storage. Perfect for auction records and item storage."),
             ("How much do I need?",
-             "Start with 10-50 USDC. The swap will show you exact AR amounts."),
+             "Start with 10-50 USDC. The provider quote will show you exact AR amounts."),
             ("Are there fees?",
-             "Yes, Jupiter charges ~0.35% fee. Gas fees are minimal (~0.001 SOL)."),
+             "You will pay the provider amount plus normal Solana network fees, so keep a small SOL balance for gas."),
         ]
         
         for q, a in details:
@@ -1123,9 +1123,9 @@ class FundingWizardDialog(QDialog):
         ready_text = QLabel(
             "In the next step, you can:\n"
             "  1. Select amount of USDC to spend\n"
-            "  2. See live AR price estimate\n"
-            "  3. Review swap details\n"
-            "  4. Confirm and execute swap"
+            "  2. See a live AR price estimate\n"
+            "  3. Review provider funding details\n"
+            "  4. Confirm and execute native AR delivery"
         )
         ready_text.setWordWrap(True)
         purchase_info_layout.addWidget(ready_text)

@@ -47,7 +47,6 @@ class EnhancedWalletWidget(QWidget):
             'solana_rpc': config.solana_rpc_url,
             'nano_node': config.nano_rpc_url,
             'arweave_gateway': 'https://arweave.net',
-            'arweave_output_mint': config.arweave_output_mint,
             'arweave_provider': config.arweave_native_provider.title(),
             'turbo_payment_url': config.turbo_payment_service_url,
             'arseeding_url': config.arseeding_service_url,
@@ -487,7 +486,6 @@ class EnhancedWalletWidget(QWidget):
         funding_service.config.nano_rpc_url = settings.get('nano_node', funding_service.config.nano_rpc_url)
         funding_service.config.request_timeout = settings.get('network_timeout', funding_service.config.request_timeout)
         funding_service.config.max_retries = settings.get('retry_attempts', funding_service.config.max_retries)
-        funding_service.config.arweave_output_mint = settings.get('arweave_output_mint', '').strip()
         funding_service.config.arweave_native_provider = settings.get('arweave_provider', 'Turbo').strip().lower()
         funding_service.config.turbo_payment_service_url = settings.get('turbo_payment_url', funding_service.config.turbo_payment_service_url).strip()
         funding_service.config.arseeding_service_url = settings.get('arseeding_url', funding_service.config.arseeding_service_url).strip()

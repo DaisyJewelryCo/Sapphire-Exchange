@@ -390,111 +390,47 @@ class UserProfileSection(QWidget):
         # Balance items in horizontal layout with wallet type headers and values underneath
         balances_horizontal_layout = QHBoxLayout()
         balances_horizontal_layout.setSpacing(0)
-        
-        # NANO wallet section
-        nano_container = QWidget()
-        nano_layout = QVBoxLayout(nano_container)
-        nano_layout.setContentsMargins(8, 4, 8, 4)
-        nano_layout.setSpacing(2)
-        
-        nano_header = QLabel("NANO")
-        nano_header.setAlignment(Qt.AlignCenter)
-        nano_header.setStyleSheet("""
-            QLabel {
-                font-size: 11px;
-                font-weight: 600;
-                color: #374151;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        nano_layout.addWidget(nano_header)
-        
-        self.nano_balance_label = QLabel("$0.00")
-        self.nano_balance_label.setAlignment(Qt.AlignCenter)
-        self.nano_balance_label.setStyleSheet("""
-            QLabel {
-                font-size: 10px;
-                color: #1e293b;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        nano_layout.addWidget(self.nano_balance_label)
-        
-        balances_horizontal_layout.addWidget(nano_container)
-        
-        # DOGE wallet section
-        doge_container = QWidget()
-        doge_layout = QVBoxLayout(doge_container)
-        doge_layout.setContentsMargins(8, 4, 8, 4)
-        doge_layout.setSpacing(2)
-        
-        doge_header = QLabel("DOGE")
-        doge_header.setAlignment(Qt.AlignCenter)
-        doge_header.setStyleSheet("""
-            QLabel {
-                font-size: 11px;
-                font-weight: 600;
-                color: #374151;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        doge_layout.addWidget(doge_header)
-        
-        self.doge_balance_label = QLabel("0.00")
-        self.doge_balance_label.setAlignment(Qt.AlignCenter)
-        self.doge_balance_label.setStyleSheet("""
-            QLabel {
-                font-size: 10px;
-                color: #1e293b;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        doge_layout.addWidget(self.doge_balance_label)
-        
-        balances_horizontal_layout.addWidget(doge_container)
-        
-        # AR wallet section
-        ar_container = QWidget()
-        ar_layout = QVBoxLayout(ar_container)
-        ar_layout.setContentsMargins(8, 4, 8, 4)
-        ar_layout.setSpacing(2)
-        
-        ar_header = QLabel("AR")
-        ar_header.setAlignment(Qt.AlignCenter)
-        ar_header.setStyleSheet("""
-            QLabel {
-                font-size: 11px;
-                font-weight: 600;
-                color: #374151;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        ar_layout.addWidget(ar_header)
-        
-        self.ar_balance_label = QLabel("0.00")
-        self.ar_balance_label.setAlignment(Qt.AlignCenter)
-        self.ar_balance_label.setStyleSheet("""
-            QLabel {
-                font-size: 10px;
-                color: #1e293b;
-                background-color: transparent;
-                border: none;
-                padding: 0;
-            }
-        """)
-        ar_layout.addWidget(self.ar_balance_label)
-        
-        balances_horizontal_layout.addWidget(ar_container)
+
+        def create_balance_column(header_text, initial_value):
+            container = QWidget()
+            column_layout = QVBoxLayout(container)
+            column_layout.setContentsMargins(6, 4, 6, 4)
+            column_layout.setSpacing(2)
+
+            header = QLabel(header_text)
+            header.setAlignment(Qt.AlignCenter)
+            header.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #374151;
+                    background-color: transparent;
+                    border: none;
+                    padding: 0;
+                }
+            """)
+            column_layout.addWidget(header)
+
+            value_label = QLabel(initial_value)
+            value_label.setAlignment(Qt.AlignCenter)
+            value_label.setStyleSheet("""
+                QLabel {
+                    font-size: 10px;
+                    color: #1e293b;
+                    background-color: transparent;
+                    border: none;
+                    padding: 0;
+                }
+            """)
+            column_layout.addWidget(value_label)
+
+            balances_horizontal_layout.addWidget(container)
+            return value_label
+
+        self.sol_balance_label = create_balance_column("SOL", "0.00")
+        self.usdc_balance_label = create_balance_column("USDC", "0.00")
+        self.nano_balance_label = create_balance_column("NANO", "0.00")
+        self.ar_balance_label = create_balance_column("AR", "0.00")
         
         balances_layout.addLayout(balances_horizontal_layout)
         
@@ -513,17 +449,22 @@ class UserProfileSection(QWidget):
     def update_balances(self, balances):
         """Update balance display."""
         print(f"[DEBUG] UserProfileSection.update_balances called with: {balances}")
+        sol_balance = balances.get('sol', 0) or 0
+        usdc_balance = balances.get('usdc', 0) or 0
         nano_balance = balances.get('nano', 0) or 0
-        doge_balance = balances.get('dogecoin', 0) or 0
         ar_balance = balances.get('arweave', 0) or 0
-        
-        print(f"[DEBUG] Parsed balances - NANO: {nano_balance}, DOGE: {doge_balance}, AR: {ar_balance}")
-        
+
+        print(
+            f"[DEBUG] Parsed balances - SOL: {sol_balance}, USDC: {usdc_balance}, "
+            f"NANO: {nano_balance}, AR: {ar_balance}"
+        )
+
         # Format balances for inline display (values only, no currency prefix)
-        self.nano_balance_label.setText(f"${self.format_balance(nano_balance)}")
-        self.doge_balance_label.setText(self.format_balance(doge_balance))
+        self.sol_balance_label.setText(self.format_balance(sol_balance))
+        self.usdc_balance_label.setText(self.format_balance(usdc_balance))
+        self.nano_balance_label.setText(self.format_balance(nano_balance))
         self.ar_balance_label.setText(self.format_balance(ar_balance))
-        
+
         print(f"[DEBUG] Balance labels updated")
     
     def format_balance(self, balance):

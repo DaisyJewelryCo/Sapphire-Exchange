@@ -79,13 +79,6 @@ class SettingsDialog(QDialog):
         )
         layout.addRow("Arweave Gateway:", self.arweave_gateway)
 
-        self.arweave_output_mint = QLineEdit()
-        self.arweave_output_mint.setText(
-            self.current_settings.get('arweave_output_mint', '')
-        )
-        self.arweave_output_mint.setPlaceholderText("Solana mint address for tradable AR token")
-        layout.addRow("Arweave Output Mint:", self.arweave_output_mint)
-
         self.arweave_provider = QComboBox()
         self.arweave_provider.addItems(["Turbo", "Arseeding"])
         self.arweave_provider.setCurrentText(
@@ -241,7 +234,6 @@ class SettingsDialog(QDialog):
             'solana_rpc': self.solana_rpc.text(),
             'nano_node': self.nano_node.text(),
             'arweave_gateway': self.arweave_gateway.text(),
-            'arweave_output_mint': self.arweave_output_mint.text().strip(),
             'arweave_provider': self.arweave_provider.currentText(),
             'turbo_payment_url': self.turbo_payment_url.text().strip(),
             'arseeding_url': self.arseeding_url.text().strip(),
@@ -279,7 +271,6 @@ class SettingsDialog(QDialog):
             self.solana_rpc.setText('https://api.mainnet-beta.solana.com')
             self.nano_node.setText('https://mynano.ninja/api')
             self.arweave_gateway.setText('https://arweave.net')
-            self.arweave_output_mint.setText('')
             self.arweave_provider.setCurrentText('Turbo')
             self.turbo_payment_url.setText('https://payment.ardrive.io/v1')
             self.arseeding_url.setText('https://arseed.web3infra.dev')
