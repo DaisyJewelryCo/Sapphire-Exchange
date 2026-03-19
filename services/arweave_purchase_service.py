@@ -1,26 +1,30 @@
 """
 Arweave Purchase Service for Sapphire Exchange.
-Handles native Arweave funding using external provider APIs.
+Handles native Arweave funding using everPay direct.
 """
 import asyncio
-import base64
-import binascii
+import json
+import os
+import time
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+from Crypto.Hash import keccak
 
 from services.funding_manager_service import get_funding_manager_service
+from services.local_everpay_wallet_service import get_local_everpay_wallet_service
 
 try:
-    from solana.rpc.async_api import AsyncClient
-    from solana.transaction import Transaction
-    SOLANA_AVAILABLE = True
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+    ETH_ACCOUNT_AVAILABLE = True
 except ImportError:
-    AsyncClient = None
-    Transaction = None
-    SOLANA_AVAILABLE = False
+    Account = None
+    encode_defunct = None
+    ETH_ACCOUNT_AVAILABLE = False
 
 
 @dataclass
@@ -32,38 +36,49 @@ class ArweaveSwapQuote:
     route_description: str
     swap_transaction: Optional[str] = None
     fees: Dict[str, Any] = None
+    executable: bool = False
+    status_message: Optional[str] = None
 
 
 class ArweavePurchaseService:
-    """Service for purchasing native Arweave using Solana-based provider APIs."""
+    """Service for purchasing native Arweave using everPay direct."""
 
     USDC_DECIMALS = 1_000_000
     AR_DECIMALS = 1_000_000_000_000
+    TOKEN_IDENTIFIER_ALIASES = {
+        "USDC-ETH-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "ethereum-usdc-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "AR-AR-0x0000000000000000000000000000000000000000": "arweave,ethereum-ar-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
+    }
+    LEGACY_CHAIN_ALIASES = {
+        "eth": "ethereum",
+        "ethereum": "ethereum",
+        "ar": "arweave",
+        "arweave": "arweave",
+        "bsc": "bsc",
+        "sol": "solana",
+        "solana": "solana",
+    }
 
-    def __init__(self, solana_client: Optional[AsyncClient] = None, rpc_url: Optional[str] = None):
+    def __init__(self, solana_client: Optional[Any] = None, rpc_url: Optional[str] = None):
         self.solana_client = solana_client
         self.rpc_url = rpc_url or "https://api.mainnet-beta.solana.com"
         self.http_session: Optional[aiohttp.ClientSession] = None
         self.max_retries = 3
         self.retry_delay = 1.5
         self.request_timeout = 12
-        self.quote_request_timeout = 4
+        self.quote_request_timeout = 8
         self.quote_max_retries = 0
-        self.swap_request_timeout = 10
+        self.swap_request_timeout = 12
         self.swap_max_retries = 1
         self.last_error: Optional[str] = None
+        self._info_cache: Optional[Dict[str, Any]] = None
+        self._info_cache_ts = 0.0
+        self._last_nonce = 0
 
     async def initialize(self) -> bool:
         try:
             if not self.http_session:
                 self.http_session = aiohttp.ClientSession()
-
-            if not self.solana_client and SOLANA_AVAILABLE:
-                try:
-                    self.solana_client = AsyncClient(self.rpc_url)
-                except Exception as e:
-                    print(f"Warning: Could not initialize Solana client: {e}")
-
             return True
         except Exception as e:
             print(f"Error initializing Arweave purchase service: {e}")
@@ -73,8 +88,7 @@ class ArweavePurchaseService:
         try:
             if self.http_session:
                 await self.http_session.close()
-            if self.solana_client:
-                await self.solana_client.close()
+                self.http_session = None
         except Exception as e:
             print(f"Error shutting down purchase service: {e}")
 
@@ -86,52 +100,21 @@ class ArweavePurchaseService:
     def _get_native_provider_details(self) -> Dict[str, str]:
         funding_service = get_funding_manager_service()
         config = funding_service.config
-        provider = (config.arweave_native_provider or "turbo").strip().lower()
-
-        turbo_service_url = (config.turbo_payment_service_url or "https://payment.ardrive.io/v1").strip()
-        if turbo_service_url == "https://turbo.arweave.dev":
-            turbo_service_url = "https://payment.ardrive.io/v1"
-
-        providers = {
-            "turbo": {
-                "id": "turbo",
-                "name": "Turbo",
-                "service_url": turbo_service_url,
-                "description": "Use a Turbo payment session to convert supported Solana funds into native AR.",
-            },
-            "arseeding": {
-                "id": "arseeding",
-                "name": "Arseeding",
-                "service_url": (config.arseeding_service_url or "https://arseed.web3infra.dev").strip(),
-                "payment_url": (config.arseeding_pay_url or "https://api.everpay.io").strip(),
-                "description": "Use Arseeding/Everpay rails to convert supported Solana funds into native AR.",
-            },
+        return {
+            "id": "everpay",
+            "name": "everPay",
+            "service_url": (config.everpay_api_url or "https://api.everpay.io").strip(),
+            "input_token": (config.everpay_input_token or self.TOKEN_IDENTIFIER_ALIASES["USDC-ETH-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]).strip(),
+            "ar_token": (config.everpay_ar_token or self.TOKEN_IDENTIFIER_ALIASES["AR-AR-0x0000000000000000000000000000000000000000"]).strip(),
+            "address": (config.everpay_address or "").strip(),
+            "description": "Use everPay direct to swap credited funds into AR and withdraw native AR to the user's Arweave wallet.",
         }
-
-        return providers.get(provider, providers["turbo"])
-
-    def _get_native_provider_limitations(self, provider: Dict[str, str]) -> Optional[str]:
-        provider_id = provider.get("id", "")
-        if provider_id == "arseeding":
-            return (
-                "Arseeding's public API does not expose a native AR wallet-funding quote or purchase endpoint. "
-                "Its documented API is for bundle/upload payments, so this error is not caused by low SOL gas."
-            )
-        if provider_id == "turbo":
-            return (
-                "Turbo's documented public API provides upload-credit/payment endpoints, not a documented native AR "
-                "wallet-funding API for this flow. This error is not caused by low SOL gas."
-            )
-        return None
 
     def _build_native_provider_message(self) -> str:
         provider = self._get_native_provider_details()
-        limitation = self._get_native_provider_limitations(provider)
-        if limitation:
-            return limitation
         return (
-            f"Native AR funding is handled by {provider['name']} via {provider['service_url']}. "
-            f"The purchase will convert supported Solana funds and deliver AR to your Arweave wallet."
+            f"Native AR funding is handled by {provider['name']} direct via {provider['service_url']}. "
+            f"The configured everPay account swaps credited funds into AR and withdraws native AR to the user's Arweave wallet."
         )
 
     def get_native_conversion_plan(self) -> Dict[str, Any]:
@@ -172,183 +155,6 @@ class ArweavePurchaseService:
 
         return None
 
-    def _extract_currency_price(self, payload: Dict[str, Any], currency: str) -> Optional[float]:
-        currency_key = (currency or "USDC").strip().lower()
-        direct_candidates = [
-            currency_key,
-            f"price{currency_key}",
-            f"price_{currency_key}",
-            f"{currency_key}price",
-            f"{currency_key}_price",
-            f"pricein{currency_key}",
-        ]
-
-        direct_value = self._find_first_value(payload, direct_candidates)
-        parsed_direct = self._coerce_float(direct_value)
-        if parsed_direct and parsed_direct > 0:
-            return parsed_direct
-
-        for container_key in ["price", "prices", "rates", "quote", "quotes"]:
-            nested = self._find_first_value(payload, [container_key])
-            if isinstance(nested, dict):
-                nested_value = nested.get(currency_key)
-                parsed_nested = self._coerce_float(nested_value)
-                if parsed_nested and parsed_nested > 0:
-                    return parsed_nested
-
-        return None
-
-    def _extract_provider_transaction(self, payload: Dict[str, Any]) -> Optional[str]:
-        candidate = self._find_first_value(
-            payload,
-            [
-                "solanaTransaction",
-                "transactionBase64",
-                "serializedTransaction",
-                "swapTransaction",
-                "transaction",
-                "tx",
-            ],
-        )
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate.strip()
-        return None
-
-    def _extract_provider_reference(self, payload: Dict[str, Any], provider_id: str) -> Optional[str]:
-        candidate = self._find_first_value(
-            payload,
-            [
-                "trackingId",
-                "purchaseId",
-                "referenceId",
-                "id",
-            ],
-        )
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate.strip()
-        if provider_id == "arseeding":
-            order_id = self._find_first_value(payload, ["orderId"])
-            if isinstance(order_id, str) and order_id.strip():
-                return order_id.strip()
-        return None
-
-    def _decode_transaction_payload(self, tx_payload: str) -> Optional[bytes]:
-        candidate = (tx_payload or "").strip()
-        if not candidate:
-            self._set_last_error("Provider returned an empty transaction payload")
-            return None
-
-        padding = (-len(candidate)) % 4
-        if padding:
-            candidate = f"{candidate}{'=' * padding}"
-
-        try:
-            return base64.b64decode(candidate)
-        except (binascii.Error, ValueError) as decode_error:
-            self._set_last_error(f"Invalid provider transaction payload: {decode_error}")
-            return None
-
-    async def _send_signed_transaction(self, signed_tx_bytes: bytes) -> Optional[str]:
-        if not self.solana_client:
-            self._set_last_error("Solana client not initialized")
-            return None
-
-        response = None
-        last_error = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = await self.solana_client.send_raw_transaction(signed_tx_bytes)
-                break
-            except Exception as e:
-                last_error = str(e)
-                if attempt < self.max_retries:
-                    await asyncio.sleep(self.retry_delay * (attempt + 1))
-                    continue
-
-        if response is None:
-            self._set_last_error(f"Error sending transaction: {last_error}")
-            return None
-
-        return str(response.value if hasattr(response, 'value') else response)
-
-    def _resolve_input_amount(self, usdc_amount: float) -> Optional[int]:
-        try:
-            amount = float(usdc_amount)
-        except (TypeError, ValueError):
-            self._set_last_error("Invalid USDC amount")
-            return None
-
-        if amount <= 0:
-            self._set_last_error("USDC amount must be greater than zero")
-            return None
-
-        smallest_unit = int(amount * self.USDC_DECIMALS)
-        if smallest_unit <= 0:
-            self._set_last_error("USDC amount too small")
-            return None
-        return smallest_unit
-
-    def _normalize_keypair_bytes(self, keypair_bytes: Any) -> Optional[bytes]:
-        if not keypair_bytes:
-            return None
-
-        if isinstance(keypair_bytes, bytes):
-            return keypair_bytes
-
-        if isinstance(keypair_bytes, bytearray):
-            return bytes(keypair_bytes)
-
-        if isinstance(keypair_bytes, (list, tuple)):
-            try:
-                return bytes(int(v) & 0xFF for v in keypair_bytes)
-            except Exception:
-                return None
-
-        if isinstance(keypair_bytes, str):
-            candidate = keypair_bytes.strip()
-            if not candidate:
-                return None
-
-            try:
-                return base64.b64decode(candidate, validate=True)
-            except (binascii.Error, ValueError):
-                pass
-
-            try:
-                return bytes.fromhex(candidate)
-            except ValueError:
-                return None
-
-        return None
-
-    def _sign_swap_transaction(self, tx_bytes: bytes, keypair_bytes: bytes) -> Optional[bytes]:
-        try:
-            from solders.keypair import Keypair
-            from solders.message import to_bytes_versioned
-            from solders.transaction import VersionedTransaction
-
-            keypair = Keypair.from_bytes(keypair_bytes)
-            unsigned_tx = VersionedTransaction.from_bytes(tx_bytes)
-            signature = keypair.sign_message(to_bytes_versioned(unsigned_tx.message))
-            signed_tx = VersionedTransaction.populate(unsigned_tx.message, [signature])
-            return bytes(signed_tx)
-        except Exception as versioned_error:
-            try:
-                from solders.keypair import Keypair
-
-                keypair = Keypair(keypair_bytes)
-                if not Transaction:
-                    self._set_last_error(f"Versioned signing failed: {versioned_error}")
-                    return None
-                tx = Transaction.from_bytes(tx_bytes)
-                tx.sign([keypair])
-                return bytes(tx)
-            except Exception as legacy_error:
-                self._set_last_error(
-                    f"Error signing transaction: versioned={versioned_error}; legacy={legacy_error}"
-                )
-                return None
-
     async def _request_json(self, method: str, url: str, **kwargs) -> Optional[Dict[str, Any]]:
         if not self.http_session:
             await self.initialize()
@@ -362,7 +168,7 @@ class ArweavePurchaseService:
                     if response.status == 200:
                         return await response.json()
                     error_text = await response.text()
-                    last_error = f"HTTP {response.status}: {error_text[:120]}"
+                    last_error = f"HTTP {response.status}: {error_text[:160]}"
                     if response.status >= 500 and attempt < max_retries:
                         await asyncio.sleep(self.retry_delay * (attempt + 1))
                         continue
@@ -383,66 +189,373 @@ class ArweavePurchaseService:
             self._set_last_error(last_error)
         return None
 
+    async def _get_info(self, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+        provider = self._get_native_provider_details()
+        if not force_refresh and self._info_cache and (time.time() - self._info_cache_ts) < 300:
+            return self._info_cache
+
+        payload = await self._request_json(
+            "GET",
+            self._get_provider_api_url(provider, "/info"),
+            timeout=aiohttp.ClientTimeout(total=self.quote_request_timeout),
+            max_retries=self.quote_max_retries,
+        )
+        if payload:
+            self._info_cache = payload
+            self._info_cache_ts = time.time()
+        return payload
+
+    def _normalize_token_identifier(self, identifier: str) -> str:
+        value = (identifier or "").strip()
+        return self.TOKEN_IDENTIFIER_ALIASES.get(value, value)
+
+    def _token_supports_chain(self, token: Dict[str, Any], chain_name: str) -> bool:
+        supported = [item.strip().lower() for item in str(token.get("chainType", "")).split(",") if item.strip()]
+        return chain_name.lower() in supported
+
+    def _token_matches_identifier(self, token: Dict[str, Any], identifier: str) -> bool:
+        normalized = self._normalize_token_identifier(identifier)
+        lowered = normalized.lower()
+        tag = str(token.get("tag", "")).strip()
+        token_id = str(token.get("id", "")).strip()
+        symbol = str(token.get("symbol", "")).strip()
+        chain_type = str(token.get("chainType", "")).strip()
+
+        if lowered in {tag.lower(), token_id.lower(), symbol.lower()}:
+            return True
+
+        parts = normalized.split("-", 2)
+        if len(parts) == 3:
+            legacy_symbol, legacy_chain, legacy_token_id = parts
+            expected_chain = self.LEGACY_CHAIN_ALIASES.get(legacy_chain.strip().lower(), legacy_chain.strip().lower())
+            if symbol.lower() != legacy_symbol.strip().lower():
+                return False
+            if not self._token_supports_chain(token, expected_chain):
+                return False
+            token_ids = [piece.strip().lower() for piece in token_id.split(",") if piece.strip()]
+            if legacy_token_id.strip().lower() in token_ids:
+                return True
+            if expected_chain == "arweave" and symbol.lower() == "ar":
+                return True
+
+        return False
+
+    async def _get_token_info(self, identifier: str) -> Optional[Dict[str, Any]]:
+        info = await self._get_info()
+        if not info:
+            if not self.last_error:
+                self._set_last_error("Could not load everPay token metadata")
+            return None
+
+        token_list = info.get("tokenList") or []
+        for token in token_list:
+            if self._token_matches_identifier(token, identifier):
+                return token
+
+        self._set_last_error(f"everPay token not found for identifier: {identifier}")
+        return None
+
+    def _resolve_input_amount(self, usdc_amount: float) -> Optional[int]:
+        try:
+            amount = Decimal(str(usdc_amount))
+        except (InvalidOperation, TypeError, ValueError):
+            self._set_last_error("Invalid USDC amount")
+            return None
+
+        if amount <= 0:
+            self._set_last_error("USDC amount must be greater than zero")
+            return None
+
+        smallest_unit = int(amount * self.USDC_DECIMALS)
+        if smallest_unit <= 0:
+            self._set_last_error("USDC amount too small")
+            return None
+        return smallest_unit
+
+    async def _get_balance_payload(self, address: str) -> Optional[Dict[str, Any]]:
+        provider = self._get_native_provider_details()
+        return await self._request_json(
+            "GET",
+            self._get_provider_api_url(provider, f"/balances/{address}"),
+            timeout=aiohttp.ClientTimeout(total=self.quote_request_timeout),
+            max_retries=self.quote_max_retries,
+        )
+
+    async def _get_token_balance(self, address: str, token_identifier: str) -> Optional[int]:
+        balances_payload = await self._get_balance_payload(address)
+        if not balances_payload:
+            if not self.last_error:
+                self._set_last_error("Could not load everPay balances")
+            return None
+
+        for entry in balances_payload.get("balances", []):
+            entry_tag = entry.get("tag")
+            if self._token_matches_identifier({"tag": entry_tag, "id": entry_tag, "symbol": "", "chainType": ""}, token_identifier):
+                try:
+                    return int(entry.get("amount", 0) or 0)
+                except (TypeError, ValueError):
+                    return 0
+            if self._token_matches_identifier({
+                "tag": entry.get("tag", ""),
+                "id": entry.get("tag", ""),
+                "symbol": token_identifier,
+                "chainType": entry.get("tag", "").split("-", 1)[0] if entry.get("tag") else "",
+            }, token_identifier):
+                try:
+                    return int(entry.get("amount", 0) or 0)
+                except (TypeError, ValueError):
+                    return 0
+
+        return 0
+
+    def _get_next_nonce(self) -> str:
+        current = int(time.time() * 1000)
+        self._last_nonce = max(current, self._last_nonce + 1)
+        return str(self._last_nonce)
+
+    def _get_everpay_private_key(self) -> Optional[str]:
+        for key_name in ["EVERPAY_PRIVATE_KEY", "EVERPAY_SIGNER_PRIVATE_KEY"]:
+            value = (os.getenv(key_name) or "").strip()
+            if value:
+                return value
+        return None
+
+    def _get_everpay_signer_address(self) -> Optional[str]:
+        local_wallet_service = get_local_everpay_wallet_service()
+        local_wallet_address = local_wallet_service.get_wallet_address()
+        if local_wallet_address:
+            return local_wallet_address
+
+        provider = self._get_native_provider_details()
+        configured_address = provider.get("address")
+        if configured_address:
+            return configured_address
+
+        private_key = self._get_everpay_private_key()
+        if not private_key:
+            return None
+
+        if not ETH_ACCOUNT_AVAILABLE:
+            self._set_last_error("eth-account is required for everPay direct signing")
+            return None
+
+        try:
+            account = Account.from_key(private_key)
+            return account.address
+        except Exception as e:
+            self._set_last_error(f"Invalid everPay signer private key: {e}")
+            return None
+
+    def _build_legacy_signing_message(self, payload: Dict[str, Any]) -> str:
+        ordered_payload = {
+            key: value
+            for key, value in payload.items()
+            if key != "sig"
+        }
+        return json.dumps(ordered_payload, separators=(",", ":"), ensure_ascii=False)
+
+    def _sign_legacy_payload(self, payload: Dict[str, Any]) -> Optional[str]:
+        local_wallet_service = get_local_everpay_wallet_service()
+        message = self._build_legacy_signing_message(payload)
+
+        if local_wallet_service.is_wallet_loaded():
+            try:
+                return local_wallet_service.sign_everpay_tx(json.loads(message))
+            except Exception as e:
+                self._set_last_error(f"Error signing everPay transaction with local wallet: {e}")
+                return None
+
+        private_key = self._get_everpay_private_key()
+        if not private_key:
+            self._set_last_error("Load the local everPay wallet or configure EVERPAY_PRIVATE_KEY before executing")
+            return None
+
+        if not ETH_ACCOUNT_AVAILABLE:
+            self._set_last_error("eth-account is required for everPay direct signing")
+            return None
+
+        try:
+            signed = Account.from_key(private_key).sign_message(encode_defunct(text=message))
+            return signed.signature.hex()
+        except Exception as e:
+            self._set_last_error(f"Error signing everPay transaction: {e}")
+            return None
+
+    def _compute_everhash(self, payload: Dict[str, Any]) -> str:
+        message = self._build_legacy_signing_message(payload)
+        prefix = f"\x19Ethereum Signed Message:\n{len(message.encode('utf-8'))}".encode("utf-8")
+        digest = keccak.new(digest_bits=256)
+        digest.update(prefix + message.encode("utf-8"))
+        return f"0x{digest.hexdigest()}"
+
+    def _extract_provider_reference(self, payload: Dict[str, Any]) -> Optional[str]:
+        candidate = self._find_first_value(
+            payload,
+            [
+                "everHash",
+                "hash",
+                "id",
+                "txHash",
+                "targetChainTxHash",
+                "referenceId",
+                "purchaseId",
+            ],
+        )
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+        return None
+
+    async def _submit_everpay_tx(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        provider = self._get_native_provider_details()
+        signature = self._sign_legacy_payload(payload)
+        if not signature:
+            return None
+
+        signed_payload = dict(payload)
+        signed_payload["sig"] = signature
+        local_reference = self._compute_everhash(payload)
+        response = await self._request_json(
+            "POST",
+            self._get_provider_api_url(provider, "/tx"),
+            json=signed_payload,
+            timeout=aiohttp.ClientTimeout(total=self.swap_request_timeout),
+            max_retries=self.swap_max_retries,
+        )
+        if response is None:
+            return None
+
+        return {
+            "response": response,
+            "payload": signed_payload,
+            "reference": self._extract_provider_reference(response) or local_reference,
+        }
+
+    async def _poll_transaction_record(self, everhash: str, attempts: int = 5, delay: float = 2.0) -> Optional[Dict[str, Any]]:
+        provider = self._get_native_provider_details()
+        for _ in range(attempts):
+            payload = await self._request_json(
+                "GET",
+                self._get_provider_api_url(provider, f"/tx/{everhash}"),
+                timeout=aiohttp.ClientTimeout(total=self.swap_request_timeout),
+                max_retries=0,
+            )
+            if payload:
+                return payload
+            await asyncio.sleep(delay)
+        return None
+
+    async def _await_balance_increase(
+        self,
+        address: str,
+        token_identifier: str,
+        starting_balance: int,
+        attempts: int = 6,
+        delay: float = 2.0,
+    ) -> Optional[int]:
+        for _ in range(attempts):
+            current_balance = await self._get_token_balance(address, token_identifier)
+            if current_balance is None:
+                await asyncio.sleep(delay)
+                continue
+            if current_balance > starting_balance:
+                return current_balance - starting_balance
+            await asyncio.sleep(delay)
+        return None
+
+    async def _fetch_market_quote(self, usdc_amount: float) -> Optional[Dict[str, Any]]:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            "ids": "arweave",
+            "vs_currencies": "usd",
+        }
+        payload = await self._request_json(
+            "GET",
+            url,
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=self.quote_request_timeout),
+            max_retries=self.quote_max_retries,
+        )
+        if not payload:
+            return None
+
+        arweave_data = payload.get("arweave") or {}
+        usd_price = self._coerce_float(arweave_data.get("usd"))
+        if not usd_price or usd_price <= 0:
+            return None
+
+        ar_amount = float(usdc_amount) / usd_price
+        return {
+            "usd_price": usd_price,
+            "ar_amount": ar_amount,
+        }
+
+    def _is_execution_ready(self) -> bool:
+        local_wallet_service = get_local_everpay_wallet_service()
+        if local_wallet_service.has_local_wallet() and self._get_everpay_signer_address():
+            return True
+        if not self._get_everpay_private_key():
+            return False
+        if not ETH_ACCOUNT_AVAILABLE:
+            return False
+        return bool(self._get_everpay_signer_address())
+
     async def get_native_provider_quote(self, payment_amount: float, payment_currency: str = "USDC") -> Optional[Dict[str, Any]]:
         try:
             self.last_error = None
-            provider = self._get_native_provider_details()
-            limitation = self._get_native_provider_limitations(provider)
-            if limitation:
-                self._set_last_error(limitation)
-                return None
-
             payment_currency = (payment_currency or "USDC").strip().upper()
-            response = await self._request_json(
-                "GET",
-                self._get_provider_api_url(provider, "/price/AR"),
-                timeout=aiohttp.ClientTimeout(total=self.quote_request_timeout),
-                max_retries=self.quote_max_retries,
+            if payment_currency != "USDC":
+                self._set_last_error(f"everPay direct is configured for USDC input in this dialog, not {payment_currency}")
+                return None
+
+            input_amount = self._resolve_input_amount(payment_amount)
+            if not input_amount:
+                return None
+
+            provider = self._get_native_provider_details()
+            input_token = await self._get_token_info(provider["input_token"])
+            ar_token = await self._get_token_info(provider["ar_token"])
+            if not input_token or not ar_token:
+                return None
+
+            market_quote = await self._fetch_market_quote(payment_amount)
+            if not market_quote:
+                self._set_last_error("everPay token support loaded, but AR market pricing is temporarily unavailable")
+                return None
+
+            ar_amount = market_quote["ar_amount"]
+            amount_winston = int(ar_amount * self.AR_DECIMALS)
+            if amount_winston <= 0:
+                self._set_last_error("everPay quote produced an invalid AR amount estimate")
+                return None
+
+            executable = self._is_execution_ready()
+            status_message = (
+                "everPay direct estimate ready. Executing will swap credited USDC from the configured everPay account "
+                "and withdraw native AR to the target Arweave wallet."
             )
-            if not response:
-                if not self.last_error:
-                    self._set_last_error(f"{provider['name']} price quote unavailable")
-                return None
-
-            unit_price = self._extract_currency_price(response, payment_currency)
-            if unit_price is None or unit_price <= 0:
-                self._set_last_error(f"{provider['name']} did not return a usable {payment_currency} price for AR")
-                return None
-
-            ar_amount = float(payment_amount) / unit_price
-            if ar_amount <= 0:
-                self._set_last_error(f"{provider['name']} produced an invalid AR amount estimate")
-                return None
+            if not executable:
+                status_message = (
+                    "everPay pricing estimate is available, but execution is disabled until a local everPay wallet "
+                    "is created or loaded for signing."
+                )
 
             return {
                 "provider": provider,
                 "payment_currency": payment_currency,
                 "payment_amount": float(payment_amount),
                 "ar_amount": ar_amount,
-                "amount_winston": str(max(int(ar_amount * self.AR_DECIMALS), 1)),
-                "unit_price": unit_price,
-                "raw": response,
+                "amount_winston": str(amount_winston),
+                "unit_price": market_quote["usd_price"],
+                "raw": {
+                    "input_token": input_token,
+                    "output_token": ar_token,
+                    "market_quote": market_quote,
+                },
+                "executable": executable,
+                "status_message": status_message,
             }
         except Exception as e:
-            self._set_last_error(f"Error getting native provider quote: {e}")
-            return None
-
-    async def _get_native_purchase_status(self, provider: Dict[str, str], reference_id: str) -> Optional[Dict[str, Any]]:
-        try:
-            provider_id = provider.get("id", "")
-            if provider_id == "arseeding":
-                status_path = f"/ar/transfer/{reference_id}"
-            else:
-                status_path = f"/purchase/{reference_id}"
-
-            return await self._request_json(
-                "GET",
-                self._get_provider_api_url(provider, status_path),
-                timeout=aiohttp.ClientTimeout(total=self.swap_request_timeout),
-                max_retries=self.swap_max_retries,
-            )
-        except Exception as e:
-            self._set_last_error(f"Error checking provider purchase status: {e}")
+            self._set_last_error(f"Error getting everPay quote: {e}")
             return None
 
     async def get_quote(
@@ -461,20 +574,20 @@ class ArweavePurchaseService:
             if not native_quote:
                 return None
 
-            provider = native_quote.get("provider", {})
-            provider_name = provider.get("name", "Provider")
-            unit_price = native_quote.get("unit_price", 0)
             output_amount = int(native_quote.get("amount_winston", "0") or 0)
             if output_amount <= 0:
-                self._set_last_error(f"{provider_name} quote did not include a valid AR amount")
+                self._set_last_error("everPay quote did not include a valid AR amount")
                 return None
 
+            unit_price = native_quote.get("unit_price", 0)
             return ArweaveSwapQuote(
                 input_amount=input_amount,
                 output_amount=output_amount,
                 price_impact=0.0,
-                route_description=f"{provider_name} Native AR API (USDC/AR: ${unit_price:.6f})",
+                route_description=f"everPay Direct (AR/USD: ${unit_price:.6f})",
                 fees=native_quote.get("raw") if isinstance(native_quote.get("raw"), dict) else None,
+                executable=bool(native_quote.get("executable")),
+                status_message=native_quote.get("status_message"),
             )
         except Exception as e:
             self._set_last_error(f"Error getting native AR quote: {e}")
@@ -487,23 +600,28 @@ class ArweavePurchaseService:
         arweave_address: str,
         keypair_bytes: Optional[bytes] = None,
         payment_currency: str = "USDC",
+        wallet_password: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         try:
             self.last_error = None
+            payment_currency = (payment_currency or "USDC").strip().upper()
+            if payment_currency != "USDC":
+                self._set_last_error("everPay direct execution is currently configured for USDC only")
+                return None
+
+            local_wallet_service = get_local_everpay_wallet_service()
+            if wallet_password and local_wallet_service.has_local_wallet() and not local_wallet_service.is_wallet_loaded():
+                try:
+                    local_wallet_service.load_local_wallet(wallet_password)
+                except Exception as e:
+                    self._set_last_error(f"Failed to unlock local everPay wallet: {e}")
+                    return None
+
             provider = self._get_native_provider_details()
-            limitation = self._get_native_provider_limitations(provider)
-            if limitation:
-                self._set_last_error(limitation)
-                return None
-
-            normalized_keypair = self._normalize_keypair_bytes(keypair_bytes)
-            if not normalized_keypair:
-                self._set_last_error("Valid private key required to execute native AR funding")
-                return None
-
-            wallet_pubkey = (user_pubkey or "").strip()
-            if not wallet_pubkey:
-                self._set_last_error("User wallet public key is required")
+            signer_address = self._get_everpay_signer_address()
+            if not signer_address:
+                if not self.last_error:
+                    self._set_last_error("everPay signer address is not configured")
                 return None
 
             target_arweave_address = (arweave_address or "").strip()
@@ -511,89 +629,86 @@ class ArweavePurchaseService:
                 self._set_last_error("Arweave wallet address is required for native AR funding")
                 return None
 
-            quote = await self.get_native_provider_quote(payment_amount, payment_currency=payment_currency)
-            if not quote:
+            input_amount = self._resolve_input_amount(payment_amount)
+            if not input_amount:
                 return None
 
-            provider = quote["provider"]
-            provider_id = provider.get("id", "turbo")
-            amount_winston = quote["amount_winston"]
-            payment_currency = quote["payment_currency"]
+            input_token = await self._get_token_info(provider["input_token"])
+            ar_token = await self._get_token_info(provider["ar_token"])
+            if not input_token or not ar_token:
+                return None
 
-            if provider_id == "arseeding":
-                payload = {
-                    "target": target_arweave_address,
-                    "quantity": amount_winston,
-                    "payment": {
-                        "currency": payment_currency,
-                        "payer": wallet_pubkey,
-                    },
-                }
-                request_path = "/ar/transfer"
-            else:
-                payload = {
-                    "target": target_arweave_address,
-                    "amount": amount_winston,
-                    "currency": payment_currency,
-                    "payer": wallet_pubkey,
-                }
-                request_path = "/purchase"
+            starting_input_balance = await self._get_token_balance(signer_address, input_token["tag"])
+            if starting_input_balance is None:
+                return None
+            if starting_input_balance < input_amount:
+                self._set_last_error(
+                    f"Configured everPay account has insufficient {payment_currency} balance. "
+                    f"Required {input_amount}, available {starting_input_balance}."
+                )
+                return None
 
-            create_response = await self._request_json(
-                "POST",
-                self._get_provider_api_url(provider, request_path),
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=self.swap_request_timeout),
-                max_retries=self.swap_max_retries,
+            starting_ar_balance = await self._get_token_balance(signer_address, ar_token["tag"])
+            if starting_ar_balance is None:
+                return None
+
+            swap_payload = {
+                "action": "swap",
+                "from": signer_address,
+                "token": input_token["tag"],
+                "amount": str(input_amount),
+                "swapTo": ar_token["tag"],
+                "nonce": self._get_next_nonce(),
+            }
+            swap_submission = await self._submit_everpay_tx(swap_payload)
+            if not swap_submission:
+                return None
+
+            ar_delta = await self._await_balance_increase(
+                signer_address,
+                ar_token["tag"],
+                starting_ar_balance,
             )
-            if not create_response:
-                if not self.last_error:
-                    self._set_last_error(f"{provider['name']} purchase request failed")
+            if not ar_delta or ar_delta <= 0:
+                self._set_last_error(
+                    "everPay swap submitted, but no AR balance increase was observed before the timeout."
+                )
                 return None
 
-            tx_payload = self._extract_provider_transaction(create_response)
-            if not tx_payload:
-                self._set_last_error(f"{provider['name']} did not return a signable Solana transaction")
+            withdraw_payload = {
+                "action": "withdraw",
+                "from": signer_address,
+                "token": ar_token["tag"],
+                "amount": str(ar_delta),
+                "target": target_arweave_address,
+                "nonce": self._get_next_nonce(),
+            }
+            withdraw_submission = await self._submit_everpay_tx(withdraw_payload)
+            if not withdraw_submission:
                 return None
 
-            tx_bytes = self._decode_transaction_payload(tx_payload)
-            if not tx_bytes:
-                return None
-
-            signed_tx_bytes = self._sign_swap_transaction(tx_bytes, normalized_keypair)
-            if not signed_tx_bytes:
-                return None
-
-            tx_signature = await self._send_signed_transaction(signed_tx_bytes)
-            if not tx_signature:
-                return None
-
-            reference_id = self._extract_provider_reference(create_response, provider_id)
-            status_payload = None
-            if reference_id:
-                for _ in range(3):
-                    await asyncio.sleep(2)
-                    status_payload = await self._get_native_purchase_status(provider, reference_id)
-                    status_value = (self._find_first_value(status_payload, ["status", "state"]) or "").lower() if status_payload else ""
-                    if status_value in {"success", "completed", "confirmed"}:
-                        break
-                    if status_value in {"failed", "error", "expired"}:
-                        self._set_last_error(f"{provider['name']} payout failed with status: {status_value}")
-                        return None
-
+            withdraw_reference = withdraw_submission["reference"]
+            withdraw_status = None
             arweave_tx_id = None
-            if status_payload:
-                arweave_tx_id = self._find_first_value(status_payload, ["arweaveTxId", "arTxId", "arweaveId", "arId"])
+            if withdraw_reference.startswith("0x"):
+                withdraw_status = await self._poll_transaction_record(withdraw_reference)
+                if withdraw_status:
+                    arweave_tx_id = self._find_first_value(withdraw_status, ["targetChainTxHash", "arweaveTxId", "txHash"])
 
             return {
                 "success": True,
-                "transaction_id": tx_signature,
+                "transaction_id": swap_submission["reference"],
                 "amount_usdc": payment_amount,
-                "provider": provider.get("name", provider_id.title()),
-                "provider_reference": reference_id,
+                "provider": provider.get("name", "everPay"),
+                "provider_reference": withdraw_reference,
                 "arweave_tx_id": arweave_tx_id,
                 "native_delivery": True,
                 "timestamp": datetime.now().isoformat(),
+                "swap_transaction_id": swap_submission["reference"],
+                "withdraw_transaction_id": withdraw_reference,
+                "payer_address": user_pubkey,
+                "everpay_address": signer_address,
+                "withdraw_amount_winston": str(ar_delta),
             }
         except Exception as e:
             self._set_last_error(f"Error executing native AR funding: {e}")
@@ -608,6 +723,7 @@ class ArweavePurchaseService:
         slippage_bps: Optional[int] = None,
         arweave_address: Optional[str] = None,
         payment_currency: str = "USDC",
+        wallet_password: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         try:
             self.last_error = None
@@ -617,6 +733,7 @@ class ArweavePurchaseService:
                 arweave_address=arweave_address or "",
                 keypair_bytes=keypair_bytes,
                 payment_currency=payment_currency,
+                wallet_password=wallet_password,
             )
         except Exception as e:
             self._set_last_error(f"Error executing native AR funding: {e}")

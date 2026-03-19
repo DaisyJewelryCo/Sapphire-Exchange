@@ -36,10 +36,11 @@ class FundingConfig:
     # Arweave Configuration
     ar_min_amount: float = 0.001
     ar_max_amount: float = 100.0
-    arweave_native_provider: str = "turbo"
-    turbo_payment_service_url: str = "https://payment.ardrive.io/v1"
-    arseeding_service_url: str = "https://arseed.web3infra.dev"
-    arseeding_pay_url: str = "https://api.everpay.io"
+    arweave_native_provider: str = "everpay"
+    everpay_api_url: str = "https://api.everpay.io"
+    everpay_input_token: str = "ethereum-usdc-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    everpay_ar_token: str = "arweave,ethereum-ar-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543"
+    everpay_address: str = ""
     
     # Nano Configuration
     nano_min_amount: float = 0.001
@@ -85,6 +86,15 @@ class FundingConfig:
         
         if self.nano_max_amount <= self.nano_min_amount:
             errors.append("Nano max amount must be greater than min amount")
+        
+        if self.enable_arweave_purchase and not self.everpay_api_url:
+            errors.append("everPay API URL not configured")
+        
+        if self.enable_arweave_purchase and not self.everpay_input_token:
+            errors.append("everPay input token not configured")
+        
+        if self.enable_arweave_purchase and not self.everpay_ar_token:
+            errors.append("everPay AR token not configured")
         
         return len(errors) == 0, errors
     
@@ -159,8 +169,8 @@ class FundingManagerService:
                 with open(self.CONFIG_FILE, 'r') as f:
                     config_dict = json.load(f)
                     self.config = FundingConfig.from_dict(config_dict)
-                    if self.config.turbo_payment_service_url == "https://turbo.arweave.dev":
-                        self.config.turbo_payment_service_url = "https://payment.ardrive.io/v1"
+                    if self.config.arweave_native_provider != "everpay":
+                        self.config.arweave_native_provider = "everpay"
                     self.logger.info("Configuration loaded successfully")
                     return True
             return False

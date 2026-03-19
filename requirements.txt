@@ -37,6 +37,7 @@ Pillow>=9.5.0
 
 # HTTP Client
 httpx>=0.24.0
+eth-account>=0.13.0
 
 # Async Support
 asyncio-mqtt>=0.11.1

@@ -24,6 +24,7 @@ from security.account_backup_manager import account_backup_manager
 from services.application_service import app_service
 from services.arweave_purchase_service import get_arweave_purchase_service
 from services.funding_manager_service import get_funding_manager_service
+from services.local_everpay_wallet_service import get_local_everpay_wallet_service
 from services.transaction_tracker import get_transaction_tracker
 from utils.conversion_utils import format_currency
 from utils.async_worker import AsyncWorker
@@ -543,7 +544,7 @@ class ArweavePurchaseDialog(QDialog):
         """Setup purchase dialog UI."""
         layout = QVBoxLayout(self)
         
-        info_label = QLabel("Estimate native Arweave (AR) funding from USDC on Solana")
+        info_label = QLabel("Estimate native Arweave (AR) funding from credited USDC via everPay")
         info_label.setFont(QFont("Arial", 12, QFont.Bold))
         layout.addWidget(info_label)
         
@@ -555,11 +556,44 @@ class ArweavePurchaseDialog(QDialog):
         form_layout.addRow("USDC Amount:", self.usdc_amount_edit)
 
         funding_service = get_funding_manager_service()
-        self.native_provider_combo = QComboBox()
-        self.native_provider_combo.addItems(["Turbo", "Arseeding"])
-        self.native_provider_combo.setCurrentText((funding_service.config.arweave_native_provider or "turbo").title())
-        self.native_provider_combo.currentTextChanged.connect(self.update_estimate)
-        form_layout.addRow("Native AR Provider:", self.native_provider_combo)
+        self.native_provider_display = QLineEdit()
+        self.native_provider_display.setText("everPay Direct")
+        self.native_provider_display.setReadOnly(True)
+        form_layout.addRow("Native AR Provider:", self.native_provider_display)
+
+        self.wallet_status_label = QLabel("Step 1 · Create or load a local everPay wallet")
+        self.wallet_status_label.setStyleSheet("color: #666; font-weight: bold;")
+        self.wallet_status_label.setWordWrap(True)
+        form_layout.addRow("Wallet:", self.wallet_status_label)
+
+        wallet_button_layout = QHBoxLayout()
+        create_wallet_btn = QPushButton("Create Wallet")
+        create_wallet_btn.clicked.connect(self._create_local_everpay_wallet)
+        wallet_button_layout.addWidget(create_wallet_btn)
+        load_wallet_btn = QPushButton("Load Wallet")
+        load_wallet_btn.clicked.connect(self._load_local_everpay_wallet)
+        wallet_button_layout.addWidget(load_wallet_btn)
+        export_wallet_btn = QPushButton("Export Wallet")
+        export_wallet_btn.clicked.connect(self._export_local_everpay_wallet)
+        wallet_button_layout.addWidget(export_wallet_btn)
+        import_wallet_btn = QPushButton("Import Wallet")
+        import_wallet_btn.clicked.connect(self._import_local_everpay_wallet)
+        wallet_button_layout.addWidget(import_wallet_btn)
+        form_layout.addRow("", wallet_button_layout)
+
+        self.everpay_balance_label = QLabel("Step 2 · Fund everPay with USDC, then load wallet to fetch balances")
+        self.everpay_balance_label.setStyleSheet("color: #666;")
+        self.everpay_balance_label.setWordWrap(True)
+        form_layout.addRow("everPay Balance:", self.everpay_balance_label)
+
+        self.flow_steps_label = QLabel(
+            "1. Create/Load Wallet\n"
+            "2. Fund everPay\n"
+            "3. Swap to AR\n"
+            "4. Withdraw to Arweave"
+        )
+        self.flow_steps_label.setStyleSheet("color: #666; background: #f7f7f7; padding: 8px; border-radius: 4px;")
+        form_layout.addRow("Flow:", self.flow_steps_label)
         
         self.ar_estimate_label = QLabel("AR Estimate: Enter amount to calculate")
         self.ar_estimate_label.setStyleSheet("color: #666; font-weight: bold;")
@@ -582,8 +616,8 @@ class ArweavePurchaseDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         
-        warning = QLabel("⚠️ Native AR delivery is handled by the selected provider API.\n"
-                        "You will still need enough SOL in the payer wallet to cover Solana network fees.")
+        warning = QLabel("⚠️ This app never sends private keys off device.\n"
+                        "Create or load your local everPay wallet, fund everPay with credited USDC, then execute the AR swap and withdraw flow.")
         warning.setStyleSheet("color: #ff9800; padding: 10px; border: 1px solid #ff9800; border-radius: 3px;")
         warning.setWordWrap(True)
         layout.addWidget(warning)
@@ -592,24 +626,122 @@ class ArweavePurchaseDialog(QDialog):
         button_box.accepted.connect(self.execute_purchase)
         button_box.rejected.connect(self.reject)
         self.execute_btn = button_box.button(QDialogButtonBox.Ok)
-        self.execute_btn.setText("Execute Funding Route")
+        self.execute_btn.setText("Execute everPay Route")
         self.execute_btn.setEnabled(False)
         layout.addWidget(button_box)
+        self._refresh_local_everpay_status()
     
     def _current_native_provider(self):
-        return self.native_provider_combo.currentText().strip().lower() if hasattr(self, 'native_provider_combo') else "turbo"
+        return "everpay"
 
     def _current_native_provider_name(self):
-        provider = self._current_native_provider()
-        return provider.title() if provider else "Turbo"
+        return "everPay Direct"
 
     def _persist_arweave_preferences(self):
         funding_service = get_funding_manager_service()
-        current_provider = self._current_native_provider()
+        funding_service.config.arweave_native_provider = "everpay"
+        funding_service.save_config()
 
-        if funding_service.config.arweave_native_provider != current_provider:
-            funding_service.config.arweave_native_provider = current_provider
-            funding_service.save_config()
+    def _refresh_local_everpay_status(self):
+        local_wallet_service = get_local_everpay_wallet_service()
+        status = local_wallet_service.get_wallet_status()
+        address = status.get("address") or "Not created"
+        wallet_state = "loaded" if status.get("loaded") else ("available" if status.get("available") else "missing")
+        self.wallet_status_label.setText(f"Step 1 · Wallet {wallet_state}: {address}")
+        if status.get("available"):
+            self.everpay_balance_label.setText("Step 2 · Fund everPay with USDC, then load balances from your local signer")
+            worker = AsyncWorker(self._fetch_local_everpay_balances())
+            worker.finished.connect(self._on_local_everpay_balances_loaded)
+            worker.error.connect(self._on_local_everpay_balances_error)
+            worker.start()
+            self._everpay_balance_worker = worker
+        else:
+            self.everpay_balance_label.setText("Step 2 · Fund everPay with USDC after creating or importing a local wallet")
+
+    async def _fetch_local_everpay_balances(self):
+        local_wallet_service = get_local_everpay_wallet_service()
+        funding_service = get_funding_manager_service()
+        return await local_wallet_service.get_balances(base_url=funding_service.config.everpay_api_url)
+
+    def _on_local_everpay_balances_loaded(self, payload):
+        balances = payload.get("balances", []) if isinstance(payload, dict) else []
+        summary = []
+        for entry in balances[:3]:
+            tag = entry.get("tag", "unknown")
+            amount = entry.get("amount", "0")
+            summary.append(f"{tag}: {amount}")
+        if summary:
+            self.everpay_balance_label.setText("Step 2 · everPay balances: " + " | ".join(summary))
+        else:
+            self.everpay_balance_label.setText("Step 2 · No credited everPay balances found yet")
+
+    def _on_local_everpay_balances_error(self, error):
+        self.everpay_balance_label.setText(f"Step 2 · Could not load everPay balances: {str(error)}")
+
+    def _prompt_wallet_password(self, title: str, label: str):
+        password, ok = QInputDialog.getText(self, title, label, QLineEdit.Password)
+        password = (password or "").strip()
+        if not ok or not password:
+            return None
+        return password
+
+    def _create_local_everpay_wallet(self):
+        password = self._prompt_wallet_password("Create Local everPay Wallet", "Enter a password for the local everPay wallet:")
+        if not password:
+            return
+        confirm_password = self._prompt_wallet_password("Confirm Password", "Re-enter the wallet password:")
+        if not confirm_password:
+            return
+        if password != confirm_password:
+            QMessageBox.warning(self, "Password Mismatch", "The passwords did not match.")
+            return
+        try:
+            wallet = get_local_everpay_wallet_service().create_local_wallet(password)
+            QMessageBox.information(self, "Local Wallet Created", f"Local everPay wallet created: {wallet.address}")
+            self._refresh_local_everpay_status()
+            self.update_estimate()
+        except Exception as e:
+            QMessageBox.critical(self, "Wallet Error", str(e))
+
+    def _load_local_everpay_wallet(self):
+        password = self._prompt_wallet_password("Load Local everPay Wallet", "Enter the password to unlock the local everPay wallet:")
+        if not password:
+            return
+        try:
+            wallet = get_local_everpay_wallet_service().load_local_wallet(password)
+            QMessageBox.information(self, "Local Wallet Loaded", f"Local everPay wallet loaded: {wallet.address}")
+            self._refresh_local_everpay_status()
+            self.update_estimate()
+        except Exception as e:
+            QMessageBox.critical(self, "Wallet Error", str(e))
+
+    def _export_local_everpay_wallet(self):
+        password = self._prompt_wallet_password("Export Local everPay Wallet", "Enter the wallet password to export the encrypted wallet:")
+        if not password:
+            return
+        file_path, _ = QFileDialog.getSaveFileName(self, "Export Local everPay Wallet", "everpay_wallet_export.json", "JSON Files (*.json)")
+        if not file_path:
+            return
+        try:
+            export_path = get_local_everpay_wallet_service().export_local_wallet(password, file_path)
+            QMessageBox.information(self, "Wallet Exported", f"Encrypted wallet exported to:\n{export_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", str(e))
+
+    def _import_local_everpay_wallet(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import Local everPay Wallet", "", "JSON Files (*.json)")
+        if not file_path:
+            return
+        password = self._prompt_wallet_password("Import Local everPay Wallet", "Enter the password to unlock the imported wallet:")
+        if not password:
+            return
+        try:
+            wallet = get_local_everpay_wallet_service().import_local_wallet(file_path, password)
+            QMessageBox.information(self, "Wallet Imported", f"Local everPay wallet imported: {wallet.address}")
+            self._refresh_local_everpay_status()
+            self.update_estimate()
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", str(e))
 
     def _parse_usdc_amount(self):
         amount_text = self.usdc_amount_edit.text().strip()
@@ -702,13 +834,20 @@ class ArweavePurchaseDialog(QDialog):
 
             if quote and quote.output_amount > 0:
                 ar_amount = quote.output_amount / 1e12
-                route_str = quote.route_description or f"{self._current_native_provider_name()} Native AR API"
+                route_str = quote.route_description or f"{self._current_native_provider_name()} Pricing API"
+                can_execute = bool(getattr(quote, 'executable', False))
+                status_message = getattr(quote, 'status_message', None)
+                if not status_message:
+                    if can_execute:
+                        status_message = f"{self._current_native_provider_name()} quote ready - native AR will be delivered to your Arweave address"
+                    else:
+                        status_message = f"{self._current_native_provider_name()} estimate ready - execution is not available from this dialog"
                 return {
                     'ar_amount': ar_amount,
                     'price_impact': quote.price_impact,
                     'route': route_str,
-                    'can_execute': True,
-                    'status_message': f"{self._current_native_provider_name()} quote ready - native AR will be delivered to your Arweave address"
+                    'can_execute': can_execute,
+                    'status_message': status_message
                 }
 
             print(f"Native AR quote unavailable, falling back to CoinGecko: {service.last_error}")
@@ -859,6 +998,20 @@ class ArweavePurchaseDialog(QDialog):
                     )
                     return
 
+                local_wallet_service = get_local_everpay_wallet_service()
+                if not local_wallet_service.has_local_wallet():
+                    QMessageBox.warning(self, "Wallet Required", "Create or import a local everPay wallet before executing this route.")
+                    return
+
+                wallet_password = None
+                if not local_wallet_service.is_wallet_loaded():
+                    wallet_password = self._prompt_wallet_password(
+                        "Unlock Local everPay Wallet",
+                        "Enter the local everPay wallet password to sign this route:"
+                    )
+                    if not wallet_password:
+                        return
+
                 progress = QMessageBox(self)
                 progress.setWindowTitle("Processing")
                 progress.setText("Building and sending provider transaction...\nThis may take a few seconds.")
@@ -866,7 +1019,7 @@ class ArweavePurchaseDialog(QDialog):
                 progress.show()
                 QApplication.processEvents()
                 
-                worker = AsyncWorker(self._execute_swap(usdc_amount, user))
+                worker = AsyncWorker(self._execute_swap(usdc_amount, user, wallet_password=wallet_password))
                 worker.finished.connect(lambda result: self._on_purchase_complete(progress, result))
                 worker.error.connect(lambda err: self._on_purchase_error(progress, err))
                 worker.start()
@@ -876,43 +1029,10 @@ class ArweavePurchaseDialog(QDialog):
             print(f"[ArweavePurchaseDialog] Execute purchase error: {e}")
             QMessageBox.critical(self, "Error", f"Error: {str(e)}")
     
-    async def _execute_swap(self, usdc_amount: float, user):
+    async def _execute_swap(self, usdc_amount: float, user, wallet_password: str = None):
         """Execute the swap."""
         try:
             service = await get_arweave_purchase_service()
-            
-            if not hasattr(user, 'usdc_address') or not user.usdc_address:
-                raise Exception("Solana wallet not configured")
-            
-            keypair_bytes = getattr(user, 'solana_private_key', None)
-            if not keypair_bytes:
-                wallets = getattr(user, 'wallets', {}) if hasattr(user, 'wallets') else {}
-                if isinstance(wallets, dict):
-                    sol_wallet = wallets.get('solana', {})
-                    if isinstance(sol_wallet, dict):
-                        keypair_bytes = sol_wallet.get('private_key') or sol_wallet.get('secret_key')
-
-            if not keypair_bytes:
-                mnemonic = getattr(user, 'mnemonic', None)
-                if mnemonic:
-                    try:
-                        from blockchain.wallet_generators.solana_generator import SolanaWalletGenerator
-                        derived_wallet = SolanaWalletGenerator().generate_from_mnemonic(mnemonic)
-                        keypair_bytes = derived_wallet.private_key
-                        if keypair_bytes:
-                            setattr(user, 'solana_private_key', keypair_bytes)
-                    except Exception:
-                        keypair_bytes = None
-
-            if not keypair_bytes:
-                import os
-                keypair_bytes = os.getenv("SOLANA_PRIVATE_KEY", "").strip() or None
-
-            if not keypair_bytes:
-                return {
-                    "success": False,
-                    "error": "Solana private key unavailable. Log in again with your seed phrase."
-                }
 
             arweave_address = getattr(user, 'arweave_address', None)
             if not arweave_address:
@@ -921,12 +1041,13 @@ class ArweavePurchaseDialog(QDialog):
                     "error": "Arweave wallet not configured for this account."
                 }
 
+            payer_reference = getattr(user, 'usdc_address', None) or getattr(user, 'username', None) or getattr(user, 'email', None) or ""
             result = await service.execute_swap(
-                user.usdc_address,
+                payer_reference,
                 usdc_amount,
-                keypair_bytes=keypair_bytes,
                 arweave_address=arweave_address,
-                payment_currency="USDC"
+                payment_currency="USDC",
+                wallet_password=wallet_password,
             )
 
             if not result:
@@ -951,9 +1072,13 @@ class ArweavePurchaseDialog(QDialog):
             if result.get('native_delivery'):
                 provider_line = f"Provider: {provider}\n" if provider else ""
                 arweave_line = f"Arweave TX: {arweave_display}\n" if arweave_display else ""
+                withdraw_id = result.get('withdraw_transaction_id', '')
+                withdraw_display = withdraw_id[:20] + "..." if len(withdraw_id) > 20 else withdraw_id
+                withdraw_line = f"Withdraw Reference: {withdraw_display}\n" if withdraw_display else ""
                 QMessageBox.information(self, "Purchase Successful",
-                                      f"Native AR purchase initiated!\n\n"
-                                      f"Solana Transaction: {display_id}\n"
+                                      f"Native AR funding initiated!\n\n"
+                                      f"Swap Reference: {display_id}\n"
+                                      f"{withdraw_line}"
                                       f"{provider_line}"
                                       f"{arweave_line}\n"
                                       f"The AR will be delivered to your Arweave wallet after provider confirmation.")

@@ -79,30 +79,34 @@ class SettingsDialog(QDialog):
         )
         layout.addRow("Arweave Gateway:", self.arweave_gateway)
 
-        self.arweave_provider = QComboBox()
-        self.arweave_provider.addItems(["Turbo", "Arseeding"])
-        self.arweave_provider.setCurrentText(
-            self.current_settings.get('arweave_provider', 'Turbo')
-        )
+        self.arweave_provider = QLineEdit()
+        self.arweave_provider.setText(self.current_settings.get('arweave_provider', 'everPay Direct'))
+        self.arweave_provider.setReadOnly(True)
         layout.addRow("Native AR Provider:", self.arweave_provider)
 
-        self.turbo_payment_url = QLineEdit()
-        self.turbo_payment_url.setText(
-            self.current_settings.get('turbo_payment_url', 'https://payment.ardrive.io/v1')
+        self.everpay_api_url = QLineEdit()
+        self.everpay_api_url.setText(
+            self.current_settings.get('everpay_api_url', 'https://api.everpay.io')
         )
-        layout.addRow("Turbo Payment URL:", self.turbo_payment_url)
+        layout.addRow("everPay API URL:", self.everpay_api_url)
 
-        self.arseeding_url = QLineEdit()
-        self.arseeding_url.setText(
-            self.current_settings.get('arseeding_url', 'https://arseed.web3infra.dev')
+        self.everpay_address = QLineEdit()
+        self.everpay_address.setText(
+            self.current_settings.get('everpay_address', '')
         )
-        layout.addRow("Arseeding URL:", self.arseeding_url)
+        layout.addRow("everPay Signer Address:", self.everpay_address)
 
-        self.arseeding_pay_url = QLineEdit()
-        self.arseeding_pay_url.setText(
-            self.current_settings.get('arseeding_pay_url', 'https://api.everpay.io')
+        self.everpay_input_token = QLineEdit()
+        self.everpay_input_token.setText(
+            self.current_settings.get('everpay_input_token', 'ethereum-usdc-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48')
         )
-        layout.addRow("Arseeding Pay URL:", self.arseeding_pay_url)
+        layout.addRow("everPay Input Token:", self.everpay_input_token)
+
+        self.everpay_ar_token = QLineEdit()
+        self.everpay_ar_token.setText(
+            self.current_settings.get('everpay_ar_token', 'arweave,ethereum-ar-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543')
+        )
+        layout.addRow("everPay AR Token:", self.everpay_ar_token)
         
         # Network timeout
         self.timeout_spin = QSpinBox()
@@ -234,10 +238,11 @@ class SettingsDialog(QDialog):
             'solana_rpc': self.solana_rpc.text(),
             'nano_node': self.nano_node.text(),
             'arweave_gateway': self.arweave_gateway.text(),
-            'arweave_provider': self.arweave_provider.currentText(),
-            'turbo_payment_url': self.turbo_payment_url.text().strip(),
-            'arseeding_url': self.arseeding_url.text().strip(),
-            'arseeding_pay_url': self.arseeding_pay_url.text().strip(),
+            'arweave_provider': self.arweave_provider.text().strip(),
+            'everpay_api_url': self.everpay_api_url.text().strip(),
+            'everpay_address': self.everpay_address.text().strip(),
+            'everpay_input_token': self.everpay_input_token.text().strip(),
+            'everpay_ar_token': self.everpay_ar_token.text().strip(),
             'network_timeout': self.timeout_spin.value(),
             'retry_attempts': self.retry_spin.value(),
             'session_timeout': self.session_timeout.value(),
@@ -271,10 +276,11 @@ class SettingsDialog(QDialog):
             self.solana_rpc.setText('https://api.mainnet-beta.solana.com')
             self.nano_node.setText('https://mynano.ninja/api')
             self.arweave_gateway.setText('https://arweave.net')
-            self.arweave_provider.setCurrentText('Turbo')
-            self.turbo_payment_url.setText('https://payment.ardrive.io/v1')
-            self.arseeding_url.setText('https://arseed.web3infra.dev')
-            self.arseeding_pay_url.setText('https://api.everpay.io')
+            self.arweave_provider.setText('everPay Direct')
+            self.everpay_api_url.setText('https://api.everpay.io')
+            self.everpay_address.setText('')
+            self.everpay_input_token.setText('ethereum-usdc-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48')
+            self.everpay_ar_token.setText('arweave,ethereum-ar-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543')
             self.timeout_spin.setValue(30)
             self.retry_spin.setValue(3)
             self.session_timeout.setValue(30)

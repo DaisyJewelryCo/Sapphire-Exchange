@@ -307,7 +307,7 @@ class ArweaveDevToolsWidget(QWidget):
         
         lines.append(f"Version: {post_data.get('version', 'N/A')}")
         lines.append(f"Sequence: {post_data.get('sequence', 'N/A')}")
-        lines.append(f"Posted By: {post_data.get('posted_by', 'N/A')[:16]}...")
+        lines.append(f"Posted By: {str(post_data.get('posted_by') or 'N/A')[:16]}...")
         lines.append(f"Created At: {post_data.get('created_at', 'N/A')}")
         lines.append("")
         
@@ -317,10 +317,10 @@ class ArweaveDevToolsWidget(QWidget):
         else:
             auction = post_data.get('auction', {})
             lines.append("TOP SECTION AUCTION:")
-            lines.append(f"  Item ID: {auction.get('item_id', 'N/A')[:16]}...")
-            lines.append(f"  Title: {auction.get('title', 'N/A')}")
-            lines.append(f"  Seller: {auction.get('seller_id', 'N/A')[:16]}...")
-            lines.append(f"  SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
+            lines.append(f"  Item ID: {str(auction.get('item_id') or 'N/A')[:16]}...")
+            lines.append(f"  Title: {str(auction.get('title') or 'N/A')}")
+            lines.append(f"  Seller: {str(auction.get('seller_id') or 'N/A')[:16]}...")
+            lines.append(f"  SHA ID: {str(auction.get('sha_id') or 'N/A')[:16]}...")
             lines.append("")
             
             expiring = post_data.get('expiring_auctions', [])
@@ -344,7 +344,7 @@ class ArweaveDevToolsWidget(QWidget):
             title = f"inventory_{post_data.get('item_count', 0)}_items"
         else:
             auction = post_data.get('auction', {})
-            title = auction.get('title', 'untitled').replace(' ', '_').lower()
+            title = str(auction.get('title') or 'untitled').replace(' ', '_').lower()
         
         filename = f"/tmp/arweave_post_{title}_{self.current_post_index}.txt"
         

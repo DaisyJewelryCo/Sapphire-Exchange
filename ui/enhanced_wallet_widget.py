@@ -47,10 +47,11 @@ class EnhancedWalletWidget(QWidget):
             'solana_rpc': config.solana_rpc_url,
             'nano_node': config.nano_rpc_url,
             'arweave_gateway': 'https://arweave.net',
-            'arweave_provider': config.arweave_native_provider.title(),
-            'turbo_payment_url': config.turbo_payment_service_url,
-            'arseeding_url': config.arseeding_service_url,
-            'arseeding_pay_url': config.arseeding_pay_url,
+            'arweave_provider': 'everPay Direct',
+            'everpay_api_url': config.everpay_api_url,
+            'everpay_address': config.everpay_address,
+            'everpay_input_token': config.everpay_input_token,
+            'everpay_ar_token': config.everpay_ar_token,
             'network_timeout': config.request_timeout,
             'retry_attempts': config.max_retries,
             'session_timeout': 30,
@@ -486,10 +487,11 @@ class EnhancedWalletWidget(QWidget):
         funding_service.config.nano_rpc_url = settings.get('nano_node', funding_service.config.nano_rpc_url)
         funding_service.config.request_timeout = settings.get('network_timeout', funding_service.config.request_timeout)
         funding_service.config.max_retries = settings.get('retry_attempts', funding_service.config.max_retries)
-        funding_service.config.arweave_native_provider = settings.get('arweave_provider', 'Turbo').strip().lower()
-        funding_service.config.turbo_payment_service_url = settings.get('turbo_payment_url', funding_service.config.turbo_payment_service_url).strip()
-        funding_service.config.arseeding_service_url = settings.get('arseeding_url', funding_service.config.arseeding_service_url).strip()
-        funding_service.config.arseeding_pay_url = settings.get('arseeding_pay_url', funding_service.config.arseeding_pay_url).strip()
+        funding_service.config.arweave_native_provider = 'everpay'
+        funding_service.config.everpay_api_url = settings.get('everpay_api_url', funding_service.config.everpay_api_url).strip()
+        funding_service.config.everpay_address = settings.get('everpay_address', funding_service.config.everpay_address).strip()
+        funding_service.config.everpay_input_token = settings.get('everpay_input_token', funding_service.config.everpay_input_token).strip()
+        funding_service.config.everpay_ar_token = settings.get('everpay_ar_token', funding_service.config.everpay_ar_token).strip()
         funding_service.save_config()
 
         QMessageBox.information(self, "Settings", "Settings updated successfully")

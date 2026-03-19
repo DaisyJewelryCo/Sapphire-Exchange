@@ -14,6 +14,14 @@ class ArweaveAuctionViewer:
         """Initialize viewer with reference to post service."""
         self.post_service = arweave_post_service
     
+    def _display_value(self, value: Any, default: str = 'N/A') -> str:
+        if value is None:
+            return default
+        return str(value)
+    
+    def _truncate(self, value: Any, length: int, default: str = 'N/A') -> str:
+        return self._display_value(value, default)[:length]
+    
     def preview_auction_post(self, post_data: Dict[str, Any], verbose: bool = False) -> str:
         """
         Display a formatted preview of an auction post or inventory post before posting.
@@ -44,14 +52,14 @@ class ArweaveAuctionViewer:
         output.append(f"Type: {post_type.upper()}")
         output.append(f"Version: {post_data.get('version', 'N/A')}")
         output.append(f"Sequence Number: {post_data.get('sequence', 'N/A')}")
-        output.append(f"Posted By: {post_data.get('posted_by', 'N/A')[:8]}...")
+        output.append(f"Posted By: {self._truncate(post_data.get('posted_by'), 8)}...")
         output.append(f"Created At: {post_data.get('created_at', 'N/A')}")
         
         if post_type == 'inventory':
-            output.append(f"Seller Nano Address: {post_data.get('seller_nano_address', 'N/A')[:20]}...")
-            output.append(f"Seller Arweave Address: {post_data.get('seller_arweave_address', 'N/A')[:16]}...")
+            output.append(f"Seller Nano Address: {self._truncate(post_data.get('seller_nano_address'), 20)}...")
+            output.append(f"Seller Arweave Address: {self._truncate(post_data.get('seller_arweave_address'), 16)}...")
             if post_data.get('previous_inventory_uri'):
-                output.append(f"Previous Inventory URI: {post_data.get('previous_inventory_uri')[:16]}...")
+                output.append(f"Previous Inventory URI: {self._truncate(post_data.get('previous_inventory_uri'), 16)}...")
         output.append("")
         
         # Handle inventory posts
@@ -64,13 +72,13 @@ class ArweaveAuctionViewer:
             
             if items:
                 for i, item in enumerate(items, 1):
-                    output.append(f"  [{i}] {item.get('title', 'N/A')[:50]}")
-                    output.append(f"      Item ID: {item.get('item_id', 'N/A')[:8]}...")
-                    output.append(f"      SHA ID: {item.get('sha_id', 'N/A')[:16]}...")
+                    output.append(f"  [{i}] {self._truncate(item.get('title'), 50)}")
+                    output.append(f"      Item ID: {self._truncate(item.get('item_id'), 8)}...")
+                    output.append(f"      SHA ID: {self._truncate(item.get('sha_id'), 16)}...")
                     output.append(f"      Status: {item.get('status', 'N/A')}")
                     output.append(f"      Starting Price (USDC): {item.get('starting_price_usdc', 'N/A')}")
                     if verbose and item.get('description'):
-                        output.append(f"      Description: {item.get('description')[:100]}...")
+                        output.append(f"      Description: {self._truncate(item.get('description'), 100)}...")
                     output.append("")
             output.append("")
         else:
@@ -79,27 +87,27 @@ class ArweaveAuctionViewer:
             if auction:
                 output.append("TOP SECTION: CURRENT AUCTION DETAILS")
                 output.append("-" * 100)
-                output.append(f"SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
-                output.append(f"Item ID: {auction.get('item_id', 'N/A')[:8]}...")
-                output.append(f"Title: {auction.get('title', 'N/A')}")
-                output.append(f"Seller: {auction.get('seller_id', 'N/A')[:8]}...")
+                output.append(f"SHA ID: {self._truncate(auction.get('sha_id'), 16)}...")
+                output.append(f"Item ID: {self._truncate(auction.get('item_id'), 8)}...")
+                output.append(f"Title: {self._display_value(auction.get('title'))}")
+                output.append(f"Seller: {self._truncate(auction.get('seller_id'), 8)}...")
                 output.append(f"Status: {auction.get('status', 'N/A')}")
                 output.append("")
                 
                 if verbose and auction.get('description'):
-                    output.append(f"Description: {auction.get('description')[:200]}...")
+                    output.append(f"Description: {self._truncate(auction.get('description'), 200)}...")
                     output.append("")
                 
                 output.append(f"Starting Price: {auction.get('starting_price_doge', 'N/A')} DOGE")
                 output.append(f"Current Bid: {auction.get('current_bid_doge', 'N/A')} DOGE")
-                output.append(f"Current Bidder: {auction.get('current_bidder', 'None')[:8] if auction.get('current_bidder') else 'None'}...")
+                output.append(f"Current Bidder: {self._truncate(auction.get('current_bidder'), 8, 'None') if auction.get('current_bidder') else 'None'}...")
                 output.append(f"Auction Ends: {auction.get('auction_end', 'N/A')}")
                 output.append("")
                 
                 output.append("NANO WALLET INFO (for bids)")
                 output.append("-" * 100)
-                output.append(f"Nano Address: {auction.get('auction_nano_address', 'N/A')[:20]}...")
-                output.append(f"Nano Public Key: {auction.get('auction_nano_public_key', 'N/A')[:20]}...")
+                output.append(f"Nano Address: {self._truncate(auction.get('auction_nano_address'), 20)}...")
+                output.append(f"Nano Public Key: {self._truncate(auction.get('auction_nano_public_key'), 20)}...")
                 output.append("")
             
             # Bottom section: Expiring auctions
@@ -112,12 +120,12 @@ class ArweaveAuctionViewer:
                 output.append("")
                 
                 for i, exp_auction in enumerate(expiring_auctions, 1):
-                    output.append(f"  [{i}] {exp_auction.get('title', 'N/A')[:40]}")
-                    output.append(f"      Item ID: {exp_auction.get('item_id', 'N/A')[:8]}...")
-                    output.append(f"      SHA ID: {exp_auction.get('sha_id', 'N/A')[:16]}...")
+                    output.append(f"  [{i}] {self._truncate(exp_auction.get('title'), 40)}")
+                    output.append(f"      Item ID: {self._truncate(exp_auction.get('item_id'), 8)}...")
+                    output.append(f"      SHA ID: {self._truncate(exp_auction.get('sha_id'), 16)}...")
                     output.append(f"      Current Bid: {exp_auction.get('current_bid_doge', 'N/A')} DOGE")
-                    output.append(f"      Current Bidder: {exp_auction.get('current_bidder', 'None')[:8] if exp_auction.get('current_bidder') else 'None'}...")
-                    output.append(f"      Top Bidder Nano: {exp_auction.get('top_bidder_nano_address', 'N/A')[:20]}...")
+                    output.append(f"      Current Bidder: {self._truncate(exp_auction.get('current_bidder'), 8, 'None') if exp_auction.get('current_bidder') else 'None'}...")
+                    output.append(f"      Top Bidder Nano: {self._truncate(exp_auction.get('top_bidder_nano_address'), 20)}...")
                     output.append(f"      Expires: {exp_auction.get('auction_end', 'N/A')}")
                     output.append("")
             else:
@@ -172,27 +180,27 @@ class ArweaveAuctionViewer:
         output.append("├── version: " + str(post_data.get('version')))
         output.append("├── sequence: " + str(post_data.get('sequence')))
         output.append("├── created_at: " + str(post_data.get('created_at')))
-        output.append("├── posted_by: " + str(post_data.get('posted_by', 'N/A')[:8]))
+        output.append("├── posted_by: " + self._truncate(post_data.get('posted_by'), 8))
         output.append("│")
         output.append("├── auction (TOP SECTION)")
         auction = post_data.get('auction', {})
-        output.append("│   ├── sha_id: " + str(auction.get('sha_id', 'N/A')[:16]))
-        output.append("│   ├── item_id: " + str(auction.get('item_id')))
-        output.append("│   ├── title: " + str(auction.get('title', 'N/A')[:30]))
-        output.append("│   ├── seller_id: " + str(auction.get('seller_id', 'N/A')[:8]))
+        output.append("│   ├── sha_id: " + self._truncate(auction.get('sha_id'), 16))
+        output.append("│   ├── item_id: " + self._display_value(auction.get('item_id')))
+        output.append("│   ├── title: " + self._truncate(auction.get('title'), 30))
+        output.append("│   ├── seller_id: " + self._truncate(auction.get('seller_id'), 8))
         output.append("│   ├── starting_price_doge: " + str(auction.get('starting_price_doge')))
         output.append("│   ├── current_bid_doge: " + str(auction.get('current_bid_doge')))
-        output.append("│   ├── current_bidder: " + str(auction.get('current_bidder', 'None')[:8] if auction.get('current_bidder') else 'None'))
+        output.append("│   ├── current_bidder: " + (self._truncate(auction.get('current_bidder'), 8, 'None') if auction.get('current_bidder') else 'None'))
         output.append("│   ├── auction_end: " + str(auction.get('auction_end')))
-        output.append("│   ├── auction_nano_address: " + str(auction.get('auction_nano_address', 'N/A')[:20]))
-        output.append("│   └── auction_nano_public_key: " + str(auction.get('auction_nano_public_key', 'N/A')[:20]))
+        output.append("│   ├── auction_nano_address: " + self._truncate(auction.get('auction_nano_address'), 20))
+        output.append("│   └── auction_nano_public_key: " + self._truncate(auction.get('auction_nano_public_key'), 20))
         output.append("│")
         output.append("└── expiring_auctions (BOTTOM SECTION)")
         expiring = post_data.get('expiring_auctions', [])
         output.append(f"    ├── count: {len(expiring)}")
         for i, exp in enumerate(expiring[:3]):
             prefix = "    ├── " if i < len(expiring) - 1 else "    └── "
-            output.append(f"{prefix}[{i}] {exp.get('title', 'N/A')[:30]}")
+            output.append(f"{prefix}[{i}] {self._truncate(exp.get('title'), 30)}")
         if len(expiring) > 3:
             output.append(f"    └── ... and {len(expiring) - 3} more")
         
@@ -227,8 +235,8 @@ class ArweaveAuctionViewer:
                 output.append(f"[{i}] Sequence: {post.get('sequence')}")
                 
                 auction = post.get('auction', {})
-                output.append(f"    Title: {auction.get('title', 'N/A')}")
-                output.append(f"    SHA ID: {auction.get('sha_id', 'N/A')[:16]}...")
+                output.append(f"    Title: {self._display_value(auction.get('title'))}")
+                output.append(f"    SHA ID: {self._truncate(auction.get('sha_id'), 16)}...")
                 output.append(f"    Current Bid: {auction.get('current_bid_doge', 'N/A')} DOGE")
                 output.append(f"    Expires: {auction.get('auction_end', 'N/A')}")
                 
