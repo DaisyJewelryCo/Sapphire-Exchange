@@ -94,7 +94,9 @@ class SettingsDialog(QDialog):
         self.everpay_address.setText(
             self.current_settings.get('everpay_address', '')
         )
-        layout.addRow("everPay Signer Address:", self.everpay_address)
+        self.everpay_address.setReadOnly(True)
+        self.everpay_address.setPlaceholderText("Managed by the local everPay wallet")
+        layout.addRow("everPay Signer Address (Local Wallet):", self.everpay_address)
 
         self.everpay_input_token = QLineEdit()
         self.everpay_input_token.setText(

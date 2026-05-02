@@ -91,7 +91,6 @@ class TestArweavePurchaseService:
 
         monkeypatch.setattr(service, "_get_token_info", fake_get_token_info)
         monkeypatch.setattr(service, "_fetch_market_quote", fake_fetch_market_quote)
-        monkeypatch.setattr(service, "_get_everpay_private_key", lambda: None)
 
         quote = await service.get_native_provider_quote(2.125, payment_currency="USDC")
 
@@ -151,10 +150,23 @@ class TestArweavePurchaseService:
         )
 
         assert result is None
-        assert service.last_error == "everPay signer address is not configured"
+        assert service.last_error == "Create or load a local everPay wallet before executing"
+
+    def test_sign_legacy_payload_requires_loaded_local_wallet(self, monkeypatch):
+        service = ArweavePurchaseService()
+        monkeypatch.setattr(
+            arweave_purchase_service_module,
+            "get_local_everpay_wallet_service",
+            lambda: SimpleNamespace(is_wallet_loaded=lambda: False),
+        )
+
+        signature = service._sign_legacy_payload({"action": "swap", "from": "0x1", "token": "usdc", "amount": "1", "nonce": "1"})
+
+        assert signature is None
+        assert service.last_error == "Load the local everPay wallet before executing"
 
     @pytest.mark.asyncio
-    async def test_execute_native_purchase_submits_swap_and_withdraw(
+    async def test_execute_native_purchase_funds_then_swaps_and_withdraws(
         self,
         everpay_config,
         monkeypatch,
@@ -170,17 +182,22 @@ class TestArweavePurchaseService:
         async def fake_get_token_balance(address, token_identifier):
             assert address == "0xSigner"
             if "usdc" in token_identifier.lower():
-                return 2_000_000
+                return 0
             return 0
 
         async def fake_submit_everpay_tx(payload):
             submitted_payloads.append(payload)
+            if payload["action"] == "transfer":
+                return {"reference": "0xfund", "payload": payload, "response": {}}
             if payload["action"] == "swap":
                 return {"reference": "0xswitch", "payload": payload, "response": {}}
             return {"reference": "0xwithdraw", "payload": payload, "response": {}}
 
         async def fake_await_balance_increase(address, token_identifier, starting_balance, attempts=6, delay=2.0):
             assert address == "0xSigner"
+            if "usdc" in token_identifier.lower():
+                assert starting_balance == 0
+                return 1_000_000
             assert starting_balance == 0
             assert "ar" in token_identifier.lower()
             return 125000000000
@@ -206,19 +223,28 @@ class TestArweavePurchaseService:
         assert result is not None
         assert result["success"] is True
         assert result["provider"] == "everPay"
+        assert result["funding_transaction_id"] == "0xfund"
         assert result["transaction_id"] == "0xswitch"
         assert result["withdraw_transaction_id"] == "0xwithdraw"
         assert result["arweave_tx_id"] == "arweave-native-tx"
         assert result["native_delivery"] is True
         assert result["withdraw_amount_winston"] == "125000000000"
-        assert submitted_payloads[0]["action"] == "swap"
-        assert submitted_payloads[0]["amount"] == "1000000"
-        assert submitted_payloads[0]["swapTo"].startswith("arweave")
-        assert submitted_payloads[1] == {
+        assert submitted_payloads[0] == {
+            "action": "transfer",
+            "from": "0xSigner",
+            "to": "everpay",
+            "token": "ethereum-usdc-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "amount": "1000000",
+            "nonce": submitted_payloads[0]["nonce"],
+        }
+        assert submitted_payloads[1]["action"] == "swap"
+        assert submitted_payloads[1]["amount"] == "1000000"
+        assert submitted_payloads[1]["swapTo"].startswith("arweave")
+        assert submitted_payloads[2] == {
             "action": "withdraw",
             "from": "0xSigner",
             "token": "arweave,ethereum-ar-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
             "amount": "125000000000",
             "target": "arweave-address",
-            "nonce": submitted_payloads[1]["nonce"],
+            "nonce": submitted_payloads[2]["nonce"],
         }

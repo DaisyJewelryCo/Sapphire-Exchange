@@ -4,7 +4,6 @@ Handles native Arweave funding using everPay direct.
 """
 import asyncio
 import json
-import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,15 +15,6 @@ from Crypto.Hash import keccak
 
 from services.funding_manager_service import get_funding_manager_service
 from services.local_everpay_wallet_service import get_local_everpay_wallet_service
-
-try:
-    from eth_account import Account
-    from eth_account.messages import encode_defunct
-    ETH_ACCOUNT_AVAILABLE = True
-except ImportError:
-    Account = None
-    encode_defunct = None
-    ETH_ACCOUNT_AVAILABLE = False
 
 
 @dataclass
@@ -106,7 +96,6 @@ class ArweavePurchaseService:
             "service_url": (config.everpay_api_url or "https://api.everpay.io").strip(),
             "input_token": (config.everpay_input_token or self.TOKEN_IDENTIFIER_ALIASES["USDC-ETH-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]).strip(),
             "ar_token": (config.everpay_ar_token or self.TOKEN_IDENTIFIER_ALIASES["AR-AR-0x0000000000000000000000000000000000000000"]).strip(),
-            "address": (config.everpay_address or "").strip(),
             "description": "Use everPay direct to swap credited funds into AR and withdraw native AR to the user's Arweave wallet.",
         }
 
@@ -114,7 +103,7 @@ class ArweavePurchaseService:
         provider = self._get_native_provider_details()
         return (
             f"Native AR funding is handled by {provider['name']} direct via {provider['service_url']}. "
-            f"The configured everPay account swaps credited funds into AR and withdraws native AR to the user's Arweave wallet."
+            f"The local everPay wallet swaps credited funds into AR and withdraws native AR to the user's Arweave wallet."
         )
 
     def get_native_conversion_plan(self) -> Dict[str, Any]:
@@ -313,72 +302,105 @@ class ArweavePurchaseService:
         self._last_nonce = max(current, self._last_nonce + 1)
         return str(self._last_nonce)
 
-    def _get_everpay_private_key(self) -> Optional[str]:
-        for key_name in ["EVERPAY_PRIVATE_KEY", "EVERPAY_SIGNER_PRIVATE_KEY"]:
-            value = (os.getenv(key_name) or "").strip()
-            if value:
-                return value
-        return None
-
     def _get_everpay_signer_address(self) -> Optional[str]:
         local_wallet_service = get_local_everpay_wallet_service()
-        local_wallet_address = local_wallet_service.get_wallet_address()
-        if local_wallet_address:
-            return local_wallet_address
+        return local_wallet_service.get_wallet_address()
 
-        provider = self._get_native_provider_details()
-        configured_address = provider.get("address")
-        if configured_address:
-            return configured_address
+    def _serialize_everpay_data(self, value: Optional[Dict[str, Any]] = None) -> str:
+        if not value:
+            return ""
+        return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
 
-        private_key = self._get_everpay_private_key()
-        if not private_key:
+    def _get_deposit_locker(self, info: Dict[str, Any], token: Dict[str, Any]) -> Optional[str]:
+        chain_types = [segment.strip() for segment in str(token.get("chainType") or "").split(",") if segment.strip()]
+        lockers = info.get("lockers") or {}
+        for chain_type in chain_types:
+            locker = lockers.get(chain_type)
+            if locker:
+                return locker
+        if "ethereum" in chain_types:
+            return info.get("ethLocker")
+        if "arweave" in chain_types:
+            return info.get("arLocker")
+        return None
+
+    async def _build_everpay_tx(
+        self,
+        action: str,
+        token: Dict[str, Any],
+        amount: str,
+        from_address: str,
+        to: str,
+        nonce: str,
+        target_chain_type: Optional[str] = None,
+        fee: Optional[str] = None,
+        data: Optional[Dict[str, Any]] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        info = await self._get_info()
+        if not info:
+            if not self.last_error:
+                self._set_last_error("Could not load everPay service metadata")
             return None
 
-        if not ETH_ACCOUNT_AVAILABLE:
-            self._set_last_error("eth-account is required for everPay direct signing")
+        fee_recipient = info.get("feeRecipient")
+        if not fee_recipient:
+            self._set_last_error("everPay info response is missing feeRecipient")
             return None
 
-        try:
-            account = Account.from_key(private_key)
-            return account.address
-        except Exception as e:
-            self._set_last_error(f"Invalid everPay signer private key: {e}")
+        transfer_fee = str(token.get("transferFee", "0") or "0")
+        burn_fees = token.get("burnFees") or token.get("burnFeeMap") or {}
+        resolved_fee = fee
+        if resolved_fee is None:
+            if action == "burn" and target_chain_type:
+                resolved_fee = str(burn_fees.get(target_chain_type, "0") or "0")
+            else:
+                resolved_fee = transfer_fee
+
+        payload = {
+            "tokenSymbol": str(token.get("symbol") or ""),
+            "action": action,
+            "from": from_address,
+            "to": to,
+            "amount": str(amount),
+            "fee": str(resolved_fee),
+            "feeRecipient": fee_recipient,
+            "nonce": nonce,
+            "tokenID": str(token.get("id") or ""),
+            "chainType": str(token.get("chainType") or ""),
+            "chainID": str(token.get("chainID") or ""),
+            "data": self._serialize_everpay_data(data),
+            "version": "v1",
+        }
+
+        missing_values = [
+            field for field in ("tokenSymbol", "tokenID", "chainType", "chainID") if not payload[field]
+        ]
+        if missing_values:
+            self._set_last_error(
+                f"everPay token metadata is incomplete for {token.get('tag') or token.get('symbol') or 'token'}: {', '.join(missing_values)}"
+            )
             return None
+
+        if extra_fields:
+            payload.update(extra_fields)
+        return payload
 
     def _build_legacy_signing_message(self, payload: Dict[str, Any]) -> str:
-        ordered_payload = {
-            key: value
-            for key, value in payload.items()
-            if key != "sig"
-        }
-        return json.dumps(ordered_payload, separators=(",", ":"), ensure_ascii=False)
+        local_wallet_service = get_local_everpay_wallet_service()
+        return local_wallet_service.get_everpay_message_data(payload)
 
     def _sign_legacy_payload(self, payload: Dict[str, Any]) -> Optional[str]:
         local_wallet_service = get_local_everpay_wallet_service()
-        message = self._build_legacy_signing_message(payload)
 
-        if local_wallet_service.is_wallet_loaded():
-            try:
-                return local_wallet_service.sign_everpay_tx(json.loads(message))
-            except Exception as e:
-                self._set_last_error(f"Error signing everPay transaction with local wallet: {e}")
-                return None
-
-        private_key = self._get_everpay_private_key()
-        if not private_key:
-            self._set_last_error("Load the local everPay wallet or configure EVERPAY_PRIVATE_KEY before executing")
-            return None
-
-        if not ETH_ACCOUNT_AVAILABLE:
-            self._set_last_error("eth-account is required for everPay direct signing")
+        if not local_wallet_service.is_wallet_loaded():
+            self._set_last_error("Load the local everPay wallet before executing")
             return None
 
         try:
-            signed = Account.from_key(private_key).sign_message(encode_defunct(text=message))
-            return signed.signature.hex()
+            return local_wallet_service.sign_everpay_tx(payload)
         except Exception as e:
-            self._set_last_error(f"Error signing everPay transaction: {e}")
+            self._set_last_error(f"Error signing everPay transaction with local wallet: {e}")
             return None
 
     def _compute_everhash(self, payload: Dict[str, Any]) -> str:
@@ -491,13 +513,7 @@ class ArweavePurchaseService:
 
     def _is_execution_ready(self) -> bool:
         local_wallet_service = get_local_everpay_wallet_service()
-        if local_wallet_service.has_local_wallet() and self._get_everpay_signer_address():
-            return True
-        if not self._get_everpay_private_key():
-            return False
-        if not ETH_ACCOUNT_AVAILABLE:
-            return False
-        return bool(self._get_everpay_signer_address())
+        return bool(local_wallet_service.has_local_wallet() and self._get_everpay_signer_address())
 
     async def get_native_provider_quote(self, payment_amount: float, payment_currency: str = "USDC") -> Optional[Dict[str, Any]]:
         try:
@@ -530,7 +546,7 @@ class ArweavePurchaseService:
 
             executable = self._is_execution_ready()
             status_message = (
-                "everPay direct estimate ready. Executing will swap credited USDC from the configured everPay account "
+                "everPay direct estimate ready. Executing will swap credited USDC from the local everPay wallet "
                 "and withdraw native AR to the target Arweave wallet."
             )
             if not executable:
@@ -621,7 +637,7 @@ class ArweavePurchaseService:
             signer_address = self._get_everpay_signer_address()
             if not signer_address:
                 if not self.last_error:
-                    self._set_last_error("everPay signer address is not configured")
+                    self._set_last_error("Create or load a local everPay wallet before executing")
                 return None
 
             target_arweave_address = (arweave_address or "").strip()
@@ -641,25 +657,44 @@ class ArweavePurchaseService:
             starting_input_balance = await self._get_token_balance(signer_address, input_token["tag"])
             if starting_input_balance is None:
                 return None
+
+            funding_submission = None
             if starting_input_balance < input_amount:
-                self._set_last_error(
+                shortfall = input_amount - starting_input_balance
+                required_amount = Decimal(input_amount) / Decimal(self.USDC_DECIMALS)
+                available_amount = Decimal(starting_input_balance) / Decimal(self.USDC_DECIMALS)
+                shortfall_amount = Decimal(shortfall) / Decimal(self.USDC_DECIMALS)
+                info = await self._get_info()
+                deposit_locker = self._get_deposit_locker(info or {}, input_token) if info else None
+                funding_message = (
                     f"Configured everPay account has insufficient {payment_currency} balance. "
-                    f"Required {input_amount}, available {starting_input_balance}."
+                    f"Required {required_amount.normalize()}, available {available_amount.normalize()}, "
+                    f"shortfall {shortfall_amount.normalize()} {payment_currency}."
                 )
+                if deposit_locker:
+                    funding_message = (
+                        f"{funding_message} Deposit the shortfall to the everPay {input_token.get('chainType', 'input')} "
+                        f"locker first: {deposit_locker}."
+                    )
+                self._set_last_error(funding_message)
                 return None
 
             starting_ar_balance = await self._get_token_balance(signer_address, ar_token["tag"])
             if starting_ar_balance is None:
                 return None
 
-            swap_payload = {
-                "action": "swap",
-                "from": signer_address,
-                "token": input_token["tag"],
-                "amount": str(input_amount),
-                "swapTo": ar_token["tag"],
-                "nonce": self._get_next_nonce(),
-            }
+            swap_payload = await self._build_everpay_tx(
+                action="swap",
+                token=input_token,
+                amount=str(input_amount),
+                from_address=signer_address,
+                to="everpay",
+                nonce=self._get_next_nonce(),
+                data={"swapTo": ar_token["tag"]},
+                extra_fields={"swapTo": ar_token["tag"]},
+            )
+            if not swap_payload:
+                return None
             swap_submission = await self._submit_everpay_tx(swap_payload)
             if not swap_submission:
                 return None
@@ -675,14 +710,18 @@ class ArweavePurchaseService:
                 )
                 return None
 
-            withdraw_payload = {
-                "action": "withdraw",
-                "from": signer_address,
-                "token": ar_token["tag"],
-                "amount": str(ar_delta),
-                "target": target_arweave_address,
-                "nonce": self._get_next_nonce(),
-            }
+            withdraw_payload = await self._build_everpay_tx(
+                action="burn",
+                token=ar_token,
+                amount=str(ar_delta),
+                from_address=signer_address,
+                to=target_arweave_address,
+                nonce=self._get_next_nonce(),
+                target_chain_type="arweave",
+                data={"targetChainType": "arweave"},
+            )
+            if not withdraw_payload:
+                return None
             withdraw_submission = await self._submit_everpay_tx(withdraw_payload)
             if not withdraw_submission:
                 return None
@@ -704,6 +743,7 @@ class ArweavePurchaseService:
                 "arweave_tx_id": arweave_tx_id,
                 "native_delivery": True,
                 "timestamp": datetime.now().isoformat(),
+                "funding_transaction_id": funding_submission["reference"] if funding_submission else None,
                 "swap_transaction_id": swap_submission["reference"],
                 "withdraw_transaction_id": withdraw_reference,
                 "payer_address": user_pubkey,

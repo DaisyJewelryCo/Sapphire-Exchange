@@ -1014,7 +1014,7 @@ class ArweavePurchaseDialog(QDialog):
 
                 progress = QMessageBox(self)
                 progress.setWindowTitle("Processing")
-                progress.setText("Building and sending provider transaction...\nThis may take a few seconds.")
+                progress.setText("Funding everPay, swapping to AR, and sending the provider transaction...\nThis may take a few seconds.")
                 progress.setStandardButtons(QMessageBox.NoButton)
                 progress.show()
                 QApplication.processEvents()
